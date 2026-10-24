@@ -1,3 +1,4 @@
+import { useSessionNavigationStore } from "@/stores/session-navigation-store";
 import {
   useCallback,
   useMemo,
@@ -162,6 +163,7 @@ const TRAILING_LABEL_KEYS: Record<SidebarTrailingChoice, string> = {
  * be, and it grew a row for each host on top of that.
  */
 export function SidebarDisplayPreferencesMenu(): ReactElement {
+  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
   const { t } = useTranslation();
   const preferences = useSidebarDisplayPreferences();
   const hosts = useHosts();
@@ -312,35 +314,39 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           sheetTitle={t("sidebar.display.heading")}
           testID="sidebar-display-preferences-content"
         >
-          <MenuSubTrigger
-            id="grouping"
-            value={t(GROUPING_LABEL_KEYS[preferences.grouping])}
-            testID="sidebar-display-grouping"
-          >
-            {t("sidebar.display.grouping.label")}
-          </MenuSubTrigger>
-          {preferences.grouping === "project" ? (
-            <MenuSubTrigger
-              id="sort"
-              value={
-                workspaceSortSupported || preferences.workspaceSort === "manual"
-                  ? t(`sidebar.display.sort.${preferences.workspaceSort}`)
-                  : undefined
-              }
-            >
-              {t("sidebar.display.sort.label")}
-            </MenuSubTrigger>
+          {!sessionFirst ? (
+            <>
+              <MenuSubTrigger
+                id="grouping"
+                value={t(GROUPING_LABEL_KEYS[preferences.grouping])}
+                testID="sidebar-display-grouping"
+              >
+                {t("sidebar.display.grouping.label")}
+              </MenuSubTrigger>
+              {preferences.grouping === "project" ? (
+                <MenuSubTrigger
+                  id="sort"
+                  value={
+                    workspaceSortSupported || preferences.workspaceSort === "manual"
+                      ? t(`sidebar.display.sort.${preferences.workspaceSort}`)
+                      : undefined
+                  }
+                >
+                  {t("sidebar.display.sort.label")}
+                </MenuSubTrigger>
+              ) : null}
+              <MenuSubTrigger
+                id="titleSource"
+                value={t(TITLE_SOURCE_LABEL_KEYS[preferences.titleSource])}
+                testID="sidebar-display-title-source"
+              >
+                {t("sidebar.display.titleSource.label")}
+              </MenuSubTrigger>
+              <MenuSubTrigger id="show" testID="sidebar-display-show">
+                {t("sidebar.display.show.label")}
+              </MenuSubTrigger>
+            </>
           ) : null}
-          <MenuSubTrigger
-            id="titleSource"
-            value={t(TITLE_SOURCE_LABEL_KEYS[preferences.titleSource])}
-            testID="sidebar-display-title-source"
-          >
-            {t("sidebar.display.titleSource.label")}
-          </MenuSubTrigger>
-          <MenuSubTrigger id="show" testID="sidebar-display-show">
-            {t("sidebar.display.show.label")}
-          </MenuSubTrigger>
           {showHostFilter ? (
             <>
               <MenuSeparator />

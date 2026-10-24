@@ -2,6 +2,16 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
+  sessionNavigation: {
+    sessions: "セッション",
+    workspaces: "ワークスペース",
+    showWorkspaces: "ワークスペースを表示",
+    showSessions: "セッションを表示",
+    newSession: "新しいセッション",
+    untitled: "無題のセッション",
+    search: "セッションを検索",
+    empty: "セッションがありません。新規作成するか既存のセッションをインポートしてください。",
+  },
   paneFind: {
     connectionFailure:
       "このチャットを検索できませんでした。ホストへの接続を確認して再試行してください。",

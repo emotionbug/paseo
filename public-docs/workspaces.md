@@ -8,7 +8,13 @@ category: Workspaces
 
 # Workspaces
 
-Paseo is organized around workspaces, not chats.
+This fork opens with a session sidebar: projects contain individual conversations.
+Use **New session** to start a chat in your existing checkout, or search the sidebar
+and select an existing conversation to resume it. The header toggle restores the
+workspace view described below.
+
+Workspaces still own working directories, terminals, files and agent sessions internally.
+Switching sidebar views does not migrate or delete any workspace or conversation.
 
 A workspace is the place where a task happens. It has a working directory and can contain multiple sessions running at the same time. In the app, each session opens as a tab.
 

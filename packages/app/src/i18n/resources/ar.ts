@@ -2,6 +2,16 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
+  sessionNavigation: {
+    sessions: "الجلسات",
+    workspaces: "مساحات العمل",
+    showWorkspaces: "عرض مساحات العمل",
+    showSessions: "عرض الجلسات",
+    newSession: "جلسة جديدة",
+    untitled: "جلسة بلا عنوان",
+    search: "البحث عن جلسات",
+    empty: "لا توجد جلسات. أنشئ جلسة جديدة أو استورد جلسة موجودة.",
+  },
   paneFind: {
     connectionFailure: "تعذر البحث في هذه المحادثة. تحقق من الاتصال بالمضيف وأعد المحاولة.",
     historyChangedFailure: "تغيّرت المحادثة أثناء البحث. أعد البحث.",

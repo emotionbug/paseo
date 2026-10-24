@@ -1,4 +1,14 @@
 export const en = {
+  sessionNavigation: {
+    sessions: "Sessions",
+    workspaces: "Workspaces",
+    showWorkspaces: "Show workspaces",
+    showSessions: "Show sessions",
+    newSession: "New session",
+    untitled: "Untitled session",
+    search: "Search sessions",
+    empty: "No sessions. Start a new session or import an existing one.",
+  },
   paneFind: {
     connectionFailure: "Could not search this chat. Check the host connection and retry.",
     historyChangedFailure: "The chat changed while searching. Search again.",

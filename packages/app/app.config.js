@@ -68,6 +68,7 @@ function resolveSecretFile(params) {
 }
 
 const variants = {
+  sessions: { name: "Paseo Sessions", packageId: "sh.paseo.sessions" },
   production: {
     name: "Paseo",
     packageId: "sh.paseo",

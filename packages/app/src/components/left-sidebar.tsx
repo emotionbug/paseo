@@ -72,7 +72,9 @@ import {
 } from "@/usage";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
-import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import { SessionAwareSidebarList } from "./sidebar/session-list";
+import { useSessionNavigationStore } from "@/stores/session-navigation-store";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -582,7 +584,7 @@ function MobileSidebar({
         {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
-          <SidebarWorkspaceList
+          <SessionAwareSidebarList
             collapsedProjectKeys={collapsedProjectKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
@@ -764,7 +766,7 @@ function DesktopSidebar({
         {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
-          <SidebarWorkspaceList
+          <SessionAwareSidebarList
             collapsedProjectKeys={collapsedProjectKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
@@ -806,8 +808,22 @@ function DesktopSidebar({
 }
 
 function WorkspacesSectionHeader() {
+  const { t } = useTranslation();
+  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
+  const toggle = useSessionNavigationStore((state) => state.toggle);
   return (
-    <SidebarSectionHeader title="Workspaces">
+    <SidebarSectionHeader
+      title={t(sessionFirst ? "sessionNavigation.sessions" : "sessionNavigation.workspaces")}
+    >
+      <ToolbarButton
+        label={t(
+          sessionFirst ? "sessionNavigation.showWorkspaces" : "sessionNavigation.showSessions",
+        )}
+        onPress={toggle}
+        testID="session-navigation-toggle"
+      >
+        <DensityIcon icon={GitBranch} size="sm" color="foregroundMuted" />
+      </ToolbarButton>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <View>

@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const app = path.join(root, "packages/app");
 const env = {
   ...process.env,
-  APP_VARIANT: "production",
+  APP_VARIANT: process.env.APP_VARIANT ?? "production",
   PASEO_WATCHDOG_BUILD: "1",
   PASEO_DIAGNOSTIC_BUILD_TIME: new Date().toISOString(),
   PASEO_DIAGNOSTIC_REVISION:
@@ -46,7 +46,10 @@ run(
   ],
   path.join(app, "android"),
 );
-const destination = path.join(root, `artifacts/paseo-dogfood-${target}.apk`);
+const destination = path.join(
+  root,
+  `artifacts/paseo-${env.APP_VARIANT === "sessions" ? "sessions" : "dogfood"}-${target}.apk`,
+);
 mkdirSync(path.dirname(destination), { recursive: true });
 copyFileSync(path.join(app, "android/app/build/outputs/apk/release/app-release.apk"), destination);
 console.log(`\nDiagnostic release APK: ${destination}\nLogs: Downloads/Paseo diagnostics\n`);

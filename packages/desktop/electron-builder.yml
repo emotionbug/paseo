@@ -1,6 +1,6 @@
 npmRebuild: false
-appId: sh.paseo.desktop
-productName: Paseo
+appId: sh.paseo.sessions.desktop
+productName: Paseo Sessions
 executableName: Paseo
 protocols:
   - name: Paseo agent link
@@ -37,7 +37,7 @@ extraResources:
     to: editor-target-icons
 publish:
   provider: github
-  owner: getpaseo
+  owner: emotionbug
   repo: paseo
 mac:
   artifactName: "Paseo-${version}-${arch}.${ext}"
@@ -84,7 +84,7 @@ appImage:
   # versioned path. A rename orphans the old binary, breaks desktop shortcuts, and
   # dangles the ~/.local/bin/paseo CLI symlink, which points at $APPIMAGE. The
   # version stays discoverable via the release tag and the in-app version.
-  artifactName: "Paseo-${arch}.${ext}"
+  artifactName: "Paseo-Sessions-${arch}.${ext}"
 win:
   artifactName: "Paseo-Setup-${version}-${arch}.${ext}"
   icon: assets/icon.ico

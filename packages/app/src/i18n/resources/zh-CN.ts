@@ -2,6 +2,16 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
+  sessionNavigation: {
+    sessions: "会话",
+    workspaces: "工作区",
+    showWorkspaces: "显示工作区",
+    showSessions: "显示会话",
+    newSession: "新建会话",
+    untitled: "未命名会话",
+    search: "搜索会话",
+    empty: "暂无会话。新建或导入现有会话。",
+  },
   paneFind: {
     connectionFailure: "无法搜索此聊天。请检查主机连接后重试。",
     historyChangedFailure: "搜索期间聊天已更改。请重新搜索。",

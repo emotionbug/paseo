@@ -1,3 +1,4 @@
+import { useSessionNavigationStore } from "@/stores/session-navigation-store";
 import type {
   CreateAgentRequestOptions,
   CreateWorkspaceRequestOptions,
@@ -202,7 +203,8 @@ function useWorkspaceIsolation(input: {
   // the remembered default until the screen remounts.
   const { preferences, updatePreferences } = useFormPreferences();
   const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
-  const isolation = manualIsolation ?? preferences.isolation ?? "local";
+  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
+  const isolation = manualIsolation ?? (sessionFirst ? "local" : preferences.isolation) ?? "local";
   const canCreateWorktree = supportsMultiplicity && worktreeSupport !== "unsupported";
   const isWorktree = isolation === "worktree" && canCreateWorktree;
 
@@ -853,6 +855,9 @@ export function NewWorkspaceScreen({
   displayName: displayNameProp,
   draftId,
 }: NewWorkspaceScreenProps) {
+  const titleKey = useSessionNavigationStore((state) =>
+    state.sessionFirst ? "sessionNavigation.newSession" : "newWorkspace.title",
+  );
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -1588,7 +1593,7 @@ export function NewWorkspaceScreen({
       <NewWorkspaceLayout
         isCompact={isCompact}
         fullscreen={isComposerFullscreen}
-        title={t("newWorkspace.title")}
+        title={t(titleKey)}
         formStack={formStack}
         onImportSession={importSession.open}
       >

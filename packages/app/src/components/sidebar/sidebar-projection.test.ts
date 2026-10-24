@@ -1,3 +1,8 @@
+import {
+  buildSessionProjects,
+  createSessionProjectsSelector,
+  type SidebarSession,
+} from "./session-projection";
 import { i18n } from "@/i18n/i18next";
 import { describe, expect, it } from "vitest";
 import type {
@@ -173,6 +178,87 @@ describe("buildSidebarProjection", () => {
 
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "unpinned" },
+    ]);
+  });
+});
+
+describe("session-first sidebar", () => {
+  function session(id: string, overrides: Partial<SidebarSession> = {}): SidebarSession {
+    return {
+      id,
+      serverId: "srv",
+      workspaceId: "main",
+      title: id,
+      provider: "codex",
+      status: "idle",
+      createdAt: new Date("2026-10-01"),
+      lastActivityAt: new Date("2026-10-01"),
+      archivedAt: null,
+      parentAgentId: null,
+      ...overrides,
+    };
+  }
+
+  it("retains the session projection through unrelated stream updates", () => {
+    const selector = createSessionProjectsSelector([
+      makeProject([makeWorkspace("main").placement]),
+    ]);
+    const agents = new Map([["chat", session("chat")]]);
+    const first = selector({ srv: { agents } });
+    const next = selector({ srv: { agents }, unrelated: { agents: new Map() } });
+    expect(next).toBe(first);
+    expect(next[0].sessions.map((agent) => agent.id)).toEqual(["chat"]);
+  });
+
+  it("lists conversations on the same branch separately, newest activity first", () => {
+    const old = session("old");
+    const recent = session("recent", { lastActivityAt: new Date("2026-10-24") });
+    const project = makeProject([makeWorkspace("main").placement]);
+    const groups = buildSessionProjects([project], {
+      srv: {
+        agents: new Map([
+          [old.id, old],
+          [recent.id, recent],
+        ]),
+      },
+    });
+    expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["recent", "old"]);
+    expect(groups[0].emptyWorkspaces).toEqual([]);
+  });
+
+  it("does not leak archived, child, or filtered-project sessions into the list", () => {
+    const agents = [
+      session("visible"),
+      session("archived", { archivedAt: new Date("2026-10-24") }),
+      session("child", { parentAgentId: "visible" }),
+      session("elsewhere", { workspaceId: "other" }),
+    ];
+    const groups = buildSessionProjects([makeProject([makeWorkspace("main").placement])], {
+      srv: { agents: new Map(agents.map((agent) => [agent.id, agent])) },
+    });
+    expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["visible"]);
+  });
+
+  it("keeps terminal-only workspaces and empty projects accessible", () => {
+    const terminal = makeWorkspace("terminal").placement;
+    const project = makeProject([terminal]);
+    const emptyProject = makeProject([], "empty");
+    expect(buildSessionProjects([project, emptyProject], {})).toEqual([
+      { project, sessions: [], emptyWorkspaces: [terminal] },
+      { project: emptyProject, sessions: [], emptyWorkspaces: [] },
+    ]);
+  });
+
+  it("scopes identical workspace and session IDs to their host", () => {
+    const first = makeWorkspace("main").placement;
+    const second = { ...first, workspaceKey: "other:main", serverId: "other" };
+    const groups = buildSessionProjects([makeProject([first, second])], {
+      srv: { agents: new Map([["same", session("same")]]) },
+      other: { agents: new Map([["same", session("same", { serverId: "other" })]]) },
+    });
+    expect(groups[0].sessions.map((agent) => `${agent.serverId}:${agent.id}`)).toEqual([
+      "srv:same",
+      "other:same",
     ]);
   });
 });

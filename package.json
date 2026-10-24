@@ -122,7 +122,8 @@
     "release:promote": "npm run release:check && npm run version:all:promote && npm run release:publish && npm run release:push",
     "release:patch": "npm run release:check && npm run version:all:patch && npm run release:publish && npm run release:push",
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:publish && npm run release:push",
-    "release:major": "npm run release:check && npm run version:all:major && npm run release:publish && npm run release:push"
+    "release:major": "npm run release:check && npm run version:all:major && npm run release:publish && npm run release:push",
+    "build:sessions:android": "cross-env APP_VARIANT=sessions npm run build:apk:arm64"
   },
   "devDependencies": {
     "@types/ws": "^8.5.14",
@@ -156,5 +157,12 @@
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.1",
     "react-native-worklets": "0.10.1"
+  },
+  "allowScripts": {
+    "electron": true,
+    "@shopify/react-native-skia": true,
+    "react-native-enriched-markdown": true,
+    "esbuild": true,
+    "node-pty": true
   }
 }

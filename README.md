@@ -1,3 +1,33 @@
+# Paseo Sessions fork
+
+This fork makes conversations the default sidebar unit on Android and Linux desktop.
+Projects contain individual session rows, ordered by recent activity, with search and
+one-click navigation to the exact chat. New sessions default to the existing local
+checkout; isolated worktrees remain available as an explicit choice.
+
+Use the button beside **Sessions** to switch back to workspace navigation. Terminal-only
+and empty workspaces remain accessible. Existing session IDs, history, files and daemon
+storage are unchanged. Closing a chat tab does not archive its session.
+
+Android builds use the name **Paseo Sessions** and package `sh.paseo.sessions`, so the
+official app can stay installed. Connect the fork to your existing Paseo host using the
+same Tailscale address and password. Google Play signing and push credentials are not
+included in this source fork.
+
+Build with Node 24 and npm, plus JDK 21 / Android SDK for Android:
+
+```sh
+npm ci
+npm run build:sessions:android
+npm run build:desktop -- --publish never --linux AppImage --x64
+```
+
+The APK is `artifacts/paseo-sessions-arm64.apk`; desktop artifacts are in
+`packages/desktop/release/`. Desktop updates point to this fork instead of upstream.
+The upstream project's documentation follows below.
+
+---
+
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
 </p>

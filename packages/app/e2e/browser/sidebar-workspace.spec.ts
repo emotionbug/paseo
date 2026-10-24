@@ -658,3 +658,75 @@ test.describe("Half-screen desktop layout", () => {
     }
   });
 });
+
+test.describe("session-first navigation", () => {
+  test.use({ sessionNavigation: "default" });
+
+  test("opens individual conversations sharing a workspace and remembers the view", async ({
+    page,
+  }, testInfo) => {
+    const first = await seedMockAgentWorkspace({ repoPrefix: "session-nav-", title: "Fix login" });
+    try {
+      const second = await first.client.createAgent({
+        provider: "mock",
+        cwd: first.cwd,
+        workspaceId: first.workspaceId,
+        title: "Review login",
+        modeId: "load-test",
+        model: "e2e-fast-stream",
+      });
+      await gotoAppShell(page);
+      const firstRow = page.getByTestId(`session-row-${getServerId()}-${first.agentId}`);
+      const secondRow = page.getByTestId(`session-row-${getServerId()}-${second.id}`);
+      await expect(firstRow).toBeVisible({ timeout: 30_000 });
+      await expect(secondRow).toBeVisible();
+      await secondRow.click();
+      await expect(secondRow).toHaveAttribute("aria-selected", "true");
+      await firstRow.click();
+      await expect(firstRow).toHaveAttribute("aria-selected", "true");
+      await expect(secondRow).toHaveAttribute("aria-selected", "false");
+      await page.getByTestId("session-search").fill("Review");
+      await expect(firstRow).toHaveCount(0);
+      await expect(secondRow).toBeVisible();
+      await page.getByTestId("session-search").fill("");
+      await page.getByTestId("sidebar-display-preferences-menu").click();
+      await expect(page.getByTestId("sidebar-display-preferences-content")).toBeVisible();
+      await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
+      await expect(page.getByTestId("sidebar-display-title-source")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await page.screenshot({ path: testInfo.outputPath("sessions-desktop.png") });
+      await page.getByTestId("session-navigation-toggle").click();
+      await expect(page.getByTestId(getWorkspaceRowTestId(first.workspaceId))).toBeVisible();
+      await page.reload();
+      await expect(page.getByTestId(getWorkspaceRowTestId(first.workspaceId))).toBeVisible();
+      await page.getByTestId("session-navigation-toggle").click();
+      await expect(firstRow).toBeVisible();
+      await page.getByRole("button", { name: "New session", exact: true }).first().click();
+      await expect(page.getByTestId("workspace-create-isolation-trigger")).toContainText("Local");
+    } finally {
+      await first.cleanup();
+    }
+  });
+
+  test("opens a conversation from the compact sidebar", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 412, height: 915 });
+    const agent = await seedMockAgentWorkspace({
+      repoPrefix: "session-mobile-",
+      title: "Mobile session",
+    });
+    try {
+      await gotoAppShell(page);
+      await openMobileAgentSidebar(page);
+      const row = page.getByTestId(`session-row-${getServerId()}-${agent.agentId}`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await page.screenshot({ path: testInfo.outputPath("sessions-mobile.png") });
+      await row.click();
+      await expectMobileAgentSidebarHidden(page);
+      await expect(page).toHaveURL(/\/workspace\//);
+      await openMobileAgentSidebar(page);
+      await expect(row).toHaveAttribute("aria-selected", "true");
+    } finally {
+      await agent.cleanup();
+    }
+  });
+});

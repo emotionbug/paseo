@@ -1,3 +1,4 @@
+import { useSessionNavigationStore } from "@/stores/session-navigation-store";
 import { router, usePathname } from "expo-router";
 import { CalendarClock, History, Plus, Search } from "lucide-react-native";
 import { memo, useCallback, useMemo, useRef, type ComponentType, type ReactNode } from "react";
@@ -82,6 +83,7 @@ const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
   onBeforeNavigate,
 }: SidebarNavRowProps) {
   const { t } = useTranslation();
+  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
   const shortcutKeys = useShortcutKeys(builtinSidebarNavShortcutAction("new-workspace"));
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
@@ -116,7 +118,9 @@ const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
   return (
     <SidebarHeaderRow
       icon={Plus}
-      label={t(builtinSidebarNavLabelKey("new-workspace"))}
+      label={t(
+        sessionFirst ? "sessionNavigation.newSession" : builtinSidebarNavLabelKey("new-workspace"),
+      )}
       onPress={handlePress}
       testID="sidebar-global-new-workspace"
       variant="compact"

@@ -2,6 +2,16 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  sessionNavigation: {
+    sessions: "세션",
+    workspaces: "워크스페이스",
+    showWorkspaces: "워크스페이스 보기",
+    showSessions: "세션 보기",
+    newSession: "새 세션",
+    untitled: "제목 없는 세션",
+    search: "세션 검색",
+    empty: "세션이 없습니다. 새 세션을 만들거나 기존 세션을 가져오세요.",
+  },
   paneFind: {
     connectionFailure: "이 채팅을 검색할 수 없습니다. 호스트 연결을 확인하고 다시 시도하세요.",
     historyChangedFailure: "검색 중에 채팅이 변경되었습니다. 다시 검색하세요.",

@@ -2,6 +2,16 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const es: TranslationResources = {
+  sessionNavigation: {
+    sessions: "Sesiones",
+    workspaces: "Espacios de trabajo",
+    showWorkspaces: "Mostrar espacios de trabajo",
+    showSessions: "Mostrar sesiones",
+    newSession: "Nueva sesión",
+    untitled: "Sesión sin título",
+    search: "Buscar sesiones",
+    empty: "No hay sesiones. Crea una sesión o importa una existente.",
+  },
   paneFind: {
     connectionFailure:
       "No se pudo buscar en este chat. Comprueba la conexión con el host y vuelve a intentarlo.",
