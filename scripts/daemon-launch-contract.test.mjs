@@ -80,3 +80,39 @@ test("every executable daemon entrypoint enters the supervisor", async () => {
   assert.doesNotMatch(nixModule, /\bNODE_ENV\b\s*=/);
   assert.doesNotMatch(nixModule, /\bPASEO_NODE_ENV\b/);
 });
+
+test("Codex title sync prefers named imports and tracks edits in both directions", async () => {
+  const { resolveTitleSync } = await import("./sync-codex-session-titles.mjs");
+  assert.deepEqual(resolveTitleSync({ paseo: "Long first prompt", codex: "Short title" }), {
+    target: "paseo",
+    title: "Short title",
+  });
+  assert.equal(resolveTitleSync({ paseo: "Long first prompt", codex: "" }), null);
+  const previous = { paseo: "Short title", codex: "Short title" };
+  assert.equal(resolveTitleSync({ ...previous, previous }), null);
+  assert.deepEqual(resolveTitleSync({ paseo: "Phone edit", codex: "Short title", previous }), {
+    target: "codex",
+    title: "Phone edit",
+  });
+  assert.deepEqual(resolveTitleSync({ paseo: "Short title", codex: "Codex edit", previous }), {
+    target: "paseo",
+    title: "Codex edit",
+  });
+  assert.deepEqual(resolveTitleSync({ paseo: "Phone edit", codex: "Codex edit", previous }), {
+    target: "paseo",
+    title: "Codex edit",
+  });
+  assert.equal(resolveTitleSync({ paseo: "Phone edit", codex: "Phone edit", previous }), null);
+});
+
+test("Codex title sync reads latest appended names without consuming partial writes", async () => {
+  const { readTitleIndex } = await import("./sync-codex-session-titles.mjs");
+  const text = [
+    JSON.stringify({ id: "thread", thread_name: "Original" }),
+    JSON.stringify({ id: "thread", thread_name: "Renamed" }),
+    '{"id":',
+  ].join("\n");
+  assert.equal(readTitleIndex(text).get("thread"), "Renamed");
+  assert.equal(readTitleIndex("").size, 0);
+  assert.throws(() => readTitleIndex('{"id": 1, "thread_name": "Bad"}'));
+});

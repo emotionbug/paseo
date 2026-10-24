@@ -1,9 +1,12 @@
+import { AdaptiveRenameModal } from "@/components/rename-modal";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@getpaseo/protocol/agent-title-limits";
 import { EditingTextInput } from "@/components/ui/text-input";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { FlatList, Text, View } from "react-native";
 import { router } from "expo-router";
-import { ChevronDown, ChevronRight, MessageSquare, Plus } from "lucide-react-native";
+import { ChevronDown, ChevronRight, MessageSquare, Pencil, Plus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -32,6 +35,17 @@ type Row =
 export function SessionList(props: ListProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const [renamingSession, setRenamingSession] = useState<SidebarSession | null>(null);
+  const closeRename = useCallback(() => setRenamingSession(null), []);
+  const submitRename = useCallback(
+    async (name: string) => {
+      if (!renamingSession) return;
+      const client = getHostRuntimeStore().getClient(renamingSession.serverId);
+      if (!client) throw new Error(t("workspace.terminal.hostDisconnected"));
+      await client.updateAgent(renamingSession.id, { name: name.trim() });
+    },
+    [renamingSession, t],
+  );
   const projectSelector = useMemo(
     () => createSessionProjectsSelector(props.projects),
     [props.projects],
@@ -97,6 +111,7 @@ export function SessionList(props: ListProps) {
       return (
         <SessionRow
           session={item.session}
+          onRename={setRenamingSession}
           onBeforeNavigate={props.onWorkspacePress}
           selected={
             selection?.serverId === item.session.serverId && activeAgentId === item.session.id
@@ -119,6 +134,16 @@ export function SessionList(props: ListProps) {
 
   return (
     <View style={styles.container}>
+      <AdaptiveRenameModal
+        visible={renamingSession !== null}
+        title={t("workspace.tabs.menu.renameAgent")}
+        initialValue={renamingSession?.title ?? ""}
+        submitLabel={t("workspace.tabs.menu.rename")}
+        maxLength={MAX_EXPLICIT_AGENT_TITLE_CHARS}
+        onClose={closeRename}
+        onSubmit={submitRename}
+        testID="session-rename-modal"
+      />
       {props.listHeaderComponent}
       <EditingTextInput
         initialValue=""
@@ -209,11 +234,17 @@ const SessionProjectRow = memo(function SessionProjectRow({
 const SessionRow = memo(function SessionRow({
   session,
   selected,
+  onRename,
   onBeforeNavigate,
-}: BeforeNavigate & { session: SidebarSession; selected: boolean }) {
+}: BeforeNavigate & {
+  session: SidebarSession;
+  selected: boolean;
+  onRename: (session: SidebarSession) => void;
+}) {
   const { t } = useTranslation();
   const state = useMemo(() => ({ selected }), [selected]);
-  const rowStyle = useMemo(() => [styles.row, selected && styles.selected], [selected]);
+  const rowStyle = useMemo(() => [styles.sessionRow, selected && styles.selected], [selected]);
+  const rename = useCallback(() => onRename(session), [onRename, session]);
   const titleStyle = useMemo(
     () => [styles.title, session.requiresAttention && styles.attention],
     [session.requiresAttention],
@@ -223,28 +254,38 @@ const SessionRow = memo(function SessionRow({
     navigateToAgent({ serverId: session.serverId, agentId: session.id });
   }, [onBeforeNavigate, session.serverId, session.id]);
   return (
-    <PressHighlight
-      style={rowStyle}
-      accessibilityRole="button"
-      accessibilityState={state}
-      aria-selected={selected}
-      testID={`session-row-${session.serverId}-${session.id}`}
-      onPress={open}
-    >
-      <DensityIcon
-        icon={MessageSquare}
-        size="sm"
-        color={session.requiresAttention ? "foreground" : "foregroundMuted"}
-      />
-      <View style={styles.sessionText}>
-        <Text numberOfLines={1} style={titleStyle}>
-          {session.title?.trim() || t("sessionNavigation.untitled")}
-        </Text>
-        <Text numberOfLines={1} style={styles.detail}>
-          {session.provider} · {t(`agentList.status.${session.status}`)}
-        </Text>
-      </View>
-    </PressHighlight>
+    <View style={rowStyle}>
+      <PressHighlight
+        style={styles.row}
+        accessibilityRole="button"
+        accessibilityState={state}
+        aria-selected={selected}
+        testID={`session-row-${session.serverId}-${session.id}`}
+        onPress={open}
+        onLongPress={rename}
+      >
+        <DensityIcon
+          icon={MessageSquare}
+          size="sm"
+          color={session.requiresAttention ? "foreground" : "foregroundMuted"}
+        />
+        <View style={styles.sessionText}>
+          <Text numberOfLines={1} style={titleStyle}>
+            {session.title?.trim() || t("sessionNavigation.untitled")}
+          </Text>
+          <Text numberOfLines={1} style={styles.detail}>
+            {session.provider} · {t(`agentList.status.${session.status}`)}
+          </Text>
+        </View>
+      </PressHighlight>
+      <ToolbarButton
+        label={t("workspace.tabs.menu.renameAgent")}
+        testID={`session-rename-${session.serverId}-${session.id}`}
+        onPress={rename}
+      >
+        <DensityIcon icon={Pencil} size="sm" color="foregroundMuted" />
+      </ToolbarButton>
+    </View>
   );
 });
 
@@ -280,13 +321,19 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
+  sessionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
   row: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    marginHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
   },
   selected: { backgroundColor: theme.colors.border },

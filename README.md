@@ -24,6 +24,23 @@ The APK is `artifacts/paseo-sessions-arm64.apk`; desktop artifacts are in
 `packages/desktop/release/`. Desktop updates point to this fork instead of upstream.
 The upstream project's documentation follows below.
 
+### Session titles
+
+Use the pencil beside a session, or long-press its row, to rename it on desktop or Android.
+The host-side `node scripts/sync-codex-session-titles.mjs` command synchronizes names
+with the local Codex profile. Run it periodically (the installed user timer runs every
+10 seconds). It reads Codex's `session_index.jsonl` and uses the official
+`thread/name/set` app-server API to write names; it never resumes a thread or starts a turn.
+The first sync imports existing Codex names. Subsequent edits flow both ways; a Codex
+edit wins if both names changed since the last sync. Sessions without a Codex name
+keep their Paseo title until renamed. Sync state is persisted in
+`$PASEO_HOME/session-title-sync.json`.
+
+The command uses `PASEO_HOME` and `CODEX_HOME` (defaulting to their usual home folders),
+the daemon's configured listen address, and `PASEO_PASSWORD` or
+`$PASEO_HOME/connection-password.txt`. `PASEO_TITLE_SYNC_URL` and `CODEX_BIN` can override
+the endpoint and Codex executable. Both clients must use the same Codex profile.
+
 ---
 
 <p align="center">

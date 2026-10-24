@@ -687,6 +687,10 @@ test.describe("session-first navigation", () => {
       await expect(firstRow).toHaveCount(0);
       await expect(secondRow).toBeVisible();
       await page.getByTestId("session-search").fill("");
+      await page.getByTestId(`session-rename-${getServerId()}-${second.id}`).click();
+      await page.getByTestId("session-rename-modal-input").fill("Review authentication");
+      await page.getByTestId("session-rename-modal-submit").click();
+      await expect(secondRow).toContainText("Review authentication");
       await page.getByTestId("sidebar-display-preferences-menu").click();
       await expect(page.getByTestId("sidebar-display-preferences-content")).toBeVisible();
       await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
