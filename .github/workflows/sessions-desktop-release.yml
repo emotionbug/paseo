@@ -1,0 +1,73 @@
+name: Paseo Sessions Desktop Builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Exact source commit or tag
+        required: true
+        default: main
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  NODE_OPTIONS: --max-old-space-size=8192
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: macos
+            arch: arm64
+            args: --mac --arm64 -c.mac.notarize=false -c.mac.identity=-
+          - runner: macos-15-intel
+            platform: macos
+            arch: x64
+            args: --mac --x64 -c.mac.notarize=false -c.mac.identity=-
+          - runner: windows-latest
+            platform: windows
+            arch: x64
+            args: --win --x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@boudra"
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+      - name: Build and smoke-test desktop
+        shell: bash
+        run: npm run build:desktop -- --publish never ${{ matrix.args }}
+        env:
+          PASEO_DESKTOP_SMOKE: "1"
+          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paseo-sessions-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.exe
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/desktop-smoke
