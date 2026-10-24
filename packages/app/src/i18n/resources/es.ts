@@ -2740,6 +2740,8 @@ export const es: TranslationResources = {
         emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
       },
       agentProfiles: {
+        cliDefault: "Predeterminado de CLI",
+        useAsCliDefault: "Usar para CLI",
         sectionTitle: "Perfiles de agente",
         unavailable: "Conéctese a este host para administrar perfiles de agente",
         unsupported: "Este host ejecuta un daemon que aún no admite perfiles de agente",

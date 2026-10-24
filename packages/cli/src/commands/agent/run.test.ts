@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DaemonConnectionError } from "@getpaseo/client/internal/daemon-client";
+import { connectToDaemon } from "../../utils/client.js";
 import { resolveCallerAgentId as resolveRunCallerAgentId } from "../../utils/caller-agent.js";
 import {
   resolveExistingRunWorkspace,
@@ -9,6 +10,55 @@ import {
 } from "./run";
 
 const daemonTarget = { kind: "endpoint" as const, host: "example.test:12345" };
+vi.mock("../../utils/client.js", () => ({ connectToDaemon: vi.fn() }));
+
+describe("run with a host CLI default", () => {
+  it("reads GUI settings and sends their launch options without provider flags", async () => {
+    const createAgent = vi.fn().mockResolvedValue({
+      id: "created",
+      provider: "pi",
+      cwd: "/work",
+      title: null,
+      status: "idle",
+    });
+    const close = vi.fn();
+    vi.mocked(connectToDaemon).mockResolvedValueOnce({
+      getDaemonConfig: vi.fn().mockResolvedValue({
+        config: {
+          agentProfiles: [
+            {
+              id: "default",
+              name: "Pi",
+              provider: "pi",
+              cliDefault: true,
+              model: "example",
+              thinkingOptionId: "high",
+              modeId: "default",
+            },
+          ],
+        },
+      }),
+      fetchAgent: vi.fn().mockRejectedValue(new Error("Agent not found")),
+      fetchWorkspaces: vi.fn().mockResolvedValue({
+        entries: [{ id: "ws", workspaceDirectory: "/work" }],
+        pageInfo: { nextCursor: null },
+      }),
+      createAgent,
+      close,
+    } as unknown as Awaited<ReturnType<typeof connectToDaemon>>);
+    await runRunCommand("test task", { daemonTarget, workspace: "ws", wait: false }, {} as never);
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "pi",
+        model: "example",
+        modeId: "default",
+        thinkingOptionId: "high",
+        initialPrompt: "test task",
+      }),
+    );
+    expect(close).toHaveBeenCalled();
+  });
+});
 
 // Answers fetchAgent the way a daemon does: an unknown id is an error.
 function daemonWithAgents(...agentIds: string[]) {

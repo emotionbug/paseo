@@ -2811,6 +2811,8 @@ export const en = {
         emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
       },
       agentProfiles: {
+        cliDefault: "CLI default",
+        useAsCliDefault: "Use for CLI",
         sectionTitle: "Agent profiles",
         unavailable: "Connect to this host to manage agent profiles",
         unsupported: "This host runs a daemon that does not support agent profiles yet",

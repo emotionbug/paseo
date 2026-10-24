@@ -2720,6 +2720,8 @@ export const ar: TranslationResources = {
         emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
       },
       agentProfiles: {
+        cliDefault: "الافتراضي لسطر الأوامر",
+        useAsCliDefault: "استخدام لسطر الأوامر",
         sectionTitle: "ملفات تعريف الوكيل",
         unavailable: "اتصل بهذا المضيف لإدارة ملفات تعريف الوكيل",
         unsupported: "يشغّل هذا المضيف نسخة Daemon لا تدعم ملفات تعريف الوكيل بعد",

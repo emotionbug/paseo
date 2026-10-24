@@ -1,4 +1,5 @@
 import { test } from "../support/fixtures";
+import { expect } from "@playwright/test";
 import {
   createAgentProfile,
   createAgentProfileFromEmptyState,
@@ -19,6 +20,47 @@ import {
 const MOCK_PROVIDER_LABEL = "Mock Load Test";
 
 test.describe("Agent profiles settings", () => {
+  test("CLI default is persisted, exclusive and survives profile editing", async ({ page }) => {
+    const first = {
+      id: "cli-first",
+      name: "CLI first",
+      provider: "mock",
+      model: "five-minute-stream",
+      modeId: "load-test",
+      thinkingOptionId: "low",
+    };
+    const second = { id: "cli-second", name: "CLI second", provider: "mock" };
+    const seed = await seedAgentProfiles([first, second]);
+    try {
+      await openAgentProfileSettings(page);
+      await page.getByTestId("agent-profile-cli-default-cli-first").click();
+      await expectHostAgentProfiles([
+        { ...first, cliDefault: true },
+        { ...second, cliDefault: false },
+      ]);
+      await editAgentProfile(page, "CLI first", { notes: "Saved CLI options" });
+      await expectHostAgentProfiles([
+        { ...first, cliDefault: true, notes: "Saved CLI options" },
+        { ...second, cliDefault: false },
+      ]);
+      await page.getByTestId("agent-profile-cli-default-cli-second").click();
+      await expectHostAgentProfiles([
+        { ...first, cliDefault: false, notes: "Saved CLI options" },
+        { ...second, cliDefault: true },
+      ]);
+      await page.reload();
+      await expect(page.getByTestId("agent-profile-cli-default-cli-second")).toContainText(
+        "CLI default",
+      );
+      await page.getByTestId("agent-profile-cli-default-cli-second").click();
+      await expectHostAgentProfiles([
+        { ...first, cliDefault: false, notes: "Saved CLI options" },
+        { ...second, cliDefault: false },
+      ]);
+    } finally {
+      await seed.restore();
+    }
+  });
   test("legacy model favourites migrate into provider-and-model-only host profiles", async ({
     page,
   }) => {

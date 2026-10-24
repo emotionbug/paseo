@@ -1,4 +1,24 @@
 import type { CommandError } from "../output/index.js";
+import type { AgentProfile } from "@getpaseo/protocol/agent-profile";
+
+export function resolveRunDefaults(
+  options: { provider?: string; model?: string; mode?: string; thinking?: string },
+  profiles: readonly AgentProfile[],
+) {
+  const profile = profiles.find((entry) => entry.cliDefault === true);
+  const resolved = resolveProviderAndModel({ ...options, defaultProvider: profile?.provider });
+  const matchingProfile = profile?.provider === resolved.provider ? profile : undefined;
+  const model = resolved.model ?? matchingProfile?.model;
+  const sameModel = !resolved.model || resolved.model === matchingProfile?.model;
+  return {
+    provider: resolved.provider,
+    model,
+    modeId: options.mode ?? matchingProfile?.modeId,
+    thinkingOptionId:
+      options.thinking ?? (sameModel ? matchingProfile?.thinkingOptionId : undefined),
+    featureValues: matchingProfile?.featureValues,
+  };
+}
 
 export interface ResolveProviderAndModelOptions {
   provider?: string;
@@ -22,7 +42,7 @@ export function resolveProviderAndModel(
       code: "MISSING_PROVIDER",
       message: "Provider is required",
       details:
-        "Pass --provider <provider> or --provider <provider>/<model>. Use `paseo provider ls` to see providers and `paseo provider models <provider>` to see models.",
+        "Set a CLI default profile in Paseo host settings, or pass --provider <provider>. Use `paseo provider ls` to see providers.",
     };
     throw error;
   }

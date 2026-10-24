@@ -2695,6 +2695,8 @@ export const ko: TranslationResources = {
         emptyState: "아직 프로필이 없습니다. 특정 명령으로 터미널을 실행하려면 하나 추가하세요.",
       },
       agentProfiles: {
+        cliDefault: "CLI 기본값",
+        useAsCliDefault: "CLI 기본값으로 사용",
         sectionTitle: "에이전트 프로필",
         unavailable: "에이전트 프로필을 관리하려면 이 호스트에 연결하세요",
         unsupported: "이 호스트에서 실행 중인 데몬은 아직 에이전트 프로필을 지원하지 않습니다",

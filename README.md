@@ -183,6 +183,19 @@ Open `http://localhost:6767` after it starts. Extend the base image with the age
 
 Everything you can do in the app, you can do from the terminal.
 
+In Paseo Sessions, open a host's **Agent profiles** settings, save your provider,
+model, mode and thinking level, then choose **Use for CLI** on that profile.
+`paseo` opens a terminal conversation using that host's saved profile. Sessions
+appear in the GUI too; `paseo --resume <id>` continues one and `/exit` detaches.
+To bring in an external agent session, close its original CLI and run `paseo import`.
+Choose from sessions in the current directory (or use `--cwd` / `--provider` to filter).
+Import keeps the session's original provider and opens its conversation in Paseo.
+With a known native ID, use `paseo import --provider pi <id>`.
+`paseo run "your task"` uses the same defaults for a single task. Explicit CLI options take
+priority. Selecting another provider skips the saved provider's options; selecting
+another model skips its saved thinking level. The default is shared by clients
+connected to that host and can be cleared by clicking **CLI default** again.
+
 ```bash
 paseo run --provider claude/opus-4.6 "implement user authentication"
 paseo run --provider codex/gpt-5.5 --worktree feature-x "implement feature X"

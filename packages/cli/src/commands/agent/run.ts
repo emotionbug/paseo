@@ -17,7 +17,7 @@ import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
-import { resolveProviderAndModel } from "../../utils/provider-model.js";
+import { resolveRunDefaults } from "../../utils/provider-model.js";
 import { buildWorkspaceSource } from "../workspace/create.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
@@ -541,7 +541,7 @@ export async function resolveExistingRunWorkspace(
 //   3. $PASEO_WORKSPACE_ID         -> exported by workspace terminals
 //   4. --new-workspace <kind>      -> mint a new workspace explicitly
 //   5. bare run                    -> mint a new local-backed workspace for cwd
-async function resolveRunWorkspace(
+export async function resolveRunWorkspace(
   client: ConnectedDaemonClient,
   options: AgentRunOptions,
   cwd: string,
@@ -599,15 +599,16 @@ export async function runRunCommand(
   validateRunOptions(prompt, options, outputSchema);
   const waitTimeoutMs = parseWaitTimeoutOption(options.waitTimeout);
 
-  const resolvedProviderModel = resolveProviderAndModel(options);
   const resolvedTitle = options.title ?? options.name;
 
   const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
+    const { config } = await client.getDaemonConfig();
+    const launch = resolveRunDefaults(options, config.agentProfiles ?? []);
     // Resolve working directory
     const cwd = options.cwd ?? process.cwd();
-    const thinkingOptionId = options.thinking?.trim();
+    const thinkingOptionId = launch.thinkingOptionId?.trim();
     if (options.thinking !== undefined && !thinkingOptionId) {
       const error: CommandError = {
         code: "INVALID_THINKING_OPTION",
@@ -635,13 +636,14 @@ export async function runRunCommand(
       const callStructuredTurn = async (structuredPrompt: string): Promise<string> => {
         if (!structuredAgent) {
           structuredAgent = await client.createAgent({
-            provider: resolvedProviderModel.provider,
+            provider: launch.provider,
             cwd: runCwd,
             workspaceId,
             callerAgentId,
             title: resolvedTitle,
-            modeId: options.mode,
-            model: resolvedProviderModel.model,
+            modeId: launch.modeId,
+            model: launch.model,
+            featureValues: launch.featureValues,
             thinkingOptionId,
             initialPrompt: structuredPrompt,
             outputSchema,
@@ -706,13 +708,14 @@ export async function runRunCommand(
 
     // Create the agent
     const agent = await client.createAgent({
-      provider: resolvedProviderModel.provider,
+      provider: launch.provider,
       cwd: runCwd,
       workspaceId,
       callerAgentId,
       title: resolvedTitle,
-      modeId: options.mode,
-      model: resolvedProviderModel.model,
+      modeId: launch.modeId,
+      model: launch.model,
+      featureValues: launch.featureValues,
       thinkingOptionId,
       initialPrompt: prompt,
       images,

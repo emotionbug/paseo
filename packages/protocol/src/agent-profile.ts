@@ -18,6 +18,7 @@ export const AgentProfileSchema = z
     /** An identity colour name shared with host badges. Unknown values draw unthemed. */
     color: z.string().optional(),
     provider: z.string(),
+    cliDefault: z.boolean().optional(),
     model: z.string().optional(),
     modeId: z.string().optional(),
     thinkingOptionId: z.string().optional(),

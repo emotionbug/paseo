@@ -54,14 +54,14 @@ describe("runCli", () => {
     expect(update.optsWithGlobals()).toMatchObject({ format: "json", color: false });
   });
 
-  it("defaults an empty CLI invocation to onboard", () => {
+  it("leaves an empty invocation for the interactive chat action", () => {
     expect(
       createCliParseArgv({
         argv: [],
         cwd: process.cwd(),
         nodeArgv: ["node", "paseo"],
       }),
-    ).toEqual(["node", "paseo", "onboard"]);
+    ).toEqual(["node", "paseo"]);
   });
 
   it("routes explicit root relay flags to onboard", () => {

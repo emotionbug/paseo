@@ -2723,6 +2723,8 @@ export const ptBR: TranslationResources = {
           "Nenhum perfil ainda. Adicione um para abrir terminais com um comando específico.",
       },
       agentProfiles: {
+        cliDefault: "Padrão da CLI",
+        useAsCliDefault: "Usar na CLI",
         sectionTitle: "Perfis de agente",
         unavailable: "Conecte-se a este host para gerenciar perfis de agente",
         unsupported: "Este host executa um daemon que ainda não é compatível com perfis de agente",

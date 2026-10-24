@@ -2710,6 +2710,8 @@ export const ja: TranslationResources = {
           "プロファイルがまだありません。特定のコマンドでターミナルを起動するために追加してください。",
       },
       agentProfiles: {
+        cliDefault: "CLI の既定",
+        useAsCliDefault: "CLI の既定にする",
         sectionTitle: "エージェントプロファイル",
         unavailable: "エージェントプロファイルを管理するにはこのホストに接続してください",
         unsupported: "このホストで動作するデーモンはまだエージェントプロファイルに対応していません",

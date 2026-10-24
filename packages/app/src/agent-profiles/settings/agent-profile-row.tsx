@@ -34,6 +34,7 @@ export interface AgentProfileRowProps {
   onRemove: (id: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
+  onCliDefault: (id: string) => void;
 }
 
 export function AgentProfileRow({
@@ -45,6 +46,7 @@ export function AgentProfileRow({
   onRemove,
   onMoveUp,
   onMoveDown,
+  onCliDefault,
 }: AgentProfileRowProps): ReactElement {
   const { t } = useTranslation();
 
@@ -52,6 +54,7 @@ export function AgentProfileRow({
   const handleRemove = useCallback(() => onRemove(profile.id), [onRemove, profile.id]);
   const handleMoveUp = useCallback(() => onMoveUp(profile.id), [onMoveUp, profile.id]);
   const handleMoveDown = useCallback(() => onMoveDown(profile.id), [onMoveDown, profile.id]);
+  const handleCliDefault = useCallback(() => onCliDefault(profile.id), [onCliDefault, profile.id]);
 
   const formatFeatureCount = useCallback(
     (count: number) =>
@@ -101,6 +104,18 @@ export function AgentProfileRow({
         </View>
       </View>
       <View style={styles.rowActions}>
+        <Button
+          variant={profile.cliDefault ? "secondary" : "ghost"}
+          size="sm"
+          onPress={handleCliDefault}
+          testID={`agent-profile-cli-default-${profile.id}`}
+        >
+          {t(
+            profile.cliDefault
+              ? "settings.host.agentProfiles.cliDefault"
+              : "settings.host.agentProfiles.useAsCliDefault",
+          )}
+        </Button>
         <Button
           variant="ghost"
           size="sm"

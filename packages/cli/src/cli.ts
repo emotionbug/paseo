@@ -35,6 +35,7 @@ import { addImportOptions, runImportCommand } from "./commands/agent/import.js";
 import { withOutput } from "./output/index.js";
 import { runCloneCommand } from "./commands/clone.js";
 import { onboardCommand } from "./commands/onboard.js";
+import { addChatOptions, runChatCommand } from "./commands/chat.js";
 import {
   addDaemonHostOption,
   addJsonAndDaemonHostOptions,
@@ -58,6 +59,10 @@ export function createCli(): Command {
     .option("--no-headers", "omit table headers")
     .option("--no-color", "disable colored output");
   addDaemonHostOption(program);
+  addChatOptions(program).action(withGlobalOptions(runChatCommand));
+  addDaemonHostOption(addChatOptions(program.command("chat")))
+    .description("Chat using the host's saved CLI default profile")
+    .action(withGlobalOptions(runChatCommand));
 
   program.addCommand(createHostCommand());
 
