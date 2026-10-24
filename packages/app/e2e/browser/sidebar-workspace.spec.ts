@@ -660,9 +660,7 @@ test.describe("Half-screen desktop layout", () => {
 });
 
 test.describe("session-first navigation", () => {
-  test.use({ sessionNavigation: "default" });
-
-  test("opens individual conversations sharing a workspace and remembers the view", async ({
+  test("opens individual conversations and ignores the removed workspace preference", async ({
     page,
   }, testInfo) => {
     const first = await seedMockAgentWorkspace({ repoPrefix: "session-nav-", title: "Fix login" });
@@ -695,14 +693,18 @@ test.describe("session-first navigation", () => {
       await expect(page.getByTestId("sidebar-display-title-source")).toHaveCount(0);
       await page.keyboard.press("Escape");
       await page.screenshot({ path: testInfo.outputPath("sessions-desktop.png") });
-      await page.getByTestId("session-navigation-toggle").click();
-      await expect(page.getByTestId(getWorkspaceRowTestId(first.workspaceId))).toBeVisible();
+      await page.evaluate(() =>
+        localStorage.setItem(
+          "paseo-session-navigation",
+          JSON.stringify({ state: { sessionFirst: false }, version: 0 }),
+        ),
+      );
       await page.reload();
-      await expect(page.getByTestId(getWorkspaceRowTestId(first.workspaceId))).toBeVisible();
-      await page.getByTestId("session-navigation-toggle").click();
       await expect(firstRow).toBeVisible();
+      await expect(page.getByTestId("session-navigation-toggle")).toHaveCount(0);
       await page.getByRole("button", { name: "New session", exact: true }).first().click();
-      await expect(page.getByTestId("workspace-create-isolation-trigger")).toContainText("Local");
+      await expect(page.getByTestId("workspace-create-isolation-trigger")).toHaveCount(0);
+      await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(0);
     } finally {
       await first.cleanup();
     }

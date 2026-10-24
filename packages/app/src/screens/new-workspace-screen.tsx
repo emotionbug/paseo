@@ -1,4 +1,3 @@
-import { useSessionNavigationStore } from "@/stores/session-navigation-store";
 import type {
   CreateAgentRequestOptions,
   CreateWorkspaceRequestOptions,
@@ -66,7 +65,6 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { buildSettingsAddHostRoute } from "@/utils/host-routes";
 import {
   getHostProjectId,
-  getWorktreeSupportForHostProject,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
   resolveHostProjectCandidate,
@@ -182,48 +180,6 @@ function noopClearDraft() {}
 
 // Stable reference so the keyboard-action handler doesn't re-register each render.
 const PROJECT_PICK_ACTIONS: readonly KeyboardActionId[] = ["workspace.project.pick"];
-
-interface WorkspaceIsolationState {
-  isolation: "local" | "worktree";
-  setIsolation: (value: "local" | "worktree") => void;
-  effectiveIsolation: "local" | "worktree";
-  canCreateWorktree: boolean;
-  showRefPicker: boolean;
-}
-
-// Preserve the user's worktree choice while route metadata is provisional. Once
-// the authoritative placement arrives, unsupported projects fall back to local.
-function useWorkspaceIsolation(input: {
-  supportsMultiplicity: boolean;
-  worktreeSupport: "supported" | "unsupported" | "unknown";
-}): WorkspaceIsolationState {
-  const { supportsMultiplicity, worktreeSupport } = input;
-  // The last isolation choice is remembered alongside the other New Workspace
-  // form preferences (provider, model, mode). A manual in-screen pick overrides
-  // the remembered default until the screen remounts.
-  const { preferences, updatePreferences } = useFormPreferences();
-  const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
-  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
-  const isolation = manualIsolation ?? (sessionFirst ? "local" : preferences.isolation) ?? "local";
-  const canCreateWorktree = supportsMultiplicity && worktreeSupport !== "unsupported";
-  const isWorktree = isolation === "worktree" && canCreateWorktree;
-
-  const setIsolation = useCallback(
-    (value: "local" | "worktree") => {
-      setManualIsolation(value);
-      void updatePreferences({ isolation: value });
-    },
-    [updatePreferences],
-  );
-
-  return {
-    isolation,
-    setIsolation,
-    effectiveIsolation: isWorktree ? "worktree" : "local",
-    canCreateWorktree,
-    showRefPicker: !supportsMultiplicity || isWorktree,
-  };
-}
 
 function normalizeBranchDetails(
   data: { branchDetails?: BranchPickerDetail[]; branches?: string[] } | undefined,
@@ -855,9 +811,6 @@ export function NewWorkspaceScreen({
   displayName: displayNameProp,
   draftId,
 }: NewWorkspaceScreenProps) {
-  const titleKey = useSessionNavigationStore((state) =>
-    state.sessionFirst ? "sessionNavigation.newSession" : "newWorkspace.title",
-  );
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -902,18 +855,16 @@ export function NewWorkspaceScreen({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const openAddProjectPicker = useOpenAddProject();
-  const [isolationPickerOpen, setIsolationPickerOpen] = useState(false);
   const [pickerSearchQuery, setPickerSearchQuery] = useState("");
   const [debouncedPickerSearchQuery, setDebouncedPickerSearchQuery] = useState("");
   const pickerAnchorRef = useRef<View>(null);
   const projectPickerAnchorRef = useRef<View>(null);
-  const isolationPickerAnchorRef = useRef<View>(null);
   const hostPickerAnchorRef = useRef<View | null>(null);
   const isDraftHandoffActive = useIsNewWorkspaceDraftHandoffActive({ draftId, selectedServerId });
   const isStillOnCreateScreen = useNewWorkspaceScreenPresence();
 
   // Launch target: what the composer submits to (chat agent, or a terminal
-  // profile). Mirrors useWorkspaceIsolation's pattern below: the derived
+  // profile). The derived
   // value reads live from preferences until the user manually picks
   // something in this screen, so the async preferences load doesn't race a
   // frozen useState initializer.
@@ -1039,15 +990,8 @@ export function NewWorkspaceScreen({
     cwd: selectedSourceDirectory ?? "",
   });
 
-  const worktreeSupport = selectedProject
-    ? getWorktreeSupportForHostProject({ project: selectedProject, serverId: selectedServerId })
-    : "unsupported";
   const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
-  const { effectiveIsolation, setIsolation, canCreateWorktree, showRefPicker } =
-    useWorkspaceIsolation({
-      supportsMultiplicity: supportsWorkspaceMultiplicity,
-      worktreeSupport,
-    });
+  const showRefPicker = !supportsWorkspaceMultiplicity;
 
   const branchSuggestionsQuery = useQuery({
     queryKey: [
@@ -1199,14 +1143,6 @@ export function NewWorkspaceScreen({
     handle: handleProjectPick,
   });
 
-  const openIsolationPicker = useCallback(() => {
-    setIsolationPickerOpen(true);
-  }, []);
-
-  const handleIsolationPickerOpenChange = useCallback((nextOpen: boolean) => {
-    setIsolationPickerOpen(nextOpen);
-  }, []);
-
   const handleClearDraft = useCallback(() => {
     // No-op: screen navigates away on success, text should stay for retry on error
   }, []);
@@ -1241,7 +1177,7 @@ export function NewWorkspaceScreen({
         throw new Error("Choose a host for this project");
       }
       const connectedClient = withConnectedClient();
-      const createsWorktree = !supportsWorkspaceMultiplicity || effectiveIsolation === "worktree";
+      const createsWorktree = !supportsWorkspaceMultiplicity;
       const checkoutStatusForCreate = createsWorktree
         ? await ensureCheckoutStatus({
             queryClient,
@@ -1278,7 +1214,6 @@ export function NewWorkspaceScreen({
     [
       creationIdentity,
       creationResult,
-      effectiveIsolation,
       mergeWorkspaces,
       queryClient,
       selectedItem,
@@ -1491,15 +1426,6 @@ export function NewWorkspaceScreen({
       onSelect: handleSelectWorkspaceHost,
       onAddHost: handleAddHost,
     },
-    isolation: {
-      anchorRef: isolationPickerAnchorRef,
-      open: openIsolationPicker,
-      openState: isolationPickerOpen,
-      onOpenChange: handleIsolationPickerOpenChange,
-      effectiveIsolation,
-      canCreateWorktree,
-      onSelect: setIsolation,
-    },
     base: {
       anchorRef: pickerAnchorRef,
       open: openPicker,
@@ -1593,7 +1519,7 @@ export function NewWorkspaceScreen({
       <NewWorkspaceLayout
         isCompact={isCompact}
         fullscreen={isComposerFullscreen}
-        title={t(titleKey)}
+        title={t("sessionNavigation.newSession")}
         formStack={formStack}
         onImportSession={importSession.open}
       >

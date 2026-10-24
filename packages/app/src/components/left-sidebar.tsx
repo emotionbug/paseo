@@ -72,9 +72,7 @@ import {
 } from "@/usage";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
-import { SessionAwareSidebarList } from "./sidebar/session-list";
-import { useSessionNavigationStore } from "@/stores/session-navigation-store";
-import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
+import { SessionList } from "./sidebar/session-list";
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -584,7 +582,7 @@ function MobileSidebar({
         {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
-          <SessionAwareSidebarList
+          <SessionList
             collapsedProjectKeys={collapsedProjectKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
@@ -766,7 +764,7 @@ function DesktopSidebar({
         {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
-          <SessionAwareSidebarList
+          <SessionList
             collapsedProjectKeys={collapsedProjectKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
@@ -809,21 +807,8 @@ function DesktopSidebar({
 
 function WorkspacesSectionHeader() {
   const { t } = useTranslation();
-  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
-  const toggle = useSessionNavigationStore((state) => state.toggle);
   return (
-    <SidebarSectionHeader
-      title={t(sessionFirst ? "sessionNavigation.sessions" : "sessionNavigation.workspaces")}
-    >
-      <ToolbarButton
-        label={t(
-          sessionFirst ? "sessionNavigation.showWorkspaces" : "sessionNavigation.showSessions",
-        )}
-        onPress={toggle}
-        testID="session-navigation-toggle"
-      >
-        <DensityIcon icon={GitBranch} size="sm" color="foregroundMuted" />
-      </ToolbarButton>
+    <SidebarSectionHeader title={t("sessionNavigation.sessions")}>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <View>

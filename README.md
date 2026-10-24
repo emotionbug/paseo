@@ -1,13 +1,11 @@
 # Paseo Sessions fork
 
-This fork makes conversations the default sidebar unit on Android and Linux desktop.
+This fork makes conversations the sidebar unit on Android and Linux desktop.
 Projects contain individual session rows, ordered by recent activity, with search and
-one-click navigation to the exact chat. New sessions default to the existing local
-checkout; isolated worktrees remain available as an explicit choice.
+one-click navigation to the exact chat. New sessions use the existing local checkout.
 
-Use the button beside **Sessions** to switch back to workspace navigation. Terminal-only
-and empty workspaces remain accessible. Existing session IDs, history, files and daemon
-storage are unchanged. Closing a chat tab does not archive its session.
+Workspace navigation and its display settings are removed. Existing session IDs,
+history, files and daemon storage are unchanged. Closing a chat tab does not archive its session.
 
 Android builds use the name **Paseo Sessions** and package `sh.paseo.sessions`, so the
 official app can stay installed. Connect the fork to your existing Paseo host using the

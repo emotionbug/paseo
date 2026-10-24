@@ -1,8 +1,5 @@
 import type { Agent } from "@/stores/session-store";
-import type {
-  SidebarProjectEntry,
-  SidebarWorkspacePlacement,
-} from "@/hooks/use-sidebar-workspaces-list";
+import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
 
 export type SidebarSession = Pick<
   Agent,
@@ -22,7 +19,6 @@ export type SidebarSession = Pick<
 export interface SessionProject {
   project: SidebarProjectEntry;
   sessions: SidebarSession[];
-  emptyWorkspaces: SidebarWorkspacePlacement[];
 }
 
 type SessionHosts = Record<string, { agents: ReadonlyMap<string, SidebarSession> } | undefined>;
@@ -86,10 +82,6 @@ export function buildSessionProjects(
     return {
       project,
       sessions,
-      // Keep empty drafts and terminal-only workspaces reachable.
-      emptyWorkspaces: project.workspaces.filter(
-        (workspace) => !agentsByWorkspace.has(workspace.workspaceKey),
-      ),
     };
   });
 }

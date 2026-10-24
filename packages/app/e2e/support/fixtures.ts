@@ -108,16 +108,14 @@ const daemonTest = metroTest.extend<
 
 const test = daemonTest.extend<{
   paseoE2ESetup: void;
-  sessionNavigation: "workspaces" | "default";
   outdatedDaemon: OutdatedDaemon;
   desktopManagedOutdatedDaemon: OutdatedDaemon;
   relayConfigOutdatedDaemon: OutdatedDaemon;
   projectPickerFixture: TrackedProjectPickerFixture;
   withWorkspace: WithWorkspace;
 }>({
-  sessionNavigation: ["workspaces", { option: true }],
   paseoE2ESetup: [
-    async ({ page, sessionNavigation }, provide, testInfo) => {
+    async ({ page }, provide, testInfo) => {
       const daemonPort = getE2EDaemonPort();
       const metroPort = process.env.E2E_METRO_PORT;
       if (!metroPort) {
@@ -159,13 +157,7 @@ const test = daemonTest.extend<{
       const createAgentPreferences = buildCreateAgentPreferences();
 
       await page.addInitScript(
-        ({
-          daemon,
-          preferences,
-          seedNonce: nonce,
-          extraHostsKey,
-          sessionNavigation: navigationMode,
-        }) => {
+        ({ daemon, preferences, seedNonce: nonce, extraHostsKey }) => {
           // `addInitScript` runs on every navigation (including reloads). Some tests intentionally
           // override storage and reload; they can opt out of seeding for the *next* navigation by
           // setting this flag before the reload.
@@ -178,17 +170,6 @@ const test = daemonTest.extend<{
             }
           }
 
-          // Existing workspace tests explicitly exercise the retained workspace view.
-          // Session tests leave storage empty to verify the fork's default.
-          if (
-            navigationMode === "workspaces" &&
-            !localStorage.getItem("paseo-session-navigation")
-          ) {
-            localStorage.setItem(
-              "paseo-session-navigation",
-              JSON.stringify({ state: { sessionFirst: false }, version: 0 }),
-            );
-          }
           localStorage.setItem("@paseo:e2e", "1");
           localStorage.setItem("@paseo:e2e-seed-nonce", nonce);
 
@@ -205,7 +186,6 @@ const test = daemonTest.extend<{
           preferences: createAgentPreferences,
           seedNonce,
           extraHostsKey: EXTRA_HOSTS_KEY,
-          sessionNavigation,
         },
       );
 

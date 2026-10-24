@@ -223,7 +223,6 @@ describe("session-first sidebar", () => {
       },
     });
     expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["recent", "old"]);
-    expect(groups[0].emptyWorkspaces).toEqual([]);
   });
 
   it("does not leak archived, child, or filtered-project sessions into the list", () => {
@@ -239,13 +238,13 @@ describe("session-first sidebar", () => {
     expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["visible"]);
   });
 
-  it("keeps terminal-only workspaces and empty projects accessible", () => {
+  it("keeps projects available for new sessions without exposing empty workspaces", () => {
     const terminal = makeWorkspace("terminal").placement;
     const project = makeProject([terminal]);
     const emptyProject = makeProject([], "empty");
     expect(buildSessionProjects([project, emptyProject], {})).toEqual([
-      { project, sessions: [], emptyWorkspaces: [terminal] },
-      { project: emptyProject, sessions: [], emptyWorkspaces: [] },
+      { project, sessions: [] },
+      { project: emptyProject, sessions: [] },
     ]);
   });
 

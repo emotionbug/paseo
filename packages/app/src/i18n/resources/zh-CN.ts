@@ -4,9 +4,6 @@ import { pluginSettings } from "./plugin-settings";
 export const zhCN: TranslationResources = {
   sessionNavigation: {
     sessions: "会话",
-    workspaces: "工作区",
-    showWorkspaces: "显示工作区",
-    showSessions: "显示会话",
     newSession: "新建会话",
     untitled: "未命名会话",
     search: "搜索会话",

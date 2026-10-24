@@ -4,9 +4,6 @@ import { pluginSettings } from "./plugin-settings";
 export const ptBR: TranslationResources = {
   sessionNavigation: {
     sessions: "Sessões",
-    workspaces: "Espaços de trabalho",
-    showWorkspaces: "Mostrar espaços de trabalho",
-    showSessions: "Mostrar sessões",
     newSession: "Nova sessão",
     untitled: "Sessão sem título",
     search: "Buscar sessões",

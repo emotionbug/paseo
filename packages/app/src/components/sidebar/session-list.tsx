@@ -3,21 +3,17 @@ import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { FlatList, Text, View } from "react-native";
 import { router } from "expo-router";
-import { ChevronDown, ChevronRight, Folder, MessageSquare, Plus } from "lucide-react-native";
+import { ChevronDown, ChevronRight, MessageSquare, Plus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import equal from "fast-deep-equal";
-import { SidebarWorkspaceList } from "@/components/sidebar-workspace-list";
+import type { SidebarWorkspaceList } from "@/components/sidebar-workspace-list";
 import { DensityIcon } from "@/components/ui/density-icon";
 import { PressHighlight } from "@/components/ui/press-highlight";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { useSessionStore } from "@/stores/session-store";
-import { useSessionNavigationStore } from "@/stores/session-navigation-store";
-import {
-  useActiveWorkspaceSelection,
-  navigateToWorkspace,
-} from "@/stores/navigation-active-workspace-store";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import {
   useWorkspaceLayoutStore,
   findPaneById,
@@ -26,23 +22,14 @@ import {
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 import { createSessionProjectsSelector, type SidebarSession } from "./session-projection";
-import type {
-  SidebarProjectEntry,
-  SidebarWorkspacePlacement,
-} from "@/hooks/use-sidebar-workspaces-list";
+import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
 
 type ListProps = ComponentProps<typeof SidebarWorkspaceList>;
 type Row =
   | { kind: "project"; key: string; project: SidebarProjectEntry }
-  | { kind: "session"; key: string; session: SidebarSession }
-  | { kind: "workspace"; key: string; workspace: SidebarWorkspacePlacement };
+  | { kind: "session"; key: string; session: SidebarSession };
 
-export function SessionAwareSidebarList(props: ListProps) {
-  const sessionFirst = useSessionNavigationStore((state) => state.sessionFirst);
-  return sessionFirst ? <SessionList {...props} /> : <SidebarWorkspaceList {...props} />;
-}
-
-function SessionList(props: ListProps) {
+export function SessionList(props: ListProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const projectSelector = useMemo(
@@ -76,10 +63,7 @@ function SessionList(props: ListProps) {
           projectMatches ||
           `${session.title ?? ""} ${session.provider}`.toLocaleLowerCase().includes(search),
       );
-      const emptyWorkspaces = group.emptyWorkspaces.filter(
-        (workspace) => projectMatches || workspace.name.toLocaleLowerCase().includes(search),
-      );
-      if (search && sessions.length === 0 && emptyWorkspaces.length === 0) continue;
+      if (search && sessions.length === 0) continue;
       result.push({
         kind: "project",
         key: `project:${group.project.viewKey}`,
@@ -92,15 +76,6 @@ function SessionList(props: ListProps) {
             kind: "session",
             key: `${session.serverId}:${session.id}`,
             session,
-          }),
-        ),
-      );
-      result.push(
-        ...emptyWorkspaces.map(
-          (workspace): Row => ({
-            kind: "workspace",
-            key: `empty:${workspace.workspaceKey}`,
-            workspace,
           }),
         ),
       );
@@ -118,10 +93,6 @@ function SessionList(props: ListProps) {
             onToggle={props.onToggleProjectCollapsed}
             onBeforeNavigate={props.onWorkspacePress}
           />
-        );
-      if (item.kind === "workspace")
-        return (
-          <EmptyWorkspaceRow workspace={item.workspace} onBeforeNavigate={props.onWorkspacePress} />
         );
       return (
         <SessionRow
@@ -232,29 +203,6 @@ const SessionProjectRow = memo(function SessionProjectRow({
         </ToolbarButton>
       ) : null}
     </View>
-  );
-});
-
-const EmptyWorkspaceRow = memo(function EmptyWorkspaceRow({
-  workspace,
-  onBeforeNavigate,
-}: BeforeNavigate & { workspace: SidebarWorkspacePlacement }) {
-  const open = useCallback(() => {
-    onBeforeNavigate?.();
-    navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
-  }, [onBeforeNavigate, workspace.serverId, workspace.workspaceId]);
-  return (
-    <PressHighlight
-      style={styles.row}
-      accessibilityRole="button"
-      testID={`session-empty-${workspace.workspaceKey}`}
-      onPress={open}
-    >
-      <DensityIcon icon={Folder} size="sm" color="foregroundMuted" />
-      <Text style={styles.muted} numberOfLines={1}>
-        {workspace.name}
-      </Text>
-    </PressHighlight>
   );
 });
 

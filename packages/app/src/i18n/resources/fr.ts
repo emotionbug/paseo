@@ -4,9 +4,6 @@ import { pluginSettings } from "./plugin-settings";
 export const fr: TranslationResources = {
   sessionNavigation: {
     sessions: "Sessions",
-    workspaces: "Espaces de travail",
-    showWorkspaces: "Afficher les espaces de travail",
-    showSessions: "Afficher les sessions",
     newSession: "Nouvelle session",
     untitled: "Session sans titre",
     search: "Rechercher des sessions",

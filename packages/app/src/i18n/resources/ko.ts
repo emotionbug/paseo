@@ -4,9 +4,6 @@ import { pluginSettings } from "./plugin-settings";
 export const ko: TranslationResources = {
   sessionNavigation: {
     sessions: "세션",
-    workspaces: "워크스페이스",
-    showWorkspaces: "워크스페이스 보기",
-    showSessions: "세션 보기",
     newSession: "새 세션",
     untitled: "제목 없는 세션",
     search: "세션 검색",

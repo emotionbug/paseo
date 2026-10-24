@@ -1,9 +1,6 @@
 export const en = {
   sessionNavigation: {
     sessions: "Sessions",
-    workspaces: "Workspaces",
-    showWorkspaces: "Show workspaces",
-    showSessions: "Show sessions",
     newSession: "New session",
     untitled: "Untitled session",
     search: "Search sessions",

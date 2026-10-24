@@ -4,9 +4,6 @@ import { pluginSettings } from "./plugin-settings";
 export const ja: TranslationResources = {
   sessionNavigation: {
     sessions: "セッション",
-    workspaces: "ワークスペース",
-    showWorkspaces: "ワークスペースを表示",
-    showSessions: "セッションを表示",
     newSession: "新しいセッション",
     untitled: "無題のセッション",
     search: "セッションを検索",

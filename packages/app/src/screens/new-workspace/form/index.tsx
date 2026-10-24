@@ -18,9 +18,8 @@ import {
 } from "./field-trigger";
 import { branchIcon, folderIcon, ProjectIcon, pullRequestIcon } from "./icons";
 import { LaunchControl } from "./launch-control";
-import { AddProjectOption, IsolationOption, ProjectOption, RefOption } from "./options";
+import { AddProjectOption, ProjectOption, RefOption } from "./options";
 
-type Isolation = "local" | "worktree";
 type RenderOption = NonNullable<ComboboxProps["renderOption"]>;
 
 interface PickerControl {
@@ -51,11 +50,6 @@ export interface NewWorkspaceFormProps {
     selectedServerId: string;
     onSelect: (id: string) => void;
     onAddHost: () => void;
-  };
-  isolation: PickerControl & {
-    effectiveIsolation: Isolation;
-    canCreateWorktree: boolean;
-    onSelect: (isolation: Isolation) => void;
   };
   base: PickerControl & {
     selectedSourceDirectory: string | null;
@@ -123,33 +117,6 @@ function useProjectPicker(
   return { renderOption, footer };
 }
 
-function useIsolationPicker(
-  isolation: NewWorkspaceFormProps["isolation"],
-  isPending: boolean,
-): { options: ComboboxOption[]; onSelect: (id: string) => void; renderOption: RenderOption } {
-  const { t } = useTranslation();
-  const { canCreateWorktree, onSelect, onOpenChange } = isolation;
-  // "New worktree" is omitted entirely (not disabled) when the project isn't a
-  // git checkout, since worktree isolation is impossible there.
-  const options = useMemo<ComboboxOption[]>(() => {
-    const local = { id: "local", label: t("newWorkspace.isolation.local") };
-    if (!canCreateWorktree) return [local];
-    return [local, { id: "worktree", label: t("newWorkspace.isolation.worktree") }];
-  }, [canCreateWorktree, t]);
-  const handleSelect = useCallback(
-    (id: string) => {
-      onSelect(id === "worktree" ? "worktree" : "local");
-      onOpenChange(false);
-    },
-    [onOpenChange, onSelect],
-  );
-  const renderOption = useCallback<RenderOption>(
-    (row) => <IsolationOption {...row} disabled={isPending} />,
-    [isPending],
-  );
-  return { options, onSelect: handleSelect, renderOption };
-}
-
 function useRefRenderOption(itemById: Map<string, PickerItem>, isPending: boolean): RenderOption {
   return useCallback<RenderOption>(
     (row) => <RefOption {...row} item={itemById.get(row.option.id)} disabled={isPending} />,
@@ -165,10 +132,9 @@ function useRefRenderOption(itemById: Map<string, PickerItem>, isPending: boolea
  */
 export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement {
   const { t } = useTranslation();
-  const { isCompact, isPending, project, host, isolation, base, launch } = props;
+  const { isCompact, isPending, project, host, base, launch } = props;
   const variant: FieldTriggerVariant = isCompact ? "field" : "badge";
   const projectPicker = useProjectPicker(project, isPending);
-  const isolationPicker = useIsolationPicker(isolation, isPending);
   const renderRefOption = useRefRenderOption(base.itemById, isPending);
 
   const selectedHostLabel =
@@ -194,10 +160,6 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
     () => <HostStatusDot serverId={host.selectedServerId} />,
     [host.selectedServerId],
   );
-  const isWorktree = isolation.effectiveIsolation === "worktree";
-  const isolationValue = isWorktree
-    ? t("newWorkspace.isolation.worktree")
-    : t("newWorkspace.isolation.local");
   const refIcon = base.selectedItem?.kind === "github-pr" ? pullRequestIcon : branchIcon;
 
   const projectField = (
@@ -244,20 +206,6 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
       />
     </HostPicker>
   );
-  const isolationField = isolation.canCreateWorktree ? (
-    <FieldTrigger
-      ref={isolation.anchorRef}
-      variant={variant}
-      label={t("newWorkspace.isolation.label")}
-      accessibilityLabel="Workspace isolation"
-      tooltip={t("newWorkspace.tooltips.isolation")}
-      icon={isWorktree ? branchIcon : folderIcon}
-      value={isolationValue}
-      onPress={isolation.open}
-      disabled={isPending}
-      testID="workspace-create-isolation-trigger"
-    />
-  ) : null;
   const baseField = base.showRefPicker ? (
     <FieldTrigger
       ref={base.anchorRef}
@@ -302,17 +250,6 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
         footer={projectPicker.footer}
       />
       <Combobox
-        options={isolationPicker.options}
-        value={isolation.effectiveIsolation}
-        onSelect={isolationPicker.onSelect}
-        title={t("newWorkspace.isolation.label")}
-        open={isolation.openState}
-        onOpenChange={isolation.onOpenChange}
-        desktopPlacement="bottom-start"
-        anchorRef={isolation.anchorRef}
-        renderOption={isolationPicker.renderOption}
-      />
-      <Combobox
         options={base.options}
         value={base.selectedOptionId}
         onSelect={base.onSelect}
@@ -335,13 +272,8 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
       <View testID="new-workspace-ref-picker-row" style={styles.compactStack}>
         {projectField}
         {hostField}
-        {isolationField}
         {baseField}
         {launchField}
-        {/* Isolation and Base come and go with the project; their rows stay reserved so the
-            stack keeps one height and nothing above the composer jumps. */}
-        {isolationField ? null : <View style={styles.reservedField} pointerEvents="none" />}
-        {baseField ? null : <View style={styles.reservedField} pointerEvents="none" />}
         {pickers}
       </View>
     );
@@ -351,7 +283,6 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
     <View testID="new-workspace-ref-picker-row" style={styles.desktopRow} pointerEvents="box-none">
       <View style={styles.desktopControl}>{projectField}</View>
       <View style={styles.desktopControl}>{hostField}</View>
-      {isolationField ? <View style={styles.desktopControl}>{isolationField}</View> : null}
       {baseField ? <View style={styles.desktopControl}>{baseField}</View> : null}
       <View style={styles.launchSpacer} pointerEvents="none" />
       {launchField}
