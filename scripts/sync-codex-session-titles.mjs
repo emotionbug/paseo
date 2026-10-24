@@ -5,7 +5,6 @@ import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { z } from "zod";
-import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 
 const indexEntry = z.object({ id: z.string(), thread_name: z.string() });
 const savedState = z.record(z.string(), z.object({ paseo: z.string(), codex: z.string() }));
@@ -112,6 +111,7 @@ export async function setCodexNames(updates, { codexHome, executable = "codex" }
 }
 
 export async function syncTitles() {
+  const { DaemonClient } = await import("@getpaseo/client/internal/daemon-client");
   const paseoHome = process.env.PASEO_HOME ?? path.join(homedir(), ".paseo");
   const codexHome = process.env.CODEX_HOME ?? path.join(homedir(), ".codex");
   const stateFile = path.join(paseoHome, "session-title-sync.json");

@@ -28,8 +28,10 @@ The upstream project's documentation follows below.
 
 Use the pencil beside a session, or long-press its row, to rename it on desktop or Android.
 The host-side `node scripts/sync-codex-session-titles.mjs` command synchronizes names
-with the local Codex profile. Run it periodically (the installed user timer runs every
-10 seconds). It reads Codex's `session_index.jsonl` and uses the official
+with the local Codex profile. For automatic sync, run
+`node scripts/watch-codex-session-titles.mjs` as a user service. The watcher compares
+title fields only and launches the sync command only after an actual title change;
+streamed messages, statuses and timestamps do not trigger synchronization. It reads Codex's `session_index.jsonl` and uses the official
 `thread/name/set` app-server API to write names; it never resumes a thread or starts a turn.
 The first sync imports existing Codex names. Subsequent edits flow both ways; a Codex
 edit wins if both names changed since the last sync. Sessions without a Codex name

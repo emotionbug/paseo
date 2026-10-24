@@ -116,3 +116,24 @@ test("Codex title sync reads latest appended names without consuming partial wri
   assert.equal(readTitleIndex("").size, 0);
   assert.throws(() => readTitleIndex('{"id": 1, "thread_name": "Bad"}'));
 });
+
+test("title watcher ignores streaming status, timestamps, and duplicate index entries", async () => {
+  const { titleFingerprint } = await import("./watch-codex-session-titles.mjs");
+  const agent = {
+    id: "a",
+    provider: "codex",
+    title: "Original",
+    persistence: { sessionId: "thread" },
+  };
+  const index = JSON.stringify({ id: "thread", thread_name: "Original" }) + "\n";
+  const before = titleFingerprint([agent], index);
+  assert.equal(
+    titleFingerprint([{ ...agent, status: "running", updatedAt: "later" }], index + index),
+    before,
+  );
+  assert.notEqual(titleFingerprint([{ ...agent, title: "Renamed" }], index), before);
+  assert.notEqual(
+    titleFingerprint([agent], JSON.stringify({ id: "thread", thread_name: "Codex edit" })),
+    before,
+  );
+});
