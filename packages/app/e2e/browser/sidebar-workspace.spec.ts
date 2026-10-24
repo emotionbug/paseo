@@ -680,6 +680,7 @@ test.describe("session-first navigation", () => {
       await expect(secondRow).toBeVisible();
       await secondRow.click();
       await expect(secondRow).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByTestId("workspace-header-title")).toHaveText("Review login");
       await firstRow.click();
       await expect(firstRow).toHaveAttribute("aria-selected", "true");
       await expect(secondRow).toHaveAttribute("aria-selected", "false");
@@ -691,6 +692,8 @@ test.describe("session-first navigation", () => {
       await page.getByTestId("session-rename-modal-input").fill("Review authentication");
       await page.getByTestId("session-rename-modal-submit").click();
       await expect(secondRow).toContainText("Review authentication");
+      await secondRow.click();
+      await expect(page.getByTestId("workspace-header-title")).toHaveText("Review authentication");
       await page.getByTestId("sidebar-display-preferences-menu").click();
       await expect(page.getByTestId("sidebar-display-preferences-content")).toBeVisible();
       await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
@@ -728,6 +731,7 @@ test.describe("session-first navigation", () => {
       await page.screenshot({ path: testInfo.outputPath("sessions-mobile.png") });
       await row.click();
       await expectMobileAgentSidebarHidden(page);
+      await expect(page.getByTestId("workspace-header-title")).toHaveText("Mobile session");
       await expect(page).toHaveURL(/\/workspace\//);
       await openMobileAgentSidebar(page);
       await expect(row).toHaveAttribute("aria-selected", "true");

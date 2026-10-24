@@ -3,6 +3,7 @@ import { resolveNodeExecPath } from "./runtime-paths";
 
 const mocks = vi.hoisted(() => ({
   existsSync: vi.fn(),
+  readdirSync: vi.fn(),
   app: {
     isPackaged: true,
   },
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("node:fs", () => ({
   existsSync: mocks.existsSync,
+  readdirSync: mocks.readdirSync,
   readFileSync: vi.fn(),
 }));
 
@@ -48,6 +50,7 @@ describe("runtime-paths", () => {
   beforeEach(() => {
     mocks.app.isPackaged = true;
     mocks.existsSync.mockReturnValue(true);
+    mocks.readdirSync.mockReturnValue(["Paseo Helper.app"]);
     setProcessRuntime({
       platform: "darwin",
       execPath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
@@ -67,6 +70,16 @@ describe("runtime-paths", () => {
   it("uses the macOS Helper executable for packaged daemon node launches", () => {
     expect(resolveNodeExecPath()).toBe(
       "/Applications/Paseo.app/Contents/Frameworks/Paseo Helper.app/Contents/MacOS/Paseo Helper",
+    );
+  });
+
+  it("finds a branded Helper even when the main executable keeps its original name", () => {
+    mocks.readdirSync.mockReturnValue([
+      "Paseo Sessions Helper (Renderer).app",
+      "Paseo Sessions Helper.app",
+    ]);
+    expect(resolveNodeExecPath()).toBe(
+      "/Applications/Paseo.app/Contents/Frameworks/Paseo Sessions Helper.app/Contents/MacOS/Paseo Sessions Helper",
     );
   });
 });

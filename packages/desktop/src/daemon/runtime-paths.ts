@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { app } from "electron";
@@ -80,15 +80,18 @@ export function resolveNodeExecPath(): string {
     const markerIndex = process.execPath.indexOf(marker);
     if (markerIndex !== -1) {
       const bundleRoot = process.execPath.substring(0, markerIndex + ".app".length);
-      const name = path.basename(process.execPath);
+      const frameworksPath = path.posix.join(bundleRoot, "Contents", "Frameworks");
+      const helperApp = readdirSync(frameworksPath).find((entry) => entry.endsWith(" Helper.app"));
+      if (!helperApp) return process.execPath;
+      const name = helperApp.slice(0, -".app".length);
       const helperPath = path.posix.join(
         bundleRoot,
         "Contents",
         "Frameworks",
-        `${name} Helper.app`,
+        helperApp,
         "Contents",
         "MacOS",
-        `${name} Helper`,
+        name,
       );
       if (existsSync(helperPath)) {
         return helperPath;

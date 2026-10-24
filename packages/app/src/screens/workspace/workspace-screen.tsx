@@ -666,6 +666,33 @@ function deriveWorkspaceHeaderFields(input: {
   };
 }
 
+function useSessionHeader({
+  activeTab,
+  serverId,
+  hasHydratedAgents,
+  fallbackTitle,
+  fallbackLoading,
+}: {
+  activeTab: ReturnType<typeof deriveWorkspacePaneState>["activeTab"];
+  serverId: string;
+  hasHydratedAgents: boolean;
+  fallbackTitle: string;
+  fallbackLoading: boolean;
+}) {
+  const { t } = useTranslation();
+  const headerTarget = activeTab?.descriptor.target;
+  const headerAgentId = headerTarget?.kind === "agent" ? headerTarget.agentId : null;
+  const headerAgentTitle = useSessionStore((state) =>
+    headerAgentId ? state.sessions[serverId]?.agents.get(headerAgentId)?.title : null,
+  );
+  const workspaceHeaderTitle = headerAgentId
+    ? headerAgentTitle?.trim() || t("sessionNavigation.untitled")
+    : fallbackTitle;
+  const isWorkspaceHeaderLoading = headerAgentId ? !hasHydratedAgents : fallbackLoading;
+
+  return { title: workspaceHeaderTitle, isLoading: isWorkspaceHeaderLoading };
+}
+
 function getHostDisplayName(host: { label?: string | null } | null, fallback: string): string {
   const trimmed = host?.label?.trim();
   return trimmed ? trimmed : fallback;
@@ -1240,8 +1267,8 @@ function WorkspaceScreenContent({
     data: checkoutQuery.data,
   });
   const {
-    isWorkspaceHeaderLoading,
-    workspaceHeaderTitle,
+    isWorkspaceHeaderLoading: isCheckoutHeaderLoading,
+    workspaceHeaderTitle: checkoutHeaderTitle,
     workspaceHeaderSubtitle,
     isWorkspaceHeaderSubtitleDistinct,
     isGitCheckout,
@@ -1562,6 +1589,14 @@ function WorkspaceScreenContent({
 
   const activeTabId = focusedPaneTabState.activeTabId;
   const activeTab = focusedPaneTabState.activeTab;
+
+  const { title: workspaceHeaderTitle, isLoading: isWorkspaceHeaderLoading } = useSessionHeader({
+    activeTab,
+    serverId: normalizedServerId,
+    hasHydratedAgents,
+    fallbackTitle: checkoutHeaderTitle,
+    fallbackLoading: isCheckoutHeaderLoading,
+  });
 
   const tabs = useMemo<WorkspaceTabDescriptor[]>(
     () => focusedPaneTabState.tabs.map((tab) => tab.descriptor),

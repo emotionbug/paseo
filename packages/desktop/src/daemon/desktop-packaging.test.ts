@@ -20,7 +20,7 @@ function writeExecutable(filePath: string, contents: string): void {
   chmodSync(filePath, 0o755);
 }
 
-function createFakeMacBundle(options: { includeHelper: boolean }): {
+function createFakeMacBundle(options: { includeHelper: boolean; helperName?: string }): {
   root: string;
   shimPath: string;
 } {
@@ -30,13 +30,14 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
   const resourcesPath = join(contentsPath, "Resources");
   const shimPath = join(resourcesPath, "bin", "paseo");
   const mainPath = join(contentsPath, "MacOS", "Paseo");
+  const helperName = options.helperName ?? "Paseo Helper";
   const helperPath = join(
     contentsPath,
     "Frameworks",
-    "Paseo Helper.app",
+    `${helperName}.app`,
     "Contents",
     "MacOS",
-    "Paseo Helper",
+    helperName,
   );
 
   mkdirSync(dirname(shimPath), { recursive: true });
@@ -172,6 +173,21 @@ describe("desktop packaging", () => {
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Bundled Paseo Helper executable not found");
       expect(result.stdout).not.toContain("main-executable");
+    } finally {
+      rmSync(bundle.root, { recursive: true, force: true });
+    }
+  });
+
+  it("launches the renamed Sessions Helper from the packaged CLI", () => {
+    if (process.platform === "win32") return;
+    const bundle = createFakeMacBundle({
+      includeHelper: true,
+      helperName: "Paseo Sessions Helper",
+    });
+    try {
+      const result = spawnSync(bundle.shimPath, ["--version"], { encoding: "utf8" });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("helper env=1/production");
     } finally {
       rmSync(bundle.root, { recursive: true, force: true });
     }
