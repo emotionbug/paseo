@@ -1,11 +1,19 @@
 # Paseo Sessions fork
 
 This fork makes conversations the sidebar unit on Android and Linux desktop.
-Projects contain individual session rows, ordered by recent activity, with search and
-one-click navigation to the exact chat. New sessions use the existing local checkout.
+Each host has an expandable row, even when only one host is configured. Its sessions
+appear directly underneath, ordered by recent activity, with their project names in
+the detail line. Search matches hosts, projects, session titles and providers, revealing
+matching sessions without changing which hosts you collapsed. New sessions use the
+existing local checkout on the selected host.
 
 Workspace navigation and its display settings are removed. Existing session IDs,
 history, files and daemon storage are unchanged. Closing a chat tab does not archive its session.
+
+On compact Android screens, Back returns from a session to the sidebar; Back from
+the sidebar closes the app window without stopping the host's sessions. If the file
+explorer is open, Back first returns to the session. Settings and other pushed screens
+keep their own navigation.
 
 Android builds use the name **Paseo Sessions** and package `sh.paseo.sessions`, so the
 official app can stay installed. Connect the fork to your existing Paseo host using the

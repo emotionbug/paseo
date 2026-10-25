@@ -1,5 +1,7 @@
 import { AdaptiveRenameModal } from "@/components/rename-modal";
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { getHostRuntimeStore, useHosts, useHostRegistryLoaded } from "@/runtime/host-runtime";
+import { HostStatusDot } from "@/components/host-status-dot";
+import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@getpaseo/protocol/agent-title-limits";
 import { EditingTextInput } from "@/components/ui/text-input";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
@@ -15,7 +17,7 @@ import type { SidebarWorkspaceList } from "@/components/sidebar-workspace-list";
 import { DensityIcon } from "@/components/ui/density-icon";
 import { PressHighlight } from "@/components/ui/press-highlight";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
-import { useSessionStore } from "@/stores/session-store";
+import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import {
   useWorkspaceLayoutStore,
@@ -24,17 +26,40 @@ import {
 } from "@/stores/workspace-layout-store";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildNewWorkspaceRoute } from "@/utils/host-routes";
-import { createSessionProjectsSelector, type SidebarSession } from "./session-projection";
-import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
+import {
+  buildSessionTreeRows,
+  createSessionHostsSelector,
+  type SidebarSession,
+  type HostSession,
+  type SessionHostProfile,
+  type SessionTreeRow,
+} from "./session-projection";
 
-type ListProps = ComponentProps<typeof SidebarWorkspaceList>;
-type Row =
-  | { kind: "project"; key: string; project: SidebarProjectEntry }
-  | { kind: "session"; key: string; session: SidebarSession };
+type ListProps = Omit<
+  ComponentProps<typeof SidebarWorkspaceList>,
+  "collapsedProjectKeys" | "onToggleProjectCollapsed"
+>;
 
 export function SessionList(props: ListProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const [collapsedHostIds, setCollapsedHostIds] = useState<ReadonlySet<string>>(() => new Set());
+  const allHosts = useHosts();
+  const hostRegistryLoaded = useHostRegistryLoaded();
+  const hostFilters = useSidebarViewStore((state) => state.hostFilters);
+  const visibleHosts = useMemo(() => {
+    if (hostFilters.length === 0) return allHosts;
+    const matched = allHosts.filter((host) => hostFilters.includes(host.serverId));
+    return hostRegistryLoaded && matched.length === 0 ? allHosts : matched;
+  }, [allHosts, hostFilters, hostRegistryLoaded]);
+  const toggleHost = useCallback((serverId: string) => {
+    setCollapsedHostIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(serverId)) next.delete(serverId);
+      else next.add(serverId);
+      return next;
+    });
+  }, []);
   const [renamingSession, setRenamingSession] = useState<SidebarSession | null>(null);
   const closeRename = useCallback(() => setRenamingSession(null), []);
   const submitRename = useCallback(
@@ -46,15 +71,15 @@ export function SessionList(props: ListProps) {
     },
     [renamingSession, t],
   );
-  const projectSelector = useMemo(
-    () => createSessionProjectsSelector(props.projects),
-    [props.projects],
+  const hostSelector = useMemo(
+    () => createSessionHostsSelector(props.projects, visibleHosts),
+    [props.projects, visibleHosts],
   );
-  const selectProjects = useCallback(
-    (state: ReturnType<typeof useSessionStore.getState>) => projectSelector(state.sessions),
-    [projectSelector],
+  const selectHosts = useCallback(
+    (state: { sessions: Record<string, SessionState> }) => hostSelector(state.sessions),
+    [hostSelector],
   );
-  const projects = useStoreWithEqualityFn(useSessionStore, selectProjects, equal);
+  const hosts = useStoreWithEqualityFn(useSessionStore, selectHosts, equal);
   const selection = useActiveWorkspaceSelection();
   const activeAgentId = useWorkspaceLayoutStore((state) => {
     if (!selection) return null;
@@ -67,44 +92,19 @@ export function SessionList(props: ListProps) {
     );
     return tab?.target.kind === "agent" ? tab.target.agentId : null;
   });
-  const rows = useMemo(() => {
-    const result: Row[] = [];
-    const search = query.trim().toLocaleLowerCase();
-    for (const group of projects) {
-      const projectMatches = group.project.projectName.toLocaleLowerCase().includes(search);
-      const sessions = group.sessions.filter(
-        (session) =>
-          projectMatches ||
-          `${session.title ?? ""} ${session.provider}`.toLocaleLowerCase().includes(search),
-      );
-      if (search && sessions.length === 0) continue;
-      result.push({
-        kind: "project",
-        key: `project:${group.project.viewKey}`,
-        project: group.project,
-      });
-      if (!search && props.collapsedProjectKeys.has(group.project.viewKey)) continue;
-      result.push(
-        ...sessions.map(
-          (session): Row => ({
-            kind: "session",
-            key: `${session.serverId}:${session.id}`,
-            session,
-          }),
-        ),
-      );
-    }
-    return result;
-  }, [projects, query, props.collapsedProjectKeys]);
+  const rows = useMemo(
+    () => buildSessionTreeRows(hosts, query, collapsedHostIds),
+    [hosts, query, collapsedHostIds],
+  );
 
   const renderItem = useCallback(
-    ({ item }: { item: Row }) => {
-      if (item.kind === "project")
+    ({ item }: { item: SessionTreeRow }) => {
+      if (item.kind === "host")
         return (
-          <SessionProjectRow
-            project={item.project}
-            collapsed={props.collapsedProjectKeys.has(item.project.viewKey)}
-            onToggle={props.onToggleProjectCollapsed}
+          <SessionHostRow
+            host={item.host}
+            collapsed={item.collapsed}
+            onToggle={toggleHost}
             onBeforeNavigate={props.onWorkspacePress}
           />
         );
@@ -119,13 +119,7 @@ export function SessionList(props: ListProps) {
         />
       );
     },
-    [
-      activeAgentId,
-      props.collapsedProjectKeys,
-      props.onToggleProjectCollapsed,
-      props.onWorkspacePress,
-      selection?.serverId,
-    ],
+    [activeAgentId, toggleHost, props.onWorkspacePress, selection?.serverId],
   );
   const empty = useMemo(
     () => <Text style={styles.empty}>{t("sessionNavigation.empty")}</Text>,
@@ -168,42 +162,35 @@ export function SessionList(props: ListProps) {
   );
 }
 
-function rowKey(row: Row) {
+function rowKey(row: SessionTreeRow) {
   return row.key;
 }
 
 interface BeforeNavigate {
   onBeforeNavigate?: () => void;
 }
-const SessionProjectRow = memo(function SessionProjectRow({
-  project,
+const SessionHostRow = memo(function SessionHostRow({
+  host,
   collapsed,
   onToggle,
   onBeforeNavigate,
 }: BeforeNavigate & {
-  project: SidebarProjectEntry;
+  host: SessionHostProfile;
   collapsed: boolean;
   onToggle: (key: string) => void;
 }) {
   const { t } = useTranslation();
-  const host = project.hosts[0];
   const state = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
-  const toggle = useCallback(() => onToggle(project.viewKey), [onToggle, project.viewKey]);
+  const toggle = useCallback(() => onToggle(host.serverId), [onToggle, host.serverId]);
   const create = useCallback(() => {
-    if (!host) return;
     onBeforeNavigate?.();
-    router.push(
-      buildNewWorkspaceRoute({
-        serverId: host.serverId,
-        projectId: host.projectId,
-        sourceDirectory: host.iconWorkingDir,
-      }),
-    );
+    router.push(buildNewWorkspaceRoute({ serverId: host.serverId }));
   }, [host, onBeforeNavigate]);
   return (
-    <View style={styles.project}>
+    <View style={styles.host}>
       <PressHighlight
-        style={styles.projectLabel}
+        style={styles.hostLabel}
+        testID={`session-host-${host.serverId}`}
         accessibilityRole="button"
         accessibilityState={state}
         aria-expanded={!collapsed}
@@ -214,19 +201,18 @@ const SessionProjectRow = memo(function SessionProjectRow({
           size="sm"
           color="foregroundMuted"
         />
-        <Text numberOfLines={1} style={styles.projectText}>
-          {project.projectName}
+        <HostStatusDot serverId={host.serverId} />
+        <Text numberOfLines={1} style={styles.hostText}>
+          {host.label}
         </Text>
       </PressHighlight>
-      {host ? (
-        <ToolbarButton
-          label={t("sessionNavigation.newSession")}
-          testID={`session-new-${project.viewKey}`}
-          onPress={create}
-        >
-          <DensityIcon icon={Plus} size="sm" color="foregroundMuted" />
-        </ToolbarButton>
-      ) : null}
+      <ToolbarButton
+        label={t("sessionNavigation.newSession")}
+        testID={`session-new-${host.serverId}`}
+        onPress={create}
+      >
+        <DensityIcon icon={Plus} size="sm" color="foregroundMuted" />
+      </ToolbarButton>
     </View>
   );
 });
@@ -237,7 +223,7 @@ const SessionRow = memo(function SessionRow({
   onRename,
   onBeforeNavigate,
 }: BeforeNavigate & {
-  session: SidebarSession;
+  session: HostSession;
   selected: boolean;
   onRename: (session: SidebarSession) => void;
 }) {
@@ -274,7 +260,7 @@ const SessionRow = memo(function SessionRow({
             {session.title?.trim() || t("sessionNavigation.untitled")}
           </Text>
           <Text numberOfLines={1} style={styles.detail}>
-            {session.provider} · {t(`agentList.status.${session.status}`)}
+            {session.projectName} · {session.provider} · {t(`agentList.status.${session.status}`)}
           </Text>
         </View>
       </PressHighlight>
@@ -302,20 +288,20 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[2],
     fontSize: theme.fontSize.base,
   },
-  project: {
+  host: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],
     paddingTop: theme.spacing[2],
   },
-  projectLabel: {
+  hostLabel: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
     paddingVertical: theme.spacing[2],
   },
-  projectText: {
+  hostText: {
     flex: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
@@ -324,7 +310,8 @@ const styles = StyleSheet.create((theme) => ({
   sessionRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: theme.spacing[2],
+    marginLeft: theme.spacing[6],
+    marginRight: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
   },
   row: {

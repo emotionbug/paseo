@@ -1,6 +1,7 @@
 import {
-  buildSessionProjects,
-  createSessionProjectsSelector,
+  buildSessionHosts,
+  buildSessionTreeRows,
+  createSessionHostsSelector,
   type SidebarSession,
 } from "./session-projection";
 import { i18n } from "@/i18n/i18next";
@@ -199,10 +200,16 @@ describe("session-first sidebar", () => {
     };
   }
 
+  const profiles = [
+    { serverId: "srv", label: "Laptop" },
+    { serverId: "other", label: "Build server" },
+  ];
+
   it("retains the session projection through unrelated stream updates", () => {
-    const selector = createSessionProjectsSelector([
-      makeProject([makeWorkspace("main").placement]),
-    ]);
+    const selector = createSessionHostsSelector(
+      [makeProject([makeWorkspace("main").placement])],
+      profiles,
+    );
     const agents = new Map([["chat", session("chat")]]);
     const first = selector({ srv: { agents } });
     const next = selector({ srv: { agents }, unrelated: { agents: new Map() } });
@@ -210,18 +217,40 @@ describe("session-first sidebar", () => {
     expect(next[0].sessions.map((agent) => agent.id)).toEqual(["chat"]);
   });
 
-  it("lists conversations on the same branch separately, newest activity first", () => {
-    const old = session("old");
-    const recent = session("recent", { lastActivityAt: new Date("2026-10-24") });
-    const project = makeProject([makeWorkspace("main").placement]);
-    const groups = buildSessionProjects([project], {
-      srv: {
-        agents: new Map([
-          [old.id, old],
-          [recent.id, recent],
-        ]),
+  it("always renders the host above its sessions, including a single host", () => {
+    const groups = buildSessionHosts(
+      [makeProject([makeWorkspace("main").placement])],
+      [profiles[0]],
+      { srv: { agents: new Map([["chat", session("chat")]]) } },
+    );
+    expect(buildSessionTreeRows(groups, "", new Set()).map((row) => row.key)).toEqual([
+      "host:srv",
+      "session:srv:chat",
+    ]);
+  });
+
+  it("sorts sessions across projects by activity within each host", () => {
+    const groups = buildSessionHosts(
+      [
+        makeProject([makeWorkspace("main").placement]),
+        makeProject([makeWorkspace("second").placement], "second-project"),
+      ],
+      profiles,
+      {
+        srv: {
+          agents: new Map([
+            ["old", session("old")],
+            [
+              "recent",
+              session("recent", {
+                workspaceId: "second",
+                lastActivityAt: new Date("2026-10-24"),
+              }),
+            ],
+          ]),
+        },
       },
-    });
+    );
     expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["recent", "old"]);
   });
 
@@ -232,32 +261,52 @@ describe("session-first sidebar", () => {
       session("child", { parentAgentId: "visible" }),
       session("elsewhere", { workspaceId: "other" }),
     ];
-    const groups = buildSessionProjects([makeProject([makeWorkspace("main").placement])], {
+    const groups = buildSessionHosts([makeProject([makeWorkspace("main").placement])], profiles, {
       srv: { agents: new Map(agents.map((agent) => [agent.id, agent])) },
     });
     expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["visible"]);
   });
 
-  it("keeps projects available for new sessions without exposing empty workspaces", () => {
-    const terminal = makeWorkspace("terminal").placement;
-    const project = makeProject([terminal]);
-    const emptyProject = makeProject([], "empty");
-    expect(buildSessionProjects([project, emptyProject], {})).toEqual([
-      { project, sessions: [] },
-      { project: emptyProject, sessions: [] },
-    ]);
+  it("keeps offline and empty hosts visible even without projects", () => {
+    expect(buildSessionHosts([], profiles, {})).toEqual(
+      profiles.map((host) => ({ host, sessions: [] })),
+    );
   });
 
   it("scopes identical workspace and session IDs to their host", () => {
     const first = makeWorkspace("main").placement;
     const second = { ...first, workspaceKey: "other:main", serverId: "other" };
-    const groups = buildSessionProjects([makeProject([first, second])], {
+    const groups = buildSessionHosts([makeProject([first, second])], profiles, {
       srv: { agents: new Map([["same", session("same")]]) },
       other: { agents: new Map([["same", session("same", { serverId: "other" })]]) },
     });
-    expect(groups[0].sessions.map((agent) => `${agent.serverId}:${agent.id}`)).toEqual([
-      "srv:same",
-      "other:same",
+    expect(buildSessionTreeRows(groups, "", new Set()).map((row) => row.key)).toEqual([
+      "host:srv",
+      "session:srv:same",
+      "host:other",
+      "session:other:same",
     ]);
+    expect(buildSessionTreeRows(groups, "", new Set(["srv"])).map((row) => row.key)).toEqual([
+      "host:srv",
+      "host:other",
+      "session:other:same",
+    ]);
+  });
+
+  it("searches collapsed hosts and restores their collapse state when cleared", () => {
+    const groups = buildSessionHosts([makeProject([makeWorkspace("main").placement])], profiles, {
+      srv: { agents: new Map([["chat", session("chat", { title: "Fix navigation" })]]) },
+    });
+    const collapsed = new Set(["srv"]);
+    for (const query of ["navigation", "laptop", "project", "codex"]) {
+      const rows = buildSessionTreeRows(groups, query, collapsed);
+      expect(rows.map((row) => row.key)).toEqual(["host:srv", "session:srv:chat"]);
+      expect(rows[0]).toMatchObject({ kind: "host", collapsed: false });
+    }
+    expect(buildSessionTreeRows(groups, "", collapsed).map((row) => row.key)).toEqual([
+      "host:srv",
+      "host:other",
+    ]);
+    expect(buildSessionTreeRows(groups, "missing", collapsed)).toEqual([]);
   });
 });

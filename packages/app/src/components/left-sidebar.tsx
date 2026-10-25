@@ -91,9 +91,7 @@ interface SidebarSharedProps {
   isRevalidating: boolean;
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
-  collapsedProjectKeys: ReadonlySet<string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
-  toggleProjectCollapsed: (projectViewKey: string) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
   handleImportSession: () => void;
@@ -142,8 +140,6 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     workspaceGroups,
     projectIconTargets,
     pinnedGroups,
-    collapsedProjectKeys,
-    toggleProjectCollapsed,
     groupMode,
     shortcutModel,
   } = useSidebarModel();
@@ -232,9 +228,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isRevalidating,
     isManualRefresh,
     groupMode,
-    collapsedProjectKeys,
     shortcutIndexByWorkspaceKey,
-    toggleProjectCollapsed,
     handleRefresh,
     labels,
   };
@@ -522,9 +516,7 @@ function MobileSidebar({
   isRevalidating,
   isManualRefresh,
   groupMode,
-  collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
-  toggleProjectCollapsed,
   handleRefresh,
   handleOpenProject,
   handleImportSession,
@@ -583,8 +575,6 @@ function MobileSidebar({
           <SidebarAgentListSkeleton />
         ) : (
           <SessionList
-            collapsedProjectKeys={collapsedProjectKeys}
-            onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
@@ -631,9 +621,7 @@ function DesktopSidebar({
   isRevalidating,
   isManualRefresh,
   groupMode,
-  collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
-  toggleProjectCollapsed,
   handleRefresh,
   handleOpenProject,
   handleImportSession,
@@ -765,8 +753,6 @@ function DesktopSidebar({
           <SidebarAgentListSkeleton />
         ) : (
           <SessionList
-            collapsedProjectKeys={collapsedProjectKeys}
-            onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
