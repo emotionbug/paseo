@@ -181,6 +181,22 @@ describe("runRunCommand option validation", () => {
     });
   }
 
+  it.each([
+    {
+      provider: "codex/gpt-5.4",
+      model: "gpt-5.5",
+      code: "CONFLICTING_MODEL_OPTIONS",
+    },
+    { provider: "codex/", model: undefined, code: "INVALID_PROVIDER" },
+    { provider: "codex", model: " ", code: "INVALID_MODEL" },
+  ])("rejects $code before connecting to fetch defaults", async ({ provider, model, code }) => {
+    vi.mocked(connectToDaemon).mockClear();
+    await expect(
+      runRunCommand("do something", { daemonTarget, provider, model }, {} as never),
+    ).rejects.toMatchObject({ code });
+    expect(connectToDaemon).not.toHaveBeenCalled();
+  });
+
   it("rejects --new-workspace combined with --workspace", async () => {
     await expectInvalidOptions(
       { newWorkspace: "worktree", workspace: "ws-1" },

@@ -114,6 +114,9 @@ export function createBottomSheetVisibilityTracker(opts: {
         if (phase === "presenting" || phase === "dismissing") {
           setPhase("presented");
         }
+        // A dismiss during present() may arrive before Gorhom mounts its portal.
+        // Reconcile the completed presentation with the owner's latest intent.
+        if (!visible) dismiss();
         return;
       }
       if (phase === "presenting" || phase === "presented") {

@@ -7,8 +7,10 @@ the detail line. Search matches hosts, projects, session titles and providers, r
 matching sessions without changing which hosts you collapsed. New sessions use the
 existing local checkout on the selected host.
 
-Workspace navigation and its display settings are removed. Existing session IDs,
-history, files and daemon storage are unchanged. Closing a chat tab does not archive its session.
+Workspace rows and grouping controls are removed from the sidebar; Command Center still
+opens workspaces, and host, project and label filters still narrow the session list.
+Existing session IDs, history, files and daemon storage are unchanged. Closing a chat tab
+does not archive its session.
 
 On compact Android screens, Back returns from a session to the sidebar; Back from
 the sidebar closes the app window without stopping the host's sessions. If the file
@@ -30,6 +32,13 @@ npm run build:desktop -- --publish never --linux AppImage --x64
 
 The APK is `artifacts/paseo-sessions-arm64.apk`; desktop artifacts are in
 `packages/desktop/release/`. Desktop updates point to this fork instead of upstream.
+Linux DEB/RPM packages use the identifier `paseo-sessions`, separate from the
+**Paseo Sessions** display name.
+
+Bare `paseo` opens CLI chat. Run `paseo onboard` explicitly for daemon setup.
+Explicit conflicting provider/model options are rejected before connecting, including
+when the host is unavailable. Chat and run commands otherwise use the GUI's CLI-default
+agent profile.
 The upstream project's documentation follows below.
 
 ### Session titles

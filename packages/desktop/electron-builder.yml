@@ -73,8 +73,11 @@ linux:
     - rpm
     - tar.gz
 deb:
+  # Package identifiers cannot use the spaced application display name.
+  packageName: paseo-sessions
   afterInstall: scripts/linux-sandbox/after-install.tpl
 rpm:
+  packageName: paseo-sessions
   afterInstall: scripts/linux-sandbox/after-install.tpl
 appImage:
   # A nonempty argument list replaces builder's hardcoded --no-sandbox default.

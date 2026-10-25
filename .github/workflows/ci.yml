@@ -56,7 +56,7 @@ jobs:
           filters: .github/ci-paths.yml
 
       - name: Validate CI contracts
-        run: node --test scripts/ci-workflow.test.mjs scripts/daemon-launch-contract.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/upload-release-assets.test.mjs
+        run: node --test scripts/ci-workflow.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/upload-release-assets.test.mjs
 
   quality:
     name: quality
@@ -96,6 +96,10 @@ jobs:
       - name: Test lint rules
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: node --test scripts/oxlint/paseo-plugin.test.mjs
+
+      - name: Test daemon launch and title synchronization
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        run: node --test scripts/daemon-launch-contract.test.mjs
 
       - name: Build relay
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.relay != 'false') }}

@@ -17,7 +17,7 @@ import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
-import { resolveRunDefaults } from "../../utils/provider-model.js";
+import { resolveProviderAndModel, resolveRunDefaults } from "../../utils/provider-model.js";
 import { buildWorkspaceSource } from "../workspace/create.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
@@ -398,6 +398,11 @@ function validateRunOptions(prompt: string, options: AgentRunOptions, outputSche
   }
 
   validateRunWorkspaceOptions(options);
+
+  // Explicit provider syntax does not depend on the host's saved default profile.
+  if (options.provider?.trim()) {
+    resolveProviderAndModel(options);
+  }
 
   if (outputSchema && !waitsForFinish(options)) {
     throw {

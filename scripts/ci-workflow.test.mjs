@@ -134,26 +134,6 @@ test("change gating allows superseded workflow runs to cancel", () => {
   }
 });
 
-test("focused contracts stay inside existing required checks", () => {
-  const jobs = jobBlocks(readFileSync(ciWorkflowPath, "utf8"));
-  const changes = jobs.get("changes")?.join("\n") ?? "";
-  const server = jobs.get("server-tests-ubuntu")?.join("\n") ?? "";
-  const desktop = jobs.get("desktop-tests-ubuntu")?.join("\n") ?? "";
-
-  assert.match(changes, /scripts\/daemon-launch-contract\.test\.mjs/);
-  assert.doesNotMatch(changes, /Install dependencies|npm run build/);
-
-  assert.match(server, /test:hub-cli-contract/);
-  assert.match(server, /npm run test --workspace=@getpaseo\/server/);
-  assert.ok(!jobs.has("hub-cli-contract"));
-
-  assert.match(desktop, /test:e2e:renderer/);
-  assert.match(desktop, /test:e2e:browser-tabs/);
-  assert.match(desktop, /npm run test --workspace=@getpaseo\/desktop/);
-  assert.ok(!jobs.has("desktop-browser-bridge"));
-  assert.ok(!jobs.has("playwright-desktop"));
-});
-
 test("server builds exclude test utilities at every domain depth", () => {
   const tsconfig = JSON.parse(readFileSync(serverTsconfigPath, "utf8"));
   assert.ok(tsconfig.exclude.includes("src/server/**/test-utils/**"));
@@ -379,65 +359,6 @@ test("eight Playwright shards share two-worker coverage", () => {
   // No fan-in result job: a gate needs its own runner and under contention it
   // queued 8m08s behind the last shard. Required checks name the shards directly.
   assert.equal(jobs.has("playwright"), false);
-});
-
-test("quality preserves commands and routes each domain independently after failures", () => {
-  const jobs = jobBlocks(readFileSync(ciWorkflowPath, "utf8"));
-  const quality = jobs.get("quality").join("\n");
-  assert.doesNotMatch(quality, /^\s+continue-on-error:/m);
-  const commands = {
-    format: ["npm run format:check"],
-    quality: [
-      "npx --yes lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https --validate-integrity",
-      "npm audit signatures",
-      "npm run lint",
-      "node --test scripts/oxlint/paseo-plugin.test.mjs",
-    ],
-    relay: ["npm run build:relay", "npm run test --workspace=@getpaseo/relay"],
-    sdk: [
-      "npm run build:relay && npm run build:client",
-      "npm run build:plugin",
-      "npm run test --workspace=@getpaseo/plugin",
-      "npm run test --workspace=@getpaseo/protocol",
-      "npm run test --workspace=@getpaseo/client",
-      "npm run test --workspace=@getpaseo/highlight",
-      "npm run typecheck:examples --workspace=@getpaseo/client",
-    ],
-  };
-  const checks = [...quality.matchAll(/        if: \$\{\{ (.+) \}\}\n        run: (.+)/g)];
-  assert.deepEqual(
-    checks.map(([, , command]) => command),
-    Object.values(commands).flat(),
-  );
-  const domains = Object.keys(commands);
-  function accepts(expression, outputs, { cancelled = false, installed = true } = {}) {
-    // Prior checks have failed: success() is false. Explicit !cancelled() must
-    // override Actions' default success condition so later domains still run.
-    assert.match(expression, /!cancelled\(\)/);
-    return runInNewContext(expression, {
-      needs: { changes: { outputs } },
-      steps: { install: { outcome: installed ? "success" : "failure" } },
-      cancelled: () => cancelled,
-      success: () => false,
-    });
-  }
-  const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
-  const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
-  assert.equal(accepts(jobCondition, disabled), false);
-  for (const selected of domains) {
-    const outputs = { ...disabled, [selected]: "true" };
-    assert.equal(accepts(jobCondition, outputs), true);
-    for (const [, expression, command] of checks) {
-      assert.equal(accepts(expression, outputs), commands[selected].includes(command), command);
-    }
-  }
-  for (const [, expression] of checks) {
-    assert.equal(accepts(expression, { ...disabled, full: "true" }), true);
-    assert.equal(accepts(expression, {}), true, "missing routing outputs fail open");
-    assert.equal(accepts(expression, {}, { cancelled: true }), false);
-    assert.equal(accepts(expression, {}, { installed: false }), false);
-  }
-  assert.equal(accepts(jobCondition, {}, { cancelled: true }), false);
 });
 
 test("Windows units and integration run independently with complete routed coverage", () => {

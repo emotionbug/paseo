@@ -23,6 +23,8 @@ permissions:
 
 jobs:
   update-hash:
+    # This bot installation belongs to upstream; forks still build and verify Nix in nix.yml.
+    if: ${{ github.repository == 'getpaseo/paseo' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v1

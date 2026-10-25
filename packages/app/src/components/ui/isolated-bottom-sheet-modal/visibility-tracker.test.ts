@@ -88,6 +88,20 @@ describe("bottom sheet visibility tracker", () => {
     expect(sheet.events).toEqual([{ type: "present" }, { type: "dismiss" }]);
   });
 
+  it("dismisses a late presentation after the owner hides the sheet", () => {
+    const { sheet, tracker, backPress, closeCount } = setup();
+    tracker.attachController(sheet);
+    tracker.syncDesired({ visible: true });
+    // Gorhom can receive dismiss before the asynchronously presented portal is mounted.
+    tracker.syncDesired({ visible: false });
+    tracker.handleSheetIndexChange(0);
+
+    expect(sheet.events).toEqual([{ type: "present" }, { type: "dismiss" }, { type: "dismiss" }]);
+    expect(backPress.press()).toBe(false);
+    tracker.handleSheetDismiss();
+    expect(closeCount()).toBe(0);
+  });
+
   it("waits to present until the sheet controller becomes available", () => {
     const { sheet, tracker } = setup();
     tracker.syncDesired({ visible: true });

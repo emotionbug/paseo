@@ -27,8 +27,8 @@ try {
   ]);
   assert.strictEqual(configured.exitCode, 0, configured.stderr);
 
-  console.log("Test 1: `paseo` runs blocking onboarding without implicit relay pairing");
-  const onboard = await $`PASEO_HOME=${paseoHome} PASEO_PAIRING_QR=0 npx paseo`.nothrow();
+  console.log("Test 1: `paseo onboard` runs blocking setup without implicit relay pairing");
+  const onboard = await $`PASEO_HOME=${paseoHome} PASEO_PAIRING_QR=0 npx paseo onboard`.nothrow();
 
   assert.strictEqual(
     onboard.exitCode,

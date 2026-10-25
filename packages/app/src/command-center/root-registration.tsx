@@ -3,8 +3,6 @@ import { router, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   CalendarClock,
-  CircleDashed,
-  Folder,
   FolderPlus,
   History,
   Home,
@@ -24,7 +22,6 @@ import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { resolveShortcutKeysForAction } from "@/keyboard/keyboard-shortcuts";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { usePanelStore } from "@/stores/panel-store";
-import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { clearCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
   buildOpenProjectRoute,
@@ -35,7 +32,6 @@ import {
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { CommandCenterContribution, CommandCenterIconProps } from "./contributions";
 import { useCommandCenterActions } from "./provider";
-import { buildGroupingContribution } from "./root-contributions";
 
 const ThemedPlus = withUnistyles(Plus, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedFolderPlus = withUnistyles(FolderPlus, (theme) => ({
@@ -55,10 +51,6 @@ const ThemedSettings = withUnistyles(Settings, (theme) => ({
 }));
 const ThemedHome = withUnistyles(Home, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedImport = withUnistyles(Import, (theme) => ({ color: theme.colors.foregroundMuted }));
-const ThemedFolder = withUnistyles(Folder, (theme) => ({ color: theme.colors.foregroundMuted }));
-const ThemedCircleDashed = withUnistyles(CircleDashed, (theme) => ({
-  color: theme.colors.foregroundMuted,
-}));
 const ThemedPanelLeft = withUnistyles(PanelLeft, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -95,14 +87,6 @@ function ImportIcon({ size }: CommandCenterIconProps) {
   return <ThemedImport size={size} strokeWidth={2.2} />;
 }
 
-function FolderIcon({ size }: CommandCenterIconProps) {
-  return <ThemedFolder size={size} strokeWidth={2.2} />;
-}
-
-function CircleDashedIcon({ size }: CommandCenterIconProps) {
-  return <ThemedCircleDashed size={size} strokeWidth={2.2} />;
-}
-
 function PanelLeftIcon({ size }: CommandCenterIconProps) {
   return <ThemedPanelLeft size={size} strokeWidth={2.2} />;
 }
@@ -119,10 +103,6 @@ export function CommandCenterRootActions() {
   const sessionsRoute = useMemo<Href>(() => buildSessionsRoute(), []);
   const schedulesRoute = useMemo<Href>(() => buildSchedulesRoute(), []);
   const setShortcutsDialogOpen = useKeyboardShortcutsStore((state) => state.setShortcutsDialogOpen);
-  // Narrow selector on purpose: a whole-store subscription would re-register every root action
-  // each time host filters are reconciled.
-  const groupMode = useSidebarViewStore((state) => state.groupMode);
-  const setGroupMode = useSidebarViewStore((state) => state.setGroupMode);
   const isCompact = useIsCompactFormFactor();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
   const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
@@ -316,22 +296,8 @@ export function CommandCenterRootActions() {
       });
     }
 
-    availableActions.push(
-      buildGroupingContribution({
-        groupMode,
-        labels: {
-          section: t("shell.commandCenter.actions"),
-          groupByProject: t("shell.commandCenter.groupByProject"),
-          groupByStatus: t("shell.commandCenter.groupByStatus"),
-        },
-        icons: { project: FolderIcon, status: CircleDashedIcon },
-        setGroupMode,
-      }),
-    );
-
     return availableActions;
   }, [
-    groupMode,
     homeRoute,
     keyboardActionDispatcher,
     openAddProject,
@@ -339,7 +305,6 @@ export function CommandCenterRootActions() {
     overrides,
     schedulesRoute,
     sessionsRoute,
-    setGroupMode,
     setShortcutsDialogOpen,
     settingsRoute,
     shortcutPlatform,

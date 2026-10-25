@@ -1,3 +1,4 @@
+import pino from "pino";
 import { z } from "zod";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -1506,12 +1507,18 @@ test(
   { timeout: 30000 },
   async () => {
     const parentPrompts: string[] = [];
+    const dispatchErrors: unknown[] = [];
+    const logger = pino(
+      { level: "error" },
+      { write: (line) => dispatchErrors.push(JSON.parse(line)) },
+    );
     const childStarted = Promise.withResolvers<void>();
     const finishChild = Promise.withResolvers<void>();
     cleanup.push(async () => {
       finishChild.resolve();
     });
     const a = await daemon({
+      logger,
       agentClients: createTestAgentClients({
         onStartTurn: (prompt, config) => {
           if (config.title === "Batch parent")
@@ -1635,7 +1642,11 @@ test(
     expect(parentPrompts[0]).toContain("LOCAL_CLI_REPORT");
     expect(parentPrompts[0]).toContain('event="finished"');
     expect(parentPrompts[0]).toContain(`source-agent-id="${child.id}"`);
-    await expect.poll(receiptStates, { timeout: 10000 }).toEqual(["completed", "completed"]);
+    await expect
+      .poll(async () => ({ states: await receiptStates(), errors: dispatchErrors }), {
+        timeout: 10000,
+      })
+      .toEqual({ states: ["completed", "completed"], errors: [] });
     const timeline = await origin.client.fetchAgentTimeline(parent.id);
     const messages = timeline.entries.flatMap((row) =>
       row.item.type === "tool_call" && row.item.agentMessage ? [row.item.agentMessage] : [],

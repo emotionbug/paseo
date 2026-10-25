@@ -152,6 +152,9 @@
               "provider": {
                 "type": "string"
               },
+              "cliDefault": {
+                "type": "boolean"
+              },
               "model": {
                 "type": "string"
               },

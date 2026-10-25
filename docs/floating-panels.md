@@ -357,8 +357,10 @@ ignore ref churn while dismissing.
 
 Do not treat `onChange(-1)` as a close by itself. In a stacked
 `BottomSheetModal`, `-1` can also mean the sheet is temporarily hidden under
-another pushed sheet. Close React state from `onDismiss`; use `onChange` only to
-track phase.
+another pushed sheet. Close React state from `onDismiss`. A nonnegative `onChange`
+must also reconcile a pending hide: Gorhom can miss a dismiss requested before its
+presentation portal mounts. Without that reconciliation, resizing during an async
+save can leave a closed editor's sheet blocking the controls beneath it.
 
 All sheets use the app-wide Gorhom modal provider through `IsolatedBottomSheetModal`, with no
 exceptions: one stack means a sheet opened from any sheet lands on top of it and uncovers it on
