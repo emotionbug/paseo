@@ -491,8 +491,13 @@ export async function withButtonShowcase(
             "Plugin buttons with a long project name",
           );
           await showcase.setTitle("Button showcase with a long workspace title");
+          // The active session owns the header title; the workspace name remains
+          // independent and still drives the plugin's workspace subscriptions.
+          await workspace.client.updateAgent(agent.id, {
+            name: "Button showcase with a long session title",
+          });
           await expect(page.getByTestId("workspace-header-title")).toHaveText(
-            "Button showcase with a long workspace title",
+            "Button showcase with a long session title",
           );
           await expectHeaderTextTruncated(page);
           await expect(
@@ -502,6 +507,8 @@ export async function withButtonShowcase(
             page.getByRole("button", { name: "Open menu", exact: true }),
           ).toBeInViewport();
           await showcase.setTitle("Button showcase");
+          await workspace.client.updateAgent(agent.id, { name: "Button showcase" });
+          await expect(page.getByTestId("workspace-header-title")).toHaveText("Button showcase");
           await press(page, "Composer status");
           await expectDetails(page);
           await expectSurfaceVisible(
@@ -646,7 +653,7 @@ export async function withButtonShowcase(
           await expect(workspaceMenuRow(page, "Header status")).toHaveCount(0);
           await closeCompactWorkspaceMenu(page);
           await page.setViewportSize(WIDE);
-          await showcase.setTitle("Healthy app after plugin unload");
+          await workspace.client.updateAgent(agent.id, { name: "Healthy app after plugin unload" });
           await expect(page.getByTestId("workspace-header-title")).toHaveText(
             "Healthy app after plugin unload",
           );

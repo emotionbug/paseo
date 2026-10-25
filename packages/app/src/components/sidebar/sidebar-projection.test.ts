@@ -205,7 +205,7 @@ describe("session-first sidebar", () => {
     { serverId: "other", label: "Build server" },
   ];
 
-  it("retains the session projection through unrelated stream updates", () => {
+  it("retains the directory and session projection through unrelated stream updates", () => {
     const selector = createSessionHostsSelector(
       [makeProject([makeWorkspace("main").placement])],
       profiles,
@@ -214,47 +214,88 @@ describe("session-first sidebar", () => {
     const first = selector({ srv: { agents } });
     const next = selector({ srv: { agents }, unrelated: { agents: new Map() } });
     expect(next).toBe(first);
-    expect(next[0].sessions.map((agent) => agent.id)).toEqual(["chat"]);
+    expect(next[0].projects[0].sessions.map((agent) => agent.id)).toEqual(["chat"]);
   });
 
-  it("always renders the host above its sessions, including a single host", () => {
+  it("always renders host, directory, then session, including a single host and directory", () => {
     const groups = buildSessionHosts(
       [makeProject([makeWorkspace("main").placement])],
       [profiles[0]],
       { srv: { agents: new Map([["chat", session("chat")]]) } },
     );
-    expect(buildSessionTreeRows(groups, "", new Set()).map((row) => row.key)).toEqual([
+    expect(buildSessionTreeRows(groups, "", new Set(), new Set()).map((row) => row.key)).toEqual([
       "host:srv",
+      "project:srv:project",
       "session:srv:chat",
     ]);
+    expect(groups[0].projects[0]).toMatchObject({
+      key: "project:srv:project",
+      host: { serverId: "srv", projectId: "project", iconWorkingDir: "/repo/project" },
+    });
   });
 
-  it("sorts sessions across projects by activity within each host", () => {
+  it("preserves directory order and sorts activity only within each directory", () => {
     const groups = buildSessionHosts(
       [
         makeProject([makeWorkspace("main").placement]),
-        makeProject([makeWorkspace("second").placement], "second-project"),
+        makeProject(
+          [makeWorkspace("second", "done", [], "second-project").placement],
+          "second-project",
+        ),
       ],
-      profiles,
+      [profiles[0]],
       {
         srv: {
           agents: new Map([
             ["old", session("old")],
             [
-              "recent",
-              session("recent", {
+              "newest",
+              session("newest", {
                 workspaceId: "second",
-                lastActivityAt: new Date("2026-10-24"),
+                lastActivityAt: new Date("2026-10-25"),
               }),
             ],
+            ["recent", session("recent", { lastActivityAt: new Date("2026-10-24") })],
           ]),
         },
       },
     );
-    expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["recent", "old"]);
+    expect(buildSessionTreeRows(groups, "", new Set(), new Set()).map((row) => row.key)).toEqual([
+      "host:srv",
+      "project:srv:project",
+      "session:srv:recent",
+      "session:srv:old",
+      "project:srv:second-project",
+      "session:srv:newest",
+    ]);
   });
 
-  it("does not leak archived, child, or filtered-project sessions into the list", () => {
+  it("retains empty directories and distinct directories with the same display name", () => {
+    const first = makeProject([], "first");
+    const second = makeProject([], "second");
+    first.projectName = "shared";
+    second.projectName = "shared";
+    const groups = buildSessionHosts([first, second], [profiles[0]], {});
+    expect(
+      groups[0].projects.map((group) => ({
+        key: group.key,
+        name: group.project.projectName,
+        directory: group.host.iconWorkingDir,
+        sessions: group.sessions,
+      })),
+    ).toEqual([
+      { key: "project:srv:first", name: "shared", directory: "/repo/first", sessions: [] },
+      { key: "project:srv:second", name: "shared", directory: "/repo/second", sessions: [] },
+    ]);
+    expect(
+      buildSessionTreeRows(groups, "shared", new Set(["srv"]), new Set()).map((row) => row.key),
+    ).toEqual(["host:srv", "project:srv:first", "project:srv:second"]);
+    expect(
+      buildSessionTreeRows(groups, "/repo/second", new Set(), new Set()).map((row) => row.key),
+    ).toEqual(["host:srv", "project:srv:second"]);
+  });
+
+  it("does not leak archived, child, or filtered-project sessions into a directory", () => {
     const agents = [
       session("visible"),
       session("archived", { archivedAt: new Date("2026-10-24") }),
@@ -264,49 +305,103 @@ describe("session-first sidebar", () => {
     const groups = buildSessionHosts([makeProject([makeWorkspace("main").placement])], profiles, {
       srv: { agents: new Map(agents.map((agent) => [agent.id, agent])) },
     });
-    expect(groups[0].sessions.map((agent) => agent.id)).toEqual(["visible"]);
+    expect(groups[0].projects[0].sessions.map((agent) => agent.id)).toEqual(["visible"]);
+    expect(groups[1].projects).toEqual([]);
   });
 
-  it("keeps offline and empty hosts visible even without projects", () => {
+  it("keeps offline and empty hosts visible even without directories", () => {
     expect(buildSessionHosts([], profiles, {})).toEqual(
-      profiles.map((host) => ({ host, sessions: [] })),
+      profiles.map((host) => ({ host, projects: [] })),
     );
   });
 
-  it("scopes identical workspace and session IDs to their host", () => {
+  it("scopes identical directory, workspace and session IDs to their actual host placements", () => {
     const first = makeWorkspace("main").placement;
     const second = { ...first, workspaceKey: "other:main", serverId: "other" };
-    const groups = buildSessionHosts([makeProject([first, second])], profiles, {
+    const project = makeProject([first, second]);
+    project.hosts.push({
+      ...project.hosts[0],
+      serverId: "other",
+    });
+    const groups = buildSessionHosts([project], profiles, {
       srv: { agents: new Map([["same", session("same")]]) },
       other: { agents: new Map([["same", session("same", { serverId: "other" })]]) },
     });
-    expect(buildSessionTreeRows(groups, "", new Set()).map((row) => row.key)).toEqual([
+    expect(buildSessionTreeRows(groups, "", new Set(), new Set()).map((row) => row.key)).toEqual([
       "host:srv",
+      "project:srv:project",
       "session:srv:same",
       "host:other",
+      "project:other:project",
       "session:other:same",
     ]);
-    expect(buildSessionTreeRows(groups, "", new Set(["srv"])).map((row) => row.key)).toEqual([
+    expect(
+      buildSessionTreeRows(groups, "", new Set(), new Set(["project:srv:project"])).map(
+        (row) => row.key,
+      ),
+    ).toEqual([
       "host:srv",
+      "project:srv:project",
       "host:other",
+      "project:other:project",
       "session:other:same",
     ]);
+    expect(
+      buildSessionTreeRows(groups, "", new Set(["srv"]), new Set()).map((row) => row.key),
+    ).toEqual(["host:srv", "host:other", "project:other:project", "session:other:same"]);
   });
 
-  it("searches collapsed hosts and restores their collapse state when cleared", () => {
+  it("collapses one directory without hiding its siblings or their sessions", () => {
+    const groups = buildSessionHosts(
+      [
+        makeProject([makeWorkspace("main").placement]),
+        makeProject([makeWorkspace("second", "done", [], "second").placement], "second"),
+      ],
+      [profiles[0]],
+      {
+        srv: {
+          agents: new Map([
+            ["first", session("first")],
+            ["second", session("second", { workspaceId: "second" })],
+          ]),
+        },
+      },
+    );
+    const rows = buildSessionTreeRows(groups, "", new Set(), new Set(["project:srv:project"]));
+    expect(rows.map((row) => row.key)).toEqual([
+      "host:srv",
+      "project:srv:project",
+      "project:srv:second",
+      "session:srv:second",
+    ]);
+    expect(rows[1]).toMatchObject({ kind: "project", collapsed: true });
+    expect(rows[2]).toMatchObject({ kind: "project", collapsed: false });
+  });
+
+  it("searches collapsed hosts and directories and restores both collapse states", () => {
     const groups = buildSessionHosts([makeProject([makeWorkspace("main").placement])], profiles, {
       srv: { agents: new Map([["chat", session("chat", { title: "Fix navigation" })]]) },
     });
-    const collapsed = new Set(["srv"]);
-    for (const query of ["navigation", "laptop", "project", "codex"]) {
-      const rows = buildSessionTreeRows(groups, query, collapsed);
-      expect(rows.map((row) => row.key)).toEqual(["host:srv", "session:srv:chat"]);
+    const collapsedHosts = new Set(["srv"]);
+    const collapsedProjects = new Set(["project:srv:project"]);
+    for (const query of ["navigation", "laptop", "project", "/repo/project", "codex"]) {
+      const rows = buildSessionTreeRows(groups, query, collapsedHosts, collapsedProjects);
+      expect(rows.map((row) => row.key)).toEqual([
+        "host:srv",
+        "project:srv:project",
+        "session:srv:chat",
+      ]);
       expect(rows[0]).toMatchObject({ kind: "host", collapsed: false });
+      expect(rows[1]).toMatchObject({ kind: "project", collapsed: false });
     }
-    expect(buildSessionTreeRows(groups, "", collapsed).map((row) => row.key)).toEqual([
-      "host:srv",
-      "host:other",
-    ]);
-    expect(buildSessionTreeRows(groups, "missing", collapsed)).toEqual([]);
+    expect(
+      buildSessionTreeRows(groups, "", collapsedHosts, collapsedProjects).map((row) => row.key),
+    ).toEqual(["host:srv", "host:other"]);
+    expect(
+      buildSessionTreeRows(groups, "", new Set(), collapsedProjects).map((row) => row.key),
+    ).toEqual(["host:srv", "project:srv:project", "host:other"]);
+    expect(collapsedHosts).toEqual(new Set(["srv"]));
+    expect(collapsedProjects).toEqual(new Set(["project:srv:project"]));
+    expect(buildSessionTreeRows(groups, "missing", collapsedHosts, collapsedProjects)).toEqual([]);
   });
 });

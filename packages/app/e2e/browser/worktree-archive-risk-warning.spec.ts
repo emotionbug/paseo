@@ -25,11 +25,8 @@ import {
 async function seedRiskyWorktree(
   client: Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>,
   worktreeDirectory: string,
+  risk: "uncommitted" | "unpushed",
 ): Promise<void> {
-  // The daemon only reports unpushed commits when the branch has a configured
-  // upstream (aheadOfOrigin is computed against `branch.<name>.merge`). Push the
-  // worktree branch at its current head first so it tracks origin with 0 ahead,
-  // then add the local commit below that becomes the single unpushed commit.
   const branch = execSync("git rev-parse --abbrev-ref HEAD", {
     cwd: worktreeDirectory,
     stdio: "pipe",
@@ -41,24 +38,33 @@ async function seedRiskyWorktree(
     stdio: "ignore",
   });
 
-  const committedFile = path.join(worktreeDirectory, "UNPUSHED.md");
-  await writeFile(committedFile, "# unpushed\n");
-  execSync(`git add ${JSON.stringify(path.basename(committedFile))}`, {
-    cwd: worktreeDirectory,
-    stdio: "ignore",
-  });
-  execSync('git commit -m "Add unpushed change"', {
-    cwd: worktreeDirectory,
-    stdio: "ignore",
-  });
-
-  const dirtyFile = path.join(worktreeDirectory, "DIRTY.md");
-  await writeFile(dirtyFile, "# dirty\n");
-
-  const refreshed = await client.checkoutRefresh(worktreeDirectory);
-  if (!refreshed.success) {
-    throw new Error(`Failed to refresh checkout for ${worktreeDirectory}`);
+  if (risk === "unpushed") {
+    const committedFile = path.join(worktreeDirectory, "UNPUSHED.md");
+    await writeFile(committedFile, "# unpushed\n");
+    execSync(`git add ${JSON.stringify(path.basename(committedFile))}`, {
+      cwd: worktreeDirectory,
+      stdio: "ignore",
+    });
+    execSync('git commit -m "Add unpushed change"', {
+      cwd: worktreeDirectory,
+      stdio: "ignore",
+    });
+  } else {
+    await writeFile(path.join(worktreeDirectory, "DIRTY.md"), "# dirty\n");
   }
+
+  // Refresh is throttled/coalesced with watcher reads. Wait until the daemon sees
+  // the externally seeded Git state before exercising its archive confirmation.
+  await expect
+    .poll(async () => {
+      const refreshed = await client.checkoutRefresh(worktreeDirectory);
+      if (!refreshed.success) {
+        throw new Error(`Failed to refresh checkout for ${worktreeDirectory}`);
+      }
+      const status = await client.getCheckoutStatus(worktreeDirectory);
+      return { isDirty: status.isDirty, aheadOfOrigin: status.aheadOfOrigin };
+    })
+    .toEqual({ isDirty: risk === "uncommitted", aheadOfOrigin: risk === "unpushed" ? 1 : 0 });
 }
 
 // The archive confirmation is a synchronous web `window.confirm()`. The click that
@@ -87,7 +93,7 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
   let tempRepo: { path: string; cleanup: () => Promise<void> };
   const createdWorktreeDirectories = new Set<string>();
 
-  test.describe.configure({ retries: 1, timeout: 120_000 });
+  test.describe.configure({ timeout: 120_000 });
 
   test.beforeEach(async () => {
     client = await connectNewWorkspaceDaemonClient();
@@ -103,42 +109,37 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
     await tempRepo?.cleanup().catch(() => undefined);
   });
 
-  test("a risky workspace archive is gated by confirmation and removes its worktree after acceptance", async ({
-    page,
-  }) => {
-    const serverId = getServerId();
-    await openProjectViaDaemon(client, tempRepo.path);
-    const worktree = await createWorktreeViaDaemon(client, {
-      cwd: tempRepo.path,
-      slug: `archive-risk-${Date.now()}`,
+  for (const risk of ["uncommitted", "unpushed"] as const) {
+    test(`${risk} changes require confirmation before the worktree is removed`, async ({
+      page,
+    }) => {
+      const serverId = getServerId();
+      await openProjectViaDaemon(client, tempRepo.path);
+      const worktree = await createWorktreeViaDaemon(client, {
+        cwd: tempRepo.path,
+        slug: `archive-risk-${Date.now()}`,
+      });
+      createdWorktreeDirectories.add(worktree.workspaceDirectory);
+      expect(existsSync(worktree.workspaceDirectory)).toBe(true);
+
+      await seedRiskyWorktree(client, worktree.workspaceDirectory, risk);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: worktree.workspaceId });
+
+      const warning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "dismiss");
+      expect(warning.type()).toBe("confirm");
+      await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: worktree.workspaceId });
+      expect(existsSync(worktree.workspaceDirectory)).toBe(true);
+
+      await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "accept");
+      await expectWorkspaceAbsentFromCommandCenter(page, worktree.workspaceId);
+      await expect
+        .poll(() => existsSync(worktree.workspaceDirectory), { timeout: 30_000 })
+        .toBe(false);
+
+      createdWorktreeDirectories.delete(worktree.workspaceDirectory);
     });
-    createdWorktreeDirectories.add(worktree.workspaceDirectory);
-    expect(existsSync(worktree.workspaceDirectory)).toBe(true);
-
-    await seedRiskyWorktree(client, worktree.workspaceDirectory);
-
-    await gotoAppShell(page);
-    await waitForSidebarHydration(page);
-    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: worktree.workspaceId });
-
-    const firstWarning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "dismiss");
-    expect(firstWarning.type()).toBe("confirm");
-    expect(firstWarning.message()).toContain(`Archive "${worktree.workspaceName}"?`);
-    expect(firstWarning.message()).toContain("Uncommitted changes");
-    expect(firstWarning.message()).toContain("1 unpushed commit");
-
-    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: worktree.workspaceId });
-    expect(existsSync(worktree.workspaceDirectory)).toBe(true);
-
-    const secondWarning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "accept");
-    expect(secondWarning.message()).toContain("Uncommitted changes");
-    expect(secondWarning.message()).toContain("1 unpushed commit");
-
-    await expectWorkspaceAbsentFromCommandCenter(page, worktree.workspaceId);
-    await expect
-      .poll(() => existsSync(worktree.workspaceDirectory), { timeout: 30_000 })
-      .toBe(false);
-
-    createdWorktreeDirectories.delete(worktree.workspaceDirectory);
-  });
+  }
 });

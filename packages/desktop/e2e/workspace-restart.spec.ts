@@ -11,7 +11,6 @@ import { scrollAgentChatToBottom } from "../../app/e2e/support/helpers/agent-bot
 import { getServerId } from "../../app/e2e/support/helpers/server-id";
 import { waitForWorkspaceTabsVisible } from "../../app/e2e/support/helpers/workspace-tabs";
 import {
-  expectWorkspaceHeader,
   switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
 } from "../../app/e2e/support/helpers/workspace-ui";
@@ -59,28 +58,13 @@ async function getStartupPresentation(page: Page): Promise<StartupPresentation[]
   return page.evaluate(() => window.__paseoStartupPresentationTrace?.slice() ?? []);
 }
 
-async function expectWorkspaceLocation(
-  page: Page,
-  input: {
-    serverId: string;
-    workspace: Awaited<ReturnType<typeof seedWorkspace>>;
-  },
-): Promise<void> {
-  await expectAppRoute(page, buildHostWorkspaceRoute(input.serverId, input.workspace.workspaceId), {
-    timeout: 30_000,
-  });
-  await expectWorkspaceHeader(page, {
-    title: input.workspace.workspaceName,
-    subtitle: input.workspace.projectDisplayName,
-  });
-}
-
 test("refresh keeps one continuous splash before restoring the desktop workspace", async ({
   page,
 }) => {
   const serverId = getServerId();
   const daemonGate = await installDaemonWebSocketGate(page);
   const workspace = await seedWorkspace({ repoPrefix: "workspace-refresh-route-" });
+  const workspaceRoute = buildHostWorkspaceRoute(serverId, workspace.workspaceId);
 
   try {
     const agent = await workspace.client.createAgent({
@@ -103,7 +87,7 @@ test("refresh keeps one continuous splash before restoring the desktop workspace
     await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: workspace.workspaceId });
     await waitForWorkspaceTabsVisible(page);
     await expectWorkspaceTabVisible(page, agent.id);
-    await expectWorkspaceLocation(page, { serverId, workspace });
+    await expectAppRoute(page, workspaceRoute, { timeout: 30_000 });
 
     await observeStartupPresentation(page);
     await daemonGate.drop();
@@ -112,7 +96,8 @@ test("refresh keeps one continuous splash before restoring the desktop workspace
     daemonGate.restore();
     await waitForSidebarHydration(page);
 
-    await expectWorkspaceLocation(page, { serverId, workspace });
+    await expectAppRoute(page, workspaceRoute, { timeout: 30_000 });
+    await expectWorkspaceTabVisible(page, agent.id);
     await waitForWorkspaceTabsVisible(page);
     expect(await getStartupPresentation(page)).toEqual(["splash", "app"]);
   } finally {

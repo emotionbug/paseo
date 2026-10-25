@@ -18,16 +18,23 @@ export type SidebarSession = Pick<
 >;
 
 export type SessionHostProfile = Pick<HostProfile, "serverId" | "label">;
-export type HostSession = SidebarSession & { projectName: string };
+
+export interface SessionProject {
+  key: string;
+  project: SidebarProjectEntry;
+  host: SidebarProjectEntry["hosts"][number];
+  sessions: SidebarSession[];
+}
 
 export interface SessionHost {
   host: SessionHostProfile;
-  sessions: HostSession[];
+  projects: SessionProject[];
 }
 
 export type SessionTreeRow =
   | { kind: "host"; key: string; host: SessionHostProfile; collapsed: boolean }
-  | { kind: "session"; key: string; session: HostSession };
+  | { kind: "project"; key: string; group: SessionProject; collapsed: boolean }
+  | { kind: "session"; key: string; session: SidebarSession };
 
 type SessionHosts = Record<string, { agents: ReadonlyMap<string, SidebarSession> } | undefined>;
 
@@ -51,21 +58,35 @@ export function buildSessionHosts(
   profiles: readonly SessionHostProfile[],
   hosts: SessionHosts,
 ): SessionHost[] {
-  const projectNamesByWorkspace = new Map<string, string>();
+  const result: SessionHost[] = profiles.map((host) => ({ host, projects: [] }));
+  const groupsByHost = new Map(result.map((group) => [group.host.serverId, group]));
+  const projectsByWorkspace = new Map<string, SessionProject>();
   for (const project of projects) {
-    for (const workspace of project.workspaces) {
-      projectNamesByWorkspace.set(workspace.workspaceKey, project.projectName);
+    for (const placement of project.hosts) {
+      const hostGroup = groupsByHost.get(placement.serverId);
+      if (!hostGroup) continue;
+      const group: SessionProject = {
+        key: `project:${placement.serverId}:${placement.projectId}`,
+        project,
+        host: placement,
+        sessions: [],
+      };
+      hostGroup.projects.push(group);
+      for (const workspace of project.workspaces) {
+        if (workspace.serverId === placement.serverId) {
+          projectsByWorkspace.set(workspace.workspaceKey, group);
+        }
+      }
     }
   }
 
-  return profiles.map((host) => {
-    const sessions: HostSession[] = [];
+  for (const { host, projects: hostProjects } of result) {
     for (const agent of hosts[host.serverId]?.agents.values() ?? []) {
       if (agent.archivedAt || agent.parentAgentId || !agent.workspaceId) continue;
-      const projectName = projectNamesByWorkspace.get(`${host.serverId}:${agent.workspaceId}`);
-      if (projectName === undefined) continue;
+      const group = projectsByWorkspace.get(`${host.serverId}:${agent.workspaceId}`);
+      if (!group) continue;
       // Streamed messages are deliberately absent from this projection.
-      sessions.push({
+      group.sessions.push({
         id: agent.id,
         serverId: host.serverId,
         title: agent.title,
@@ -77,44 +98,54 @@ export function buildSessionHosts(
         createdAt: agent.createdAt,
         archivedAt: agent.archivedAt,
         parentAgentId: agent.parentAgentId,
-        projectName,
       });
     }
-    sessions.sort(
-      (a, b) =>
-        b.lastActivityAt.getTime() - a.lastActivityAt.getTime() ||
-        b.createdAt.getTime() - a.createdAt.getTime() ||
-        a.id.localeCompare(b.id),
-    );
-    return { host, sessions };
-  });
+    for (const group of hostProjects) {
+      group.sessions.sort(
+        (a, b) =>
+          b.lastActivityAt.getTime() - a.lastActivityAt.getTime() ||
+          b.createdAt.getTime() - a.createdAt.getTime() ||
+          a.id.localeCompare(b.id),
+      );
+    }
+  }
+  return result;
 }
 
 export function buildSessionTreeRows(
   hosts: readonly SessionHost[],
   query: string,
   collapsedHostIds: ReadonlySet<string>,
+  collapsedProjectKeys: ReadonlySet<string>,
 ): SessionTreeRow[] {
   const rows: SessionTreeRow[] = [];
   const search = query.trim().toLocaleLowerCase();
-  for (const { host, sessions } of hosts) {
+  for (const { host, projects } of hosts) {
     const hostMatches = host.label.toLocaleLowerCase().includes(search);
-    const matches =
-      !search || hostMatches
-        ? sessions
-        : sessions.filter((session) =>
-            `${session.title ?? ""} ${session.provider} ${session.projectName}`
-              .toLocaleLowerCase()
-              .includes(search),
-          );
-    if (search && !hostMatches && matches.length === 0) continue;
-    // Search reveals matches without overwriting the user's collapsed state.
+    const hostIndex = rows.length;
+    // Search reveals matches without overwriting either ancestor's collapsed state.
     const collapsed = !search && collapsedHostIds.has(host.serverId);
     rows.push({ kind: "host", key: `host:${host.serverId}`, host, collapsed });
     if (collapsed) continue;
-    for (const session of matches) {
-      rows.push({ kind: "session", key: `session:${host.serverId}:${session.id}`, session });
+    for (const group of projects) {
+      const projectMatches = `${group.project.projectName} ${group.host.iconWorkingDir}`
+        .toLocaleLowerCase()
+        .includes(search);
+      const matches =
+        !search || hostMatches || projectMatches
+          ? group.sessions
+          : group.sessions.filter((session) =>
+              `${session.title ?? ""} ${session.provider}`.toLocaleLowerCase().includes(search),
+            );
+      if (search && !hostMatches && !projectMatches && matches.length === 0) continue;
+      const projectCollapsed = !search && collapsedProjectKeys.has(group.key);
+      rows.push({ kind: "project", key: group.key, group, collapsed: projectCollapsed });
+      if (projectCollapsed) continue;
+      for (const session of matches) {
+        rows.push({ kind: "session", key: `session:${host.serverId}:${session.id}`, session });
+      }
     }
+    if (search && !hostMatches && rows.length === hostIndex + 1) rows.pop();
   }
   return rows;
 }

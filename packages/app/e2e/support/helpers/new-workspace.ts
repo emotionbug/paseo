@@ -20,6 +20,7 @@ type NewWorkspaceDaemonClient = Pick<
   | "fetchAgents"
   | "fetchWorkspaces"
   | "getPaseoWorktreeList"
+  | "getCheckoutStatus"
   | "getDaemonConfig"
   | "installDirectoryPlugin"
   | "installPluginSource"
@@ -239,7 +240,9 @@ export async function expectNewWorkspaceProjectSelected(
   page: Page,
   projectDisplayName: string,
 ): Promise<void> {
-  const projectPicker = page.getByRole("button", { name: "Workspace project" });
+  const projectPicker = page
+    .getByRole("button", { name: "Workspace project" })
+    .filter({ visible: true });
   await expect(projectPicker).toBeVisible({ timeout: 30_000 });
   await expect(projectPicker).toContainText(projectDisplayName);
 }
@@ -282,9 +285,12 @@ export async function expectNewWorkspaceDraft(page: Page, draft: string): Promis
 }
 
 export async function selectNewWorkspaceHost(page: Page, hostLabel: string): Promise<void> {
-  const trigger = page.getByTestId("host-picker-trigger");
+  const trigger = page.getByTestId("host-picker-trigger").filter({ visible: true });
   await trigger.click();
-  await page.getByRole("button", { name: hostLabel, exact: true }).click();
+  await page
+    .getByTestId(/^new-workspace-host-picker-option-/)
+    .and(page.getByRole("button", { name: hostLabel, exact: true }))
+    .click();
   await expect(trigger).toContainText(hostLabel);
 }
 
@@ -314,7 +320,9 @@ export async function selectNewWorkspaceProject(
   page: Page,
   input: { projectKey: string; projectDisplayName: string; projectViewKey?: string },
 ): Promise<void> {
-  const trigger = page.getByTestId("new-workspace-project-picker-trigger");
+  const trigger = page
+    .getByTestId("new-workspace-project-picker-trigger")
+    .filter({ visible: true });
   await expect(trigger).toBeVisible({ timeout: 30_000 });
   await trigger.click();
 

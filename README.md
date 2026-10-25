@@ -1,14 +1,18 @@
 # Paseo Sessions fork
 
-This fork makes conversations the sidebar unit on Android and Linux desktop.
-Each host has an expandable row, even when only one host is configured. Its sessions
-appear directly underneath, ordered by recent activity, with their project names in
-the detail line. Search matches hosts, projects, session titles and providers, revealing
-matching sessions without changing which hosts you collapsed. New sessions use the
-existing local checkout on the selected host.
+This fork organizes the Android and Linux desktop sidebar as **host → directory → session**.
+Each host has an expandable row, even when only one host is configured. Its project
+directories remain separate, including empty directories, with sessions ordered by recent
+activity inside each directory. Host and directory rows collapse independently; directory
+collapse survives reloads. Identical paths on different hosts remain separate.
 
-Workspace rows and grouping controls are removed from the sidebar; Command Center still
-opens workspaces, and host, project and label filters still narrow the session list.
+Search matches hosts, directory names and paths, session titles and providers, temporarily
+expanding matching ancestors without changing your collapsed sections. A directory's plus
+button creates a session in that exact local checkout on its host.
+
+Workspace rows and grouping-mode controls are removed from the sidebar, not directory
+grouping. Command Center still opens workspaces, and host, project and label filters
+still narrow the session tree.
 Existing session IDs, history, files and daemon storage are unchanged. Closing a chat tab
 does not archive its session.
 

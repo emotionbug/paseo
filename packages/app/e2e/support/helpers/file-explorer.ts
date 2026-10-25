@@ -2,7 +2,7 @@ import { expect, type Download, type Page } from "@playwright/test";
 import { openFilesPanel } from "./workspace-tabs";
 
 function fileExplorerTree(page: Page) {
-  return page.getByTestId("file-explorer-tree-scroll");
+  return page.getByTestId("file-explorer-tree-scroll").filter({ visible: true });
 }
 
 function fileExplorerEntry(page: Page, name: string) {

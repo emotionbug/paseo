@@ -106,15 +106,18 @@ test.describe("Workspace agent title handoff", () => {
       await expectComposerVisible(page);
 
       const promptTitle = "Investigate optimistic tab title handoff";
+      const prompt = `${promptTitle}\n\nMake the UI state deterministic.`;
       const generatedTitle = "Generated Handoff Title";
-      await submitMessage(page, `${promptTitle}\n\nMake the UI state deterministic.`);
+      await submitMessage(page, prompt);
       await agentCreatedDelay.waitForCreateRequest();
       await agentCreatedDelay.waitForDelayedCreatedStatus();
 
+      // Pending drafts display the full prompt; the daemon initializes the title
+      // from its first content line once the create response is released.
       await expect(
         page
           .locator('[data-testid^="workspace-tab-"]')
-          .getByText(promptTitle, { exact: true })
+          .getByText(prompt, { exact: true })
           .filter({ visible: true }),
       ).toBeVisible({
         timeout: 15_000,
@@ -136,7 +139,7 @@ test.describe("Workspace agent title handoff", () => {
       await expect
         .poll(() => fetchActiveAgentTitle(workspace.client, agentId), { timeout: 10_000 })
         .toBe(promptTitle);
-      await expect(agentTab).toContainText(promptTitle, { timeout: 15_000 });
+      await expect(agentTab).toHaveText(promptTitle, { timeout: 15_000 });
       await agentTab.click({ button: "right" });
       await expect(page.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible({
         timeout: 10_000,

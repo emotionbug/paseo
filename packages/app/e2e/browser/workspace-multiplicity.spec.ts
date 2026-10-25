@@ -13,9 +13,9 @@ import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-cli
 import {
   expectExplorerEntryHidden,
   expectExplorerEntryVisible,
+  openFileExplorer,
 } from "../support/helpers/file-explorer";
 import { getServerId } from "../support/helpers/server-id";
-import { openFilesPanel } from "../support/helpers/workspace-tabs";
 import {
   switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
@@ -25,11 +25,6 @@ import {
 // Modern creation always adds a workspace in the selected project's directory.
 // Worktree-backed workspaces created through the daemon remain independently
 // selectable alongside workspaces sharing the project's original checkout.
-
-async function openFilesTab(page: Page): Promise<void> {
-  await openFilesPanel(page);
-  await expect(page.getByTestId("file-explorer-tree-scroll")).toBeVisible({ timeout: 30_000 });
-}
 
 async function createWorkspaceViaUi(
   page: Page,
@@ -112,7 +107,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         serverId: getServerId(),
         workspaceId: second.workspaceId,
       });
-      await openFilesTab(page);
+      await openFileExplorer(page);
       await expectExplorerEntryVisible(page, "README.md");
 
       // Selecting the first workspace shows the SAME shared directory data.
@@ -121,7 +116,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         serverId: getServerId(),
         workspaceId: seeded.workspaceId,
       });
-      await openFilesTab(page);
+      await openFileExplorer(page);
       await expectExplorerEntryVisible(page, "README.md");
     } finally {
       await seeded.cleanup();
@@ -172,7 +167,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         serverId: getServerId(),
         workspaceId: worktree.id,
       });
-      await openFilesTab(page);
+      await openFileExplorer(page);
       await expectExplorerEntryVisible(page, "README.md");
       await expectExplorerEntryVisible(page, "worktree-only.txt");
       await expectExplorerEntryHidden(page, "checkout-only.txt");
@@ -182,7 +177,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         serverId: getServerId(),
         workspaceId: seeded.workspaceId,
       });
-      await openFilesTab(page);
+      await openFileExplorer(page);
       await expectExplorerEntryVisible(page, "README.md");
       await expectExplorerEntryVisible(page, "checkout-only.txt");
       await expectExplorerEntryHidden(page, "worktree-only.txt");
