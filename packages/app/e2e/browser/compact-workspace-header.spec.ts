@@ -25,14 +25,17 @@ const labels = {
 };
 
 async function openNamedWorkspace(page: Page, names: typeof labels.long) {
-  const workspace = await seedWorkspace({ repoPrefix: "header-width-", title: names.title });
+  const workspace = await seedWorkspace({
+    repoPrefix: "header-width-",
+    title: "Workspace container",
+  });
   try {
     await workspace.client.renameProject(workspace.projectId, names.project);
     const agent = await workspace.client.createAgent({
       provider: "mock",
       cwd: workspace.repoPath,
       workspaceId: workspace.workspaceId,
-      title: "Header layout check",
+      title: names.title,
       modeId: "load-test",
       model: "e2e-fast-stream",
     });

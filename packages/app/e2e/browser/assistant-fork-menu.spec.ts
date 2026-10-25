@@ -86,7 +86,7 @@ test.describe("Assistant fork menu", () => {
     expect(await forkAttachment.waitForText()).toContain(visibleBeforeFork);
     await expect(page.getByRole("button", { name: "Menu backdrop", exact: true })).toHaveCount(0);
 
-    await page.getByRole("button", { name: sourceAgentTitle }).click();
+    await page.getByTestId(`workspace-tab-agent_${session.agentId}`).click();
     await expectLiveAssistantText(page, visibleAfterFork);
   });
 

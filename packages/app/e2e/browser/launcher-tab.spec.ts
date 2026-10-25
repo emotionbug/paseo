@@ -25,7 +25,10 @@ import {
   type TerminalProfile,
 } from "../support/helpers/new-workspace-launch";
 import { gotoAppShell } from "../support/helpers/app";
-import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
+import {
+  waitForSidebarHydration,
+  switchWorkspaceViaCommandCenter,
+} from "../support/helpers/workspace-ui";
 import { getServerId } from "../support/helpers/server-id";
 
 // ─── Shared state ──────────────────────────────────────────────────────────
@@ -78,9 +81,7 @@ test.describe("Tab creation", () => {
 
     const serverId = getServerId();
     const switchWorkspaceRow = async (workspaceId: string) => {
-      const row = page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).first();
-      await expect(row).toBeVisible({ timeout: 30_000 });
-      await row.click();
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId });
       // The shortcut must follow the route, so prove the route actually moved first.
       await expect(page).toHaveURL(new RegExp(`workspace/${workspaceId}(\\b|/|$)`), {
         timeout: 15_000,

@@ -4,12 +4,9 @@ import { verifyDelayedWorkspaceCreation } from "../support/helpers/new-workspace
 test.describe("Delayed workspace creation", () => {
   test.describe.configure({ timeout: 120_000 });
 
-  // Exercise each submit handler's navigation guard. Checkout isolation shares
-  // those handlers; ordinary successful launches live in the creation journeys.
-  test("chat worktree creation keeps the workspace chosen while it was pending", async ({
-    page,
-  }) => {
-    await verifyDelayedWorkspaceCreation(page, "chat", "leave", "worktree");
+  // Exercise each submit handler's navigation guard on current hosts' local creation flow.
+  test("chat creation keeps the workspace chosen while it was pending", async ({ page }) => {
+    await verifyDelayedWorkspaceCreation(page, "chat", "leave");
   });
 
   test("terminal creation keeps the workspace chosen while it was pending", async ({ page }) => {

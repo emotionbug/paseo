@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
+import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labels";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
@@ -14,6 +15,7 @@ export interface SeedWorkspaceDescriptor {
   workspaceDirectory: string;
   diffStat: { additions: number; deletions: number } | null;
   labels?: string[];
+  pinnedAt?: string | null;
 }
 
 interface SeedProjectDescriptor {
@@ -49,7 +51,7 @@ export interface SeedDaemonClient {
   clearWorkspaceAttention(workspaceId: string): Promise<void>;
   setWorkspaceLabel(input: {
     workspaceId: string;
-    label: { name: string; color: "red" };
+    label: WorkspaceLabelDefinition;
     assigned: boolean;
   }): Promise<unknown>;
   listProjects(): Promise<{ projects: SeedProjectDescriptor[] }>;

@@ -39,8 +39,6 @@ test("agent list age advances and command center says just now for a fresh agent
     await expect(page.getByTestId(`workspace-tab-tooltip-agent_${session.agentId}`)).toContainText(
       "3m ago",
     );
-
-    await expect(page.getByTestId("sidebar-workspace-timestamp").first()).toHaveText("3m");
   } finally {
     await session.cleanup();
   }

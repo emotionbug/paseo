@@ -18,7 +18,7 @@ import {
   openAgentTimeline,
   seedLongMockAgentTimeline,
 } from "../support/helpers/timeline-pagination";
-import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
 
 async function expectChatAtBottom(page: Page): Promise<void> {
   await expect
@@ -33,7 +33,7 @@ async function openCompactWorkspace(
   workspace: Pick<MockAgentWorkspace, "workspaceId">,
 ): Promise<void> {
   await openMobileAgentSidebar(page);
-  await switchWorkspaceViaSidebar({
+  await switchWorkspaceViaCommandCenter({
     page,
     serverId: getServerId(),
     workspaceId: workspace.workspaceId,

@@ -5,10 +5,6 @@ import {
   chooseHostBadgeDisplay,
   chooseHostColor,
   expectHostAppearancePreview,
-  expectHostBadgeIconOnly,
-  expectHostBadgeName,
-  expectHostBadgeTinted,
-  expectNoHostBadge,
   leaveHostAppearanceSettings,
   openHostAppearanceSettings,
   reloadPreservingHostRegistry,
@@ -33,9 +29,7 @@ interface TwoHostSidebar {
   secondaryWorkspaceId: string;
 }
 
-// The host badge only appears once the visible sidebar spans more than one host, and that count
-// runs over visible projects — so an offline host with no workspaces will not raise it. Two real
-// daemons, each with a seeded workspace, is the minimum shape that exercises the feature.
+// Two connected hosts prove that changing one host's appearance does not rename the other.
 const test = base.extend<{ twoHostSidebar: TwoHostSidebar }>({
   twoHostSidebar: async ({ page }, provide) => {
     const secondaryHost: IsolatedHostDaemon = await startIsolatedHostDaemon(
@@ -84,7 +78,7 @@ const test = base.extend<{ twoHostSidebar: TwoHostSidebar }>({
 
 test.describe.configure({ timeout: 180_000 });
 
-test("customizes a host badge and preserves its appearance after reload", async ({
+test("customizes host appearance and preserves it after reload", async ({
   page,
   twoHostSidebar,
 }) => {
@@ -94,54 +88,50 @@ test("customizes a host badge and preserves its appearance after reload", async 
   };
   const hostName = "Developer MacBook Pro.local";
 
-  await test.step("rename the host and use its available sidebar width", async () => {
-    await expectHostBadgeName(page, { ...badge, hostName: SECONDARY_HOST_LABEL });
+  await test.step("rename the host in the session tree", async () => {
+    const host = page.getByTestId(`session-host-${badge.serverId}`).filter({ visible: true });
+    await expect(host).toHaveText(SECONDARY_HOST_LABEL);
     await openHostAppearanceSettings(page, badge.serverId);
     await renameHostFromSettings(page, hostName);
     await leaveHostAppearanceSettings(page);
-    await expectHostBadgeName(page, { ...badge, hostName });
-
-    const row = page.getByTestId(`sidebar-workspace-row-${badge.serverId}:${badge.workspaceId}`);
-    const hostBadge = row.getByTestId(`host-badge-${badge.serverId}`);
-    const [badgeBox, rowBox] = await Promise.all([hostBadge.boundingBox(), row.boundingBox()]);
-    expect(badgeBox).not.toBeNull();
-    expect(rowBox).not.toBeNull();
-    expect(badgeBox!.width).toBeGreaterThan(96);
-    expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
-    const widths = await hostBadge.getByText(hostName, { exact: true }).evaluate((label) => ({
-      client: label.clientWidth,
-      content: label.scrollWidth,
-    }));
-    expect(widths.content).toBeLessThanOrEqual(widths.client);
+    await expect(host).toHaveText(hostName);
+    await expect(
+      page.getByTestId(`session-host-${twoHostSidebar.primaryServerId}`).filter({ visible: true }),
+    ).toHaveText(PRIMARY_HOST_LABEL);
   });
 
-  await test.step("preview a color and apply it to the sidebar badge", async () => {
+  await test.step("preview a color and preserve it after reload", async () => {
     await openHostAppearanceSettings(page, badge.serverId);
     await chooseHostColor(page, "Teal");
     await expectHostAppearancePreview(page, { serverId: badge.serverId, hostName, color: "teal" });
-    await leaveHostAppearanceSettings(page);
-    await expectHostBadgeTinted(page, { ...badge, hostName, color: "teal" });
+    await reloadPreservingHostRegistry(page);
+    await expectHostAppearancePreview(page, { serverId: badge.serverId, hostName, color: "teal" });
   });
 
   await test.step("keep the icon-only preference through reload", async () => {
-    await openHostAppearanceSettings(page, badge.serverId);
     await chooseHostBadgeDisplay(page, "Icon only");
-    await leaveHostAppearanceSettings(page);
-    await expectHostBadgeIconOnly(page, { ...badge, hostName });
+    const previewBadge = page
+      .getByTestId("host-appearance-preview")
+      .getByTestId(`host-badge-${badge.serverId}`);
+    await expect(previewBadge).toBeVisible();
+    await expect(previewBadge).not.toHaveText(hostName);
     await reloadPreservingHostRegistry(page);
-    await waitForSidebarHydration(page);
-    await expectHostBadgeIconOnly(page, { ...badge, hostName });
+    await expect(page.getByRole("button", { name: "Sidebar badge, Icon only" })).toBeVisible();
+    await expect(previewBadge).toBeVisible();
+    await expect(previewBadge).not.toHaveText(hostName);
   });
 
-  await test.step("hide this badge without hiding the other host", async () => {
-    await openHostAppearanceSettings(page, badge.serverId);
+  await test.step("hide the optional badge without hiding host navigation", async () => {
     await chooseHostBadgeDisplay(page, "Hidden");
+    await expect(
+      page.getByTestId("host-appearance-preview").getByTestId(`host-badge-${badge.serverId}`),
+    ).toHaveCount(0);
     await leaveHostAppearanceSettings(page);
-    await expectNoHostBadge(page, { ...badge, hostName });
-    await expectHostBadgeName(page, {
-      serverId: twoHostSidebar.primaryServerId,
-      workspaceId: twoHostSidebar.primaryWorkspaceId,
-      hostName: PRIMARY_HOST_LABEL,
-    });
+    await expect(
+      page.getByTestId(`session-host-${badge.serverId}`).filter({ visible: true }),
+    ).toHaveText(hostName);
+    await expect(
+      page.getByTestId(`session-host-${twoHostSidebar.primaryServerId}`).filter({ visible: true }),
+    ).toHaveText(PRIMARY_HOST_LABEL);
   });
 });

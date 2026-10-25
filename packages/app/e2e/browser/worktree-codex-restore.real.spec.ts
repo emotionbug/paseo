@@ -41,8 +41,8 @@ test("restore an archived worktree, then unarchive its completed Codex agent", a
   await test.step("2. Wait for Codex to finish and show its reply", async () => {
     await codexRestore.waitForCompletedReply();
   });
-  await test.step("3. Archive the workspace from its sidebar menu", async () => {
-    await codexRestore.archiveWorkspaceFromSidebar();
+  await test.step("3. Archive the workspace from the command center", async () => {
+    await codexRestore.archiveWorkspaceFromCommandCenter();
   });
   await test.step("4. Assert workspace and agent are archived and the worktree is removed", async () => {
     await codexRestore.expectWorkspaceAndAgentArchived();

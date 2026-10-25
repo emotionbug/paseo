@@ -1,38 +1,23 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
   archiveWorkspaceFromDaemon,
   archiveLocalWorkspaceFromDaemon,
-  assertNewWorkspaceSidebarAndHeader,
-  closeBranchPicker,
+  assertNewWorkspaceNavigationAndHeader,
   connectNewWorkspaceDaemonClient,
   createWorktreeViaDaemon,
   delayBrowserAgentCreatedStatus,
   expectComposerGithubAttachmentPill,
   expectNewWorkspaceProjectSelected,
-  expectPickerClosed,
-  expectPickerOpen,
-  expectPickerSelected,
-  expectStartingRefPickerTriggerPr,
   fillNewWorkspaceDraft,
   openGlobalNewWorkspaceComposer,
-  openBranchPicker,
   openNewWorkspaceComposer,
   openProjectViaDaemon,
-  openStartingRefPicker,
   pasteGithubPrUrl,
-  captureStartingRefPicker,
-  expectStartingRefRows,
-  startingRefRow,
-  submitNewWorkspaceEmpty,
-  searchAndSelectBranchInPicker,
-  selectBranchInPicker,
-  selectGitHubPrInPicker,
-  selectPickerOptionByKeyboard,
-  selectWorkspaceIsolation,
   submitNewWorkspacePrompt,
 } from "../support/helpers/new-workspace";
 import {
@@ -51,16 +36,15 @@ import {
   type LocalGhPrFixture,
 } from "../support/helpers/github-fixtures";
 import { getServerId } from "../support/helpers/server-id";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 import { chooseAddProjectMethod, expectAddProjectPage } from "../support/helpers/add-project-flow";
 import { seedSavedSettingsHosts } from "../support/helpers/settings";
 import {
-  expectSidebarWorkspaceSelected,
+  expectWorkspaceSelected,
   expectWorkspaceHeader,
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
-  waitForWorkspaceInSidebar,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 import { dropFileOnComposer, expectAttachmentPill } from "../support/helpers/composer";
 
@@ -70,139 +54,7 @@ const BACKGROUND_RESOLUTION_FILE = {
   buffer: Buffer.from(JSON.stringify({ composer: "background-resolution" })),
 };
 
-interface WorkspaceStatusGroupEvent {
-  rowTestId: string;
-  bucket: string;
-  indicatorTestId: string | null;
-  label: string;
-  at: number;
-}
-
-async function switchSidebarToStatusGrouping(page: import("@playwright/test").Page) {
-  await selectSidebarStatusGrouping(page);
-  await expect(page.getByTestId("sidebar-status-group-done")).toBeVisible({ timeout: 30_000 });
-}
-
-async function startTrackingSidebarStatusGroups(page: import("@playwright/test").Page) {
-  await page.evaluate(() => {
-    interface StatusGroupEvent {
-      rowTestId: string;
-      bucket: string;
-      indicatorTestId: string | null;
-      label: string;
-      at: number;
-    }
-    const win = window as typeof window & {
-      __workspaceStatusGroupEvents?: StatusGroupEvent[];
-      __workspaceStatusGroupObserver?: MutationObserver;
-    };
-    win.__workspaceStatusGroupEvents = [];
-    win.__workspaceStatusGroupObserver?.disconnect();
-
-    const capture = () => {
-      const events = win.__workspaceStatusGroupEvents;
-      if (!events) return;
-      const groups = document.querySelectorAll<HTMLElement>(
-        '[data-testid^="sidebar-status-group-"]',
-      );
-      for (const group of groups) {
-        const groupTestId = group.getAttribute("data-testid") ?? "";
-        const bucket = groupTestId.replace("sidebar-status-group-", "");
-        const label = group.textContent ?? "";
-        const block = group.parentElement?.parentElement;
-        if (!block) continue;
-        const rows = block.querySelectorAll<HTMLElement>('[data-testid^="sidebar-workspace-row-"]');
-        for (const row of rows) {
-          const rowTestId = row.getAttribute("data-testid");
-          if (!rowTestId) continue;
-          const indicatorTestId =
-            row
-              .querySelector<HTMLElement>('[data-testid^="workspace-status-indicator-"]')
-              ?.getAttribute("data-testid") ?? null;
-          const last = events.at(-1);
-          if (
-            last?.rowTestId === rowTestId &&
-            last.bucket === bucket &&
-            last.indicatorTestId === indicatorTestId
-          ) {
-            continue;
-          }
-          events.push({ rowTestId, bucket, indicatorTestId, label, at: performance.now() });
-        }
-      }
-    };
-
-    capture();
-    const observer = new MutationObserver(capture);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["data-testid"],
-    });
-    win.__workspaceStatusGroupObserver = observer;
-  });
-}
-
-async function getTrackedSidebarStatusGroups(
-  page: import("@playwright/test").Page,
-): Promise<WorkspaceStatusGroupEvent[]> {
-  return page.evaluate(() => {
-    const win = window as typeof window & {
-      __workspaceStatusGroupEvents?: WorkspaceStatusGroupEvent[];
-    };
-    return win.__workspaceStatusGroupEvents ?? [];
-  });
-}
-
-async function waitForWorkspaceStatusGroupEvent(input: {
-  page: import("@playwright/test").Page;
-  rowTestId: string;
-  bucket: string;
-}) {
-  await input.page.waitForFunction(
-    ({ expectedRowTestId, expectedBucket }) => {
-      const win = window as typeof window & {
-        __workspaceStatusGroupEvents?: WorkspaceStatusGroupEvent[];
-      };
-      for (const event of win.__workspaceStatusGroupEvents ?? []) {
-        if (event.rowTestId === expectedRowTestId && event.bucket === expectedBucket) {
-          return true;
-        }
-      }
-      return false;
-    },
-    { expectedRowTestId: input.rowTestId, expectedBucket: input.bucket },
-    { timeout: 30_000 },
-  );
-}
-
-async function expectWorkspaceStatusGroupEvents(input: {
-  page: import("@playwright/test").Page;
-  rowTestId: string;
-  includes: string;
-  excludes: string;
-  excludesIndicator?: string;
-}) {
-  await waitForWorkspaceStatusGroupEvent({
-    page: input.page,
-    rowTestId: input.rowTestId,
-    bucket: input.includes,
-  });
-  const createdWorkspaceEvents = (await getTrackedSidebarStatusGroups(input.page)).filter(
-    (event) => event.rowTestId === input.rowTestId,
-  );
-  expect(createdWorkspaceEvents.map((event) => event.bucket)).toContain(input.includes);
-  expect(createdWorkspaceEvents.filter((event) => event.bucket === input.excludes)).toEqual([]);
-  if (input.excludesIndicator) {
-    expect(
-      createdWorkspaceEvents.filter((event) => event.indicatorTestId === input.excludesIndicator),
-    ).toEqual([]);
-  }
-}
-
-async function submitNewWorkspaceWithoutPrompt(page: import("@playwright/test").Page) {
+async function submitNewWorkspaceWithoutPrompt(page: Page) {
   const createButton = page
     .getByTestId("message-input-root")
     .getByRole("button", { name: "Create" });
@@ -296,7 +148,7 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("sidebar workspace navigation updates URL and header", async ({ page }) => {
+  test("command center workspace navigation updates URL and header", async ({ page }) => {
     const serverId = getServerId();
 
     const firstRepo = await createTempGitRepo("workspace-nav-a-");
@@ -311,7 +163,7 @@ test.describe("New workspace flow", () => {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: firstWorkspace.workspaceId,
@@ -321,12 +173,12 @@ test.describe("New workspace flow", () => {
         subtitle: firstWorkspace.projectDisplayName,
       });
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: secondWorkspace.workspaceId,
       });
-      await waitForWorkspaceInSidebar(page, {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId,
         workspaceId: secondWorkspace.workspaceId,
       });
@@ -335,7 +187,7 @@ test.describe("New workspace flow", () => {
         subtitle: secondWorkspace.projectDisplayName,
       });
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: firstWorkspace.workspaceId,
@@ -367,7 +219,7 @@ test.describe("New workspace flow", () => {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: rootWorkspace.workspaceId,
@@ -376,13 +228,13 @@ test.describe("New workspace flow", () => {
         title: rootWorkspace.workspaceName,
         subtitle: rootWorkspace.projectDisplayName,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: rootWorkspace.workspaceId,
       });
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: worktreeWorkspace.workspaceId,
@@ -391,19 +243,19 @@ test.describe("New workspace flow", () => {
         title: worktreeWorkspace.workspaceName,
         subtitle: worktreeWorkspace.projectDisplayName,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: worktreeWorkspace.workspaceId,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: rootWorkspace.workspaceId,
         selected: false,
       });
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: rootWorkspace.workspaceId,
@@ -412,12 +264,12 @@ test.describe("New workspace flow", () => {
         title: rootWorkspace.workspaceName,
         subtitle: rootWorkspace.projectDisplayName,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: rootWorkspace.workspaceId,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: worktreeWorkspace.workspaceId,
@@ -442,7 +294,7 @@ test.describe("New workspace flow", () => {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: openedProject.workspaceId,
@@ -454,17 +306,21 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
-      await submitNewWorkspacePrompt(page);
+      await expect(page.getByTestId("workspace-create-isolation-trigger")).toHaveCount(0);
+      await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(0);
+      const prompt = "Hello from e2e";
+      await submitNewWorkspacePrompt(page, prompt);
 
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+      const createdWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
         serverId,
         client,
         previousWorkspaceId: openedProject.workspaceId,
         projectDisplayName: openedProject.projectDisplayName,
-        assertSidebarRow: false,
+        assertDiscoverable: false,
         assertHeader: false,
       });
-      createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
+      localWorkspaceIds.add(createdWorkspace.workspaceId);
+      expect(createdWorkspace.workspaceDirectory).toBe(tempRepo.path);
 
       expect(createdWorkspace.workspaceId).not.toBe(openedProject.workspaceId);
       await expect(page).toHaveURL(
@@ -473,16 +329,6 @@ test.describe("New workspace flow", () => {
           timeout: 30_000,
         },
       );
-
-      const createdWorkspaceRow = page.getByTestId(
-        `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`,
-      );
-      await expect(createdWorkspaceRow).toBeVisible({ timeout: 30_000 });
-
-      await expectWorkspaceHeader(page, {
-        title: createdWorkspace.workspaceName,
-        subtitle: openedProject.projectDisplayName,
-      });
 
       const activeWorkspaceDeckEntry = page
         .getByTestId(`workspace-deck-entry-${serverId}:${createdWorkspace.workspaceId}`)
@@ -496,6 +342,18 @@ test.describe("New workspace flow", () => {
       // hiding the agent panel (display:none removes it from the
       // accessibility tree). Click the agent tab to ensure it's active.
       await agentTabs.first().click();
+      const { entries } = await client.fetchAgents({});
+      const workspaceAgents = entries.filter(
+        ({ agent }) => agent.workspaceId === createdWorkspace.workspaceId,
+      );
+      expect(workspaceAgents).toHaveLength(1);
+      await expect(
+        page.getByTestId(`session-row-${serverId}-${workspaceAgents[0]!.agent.id}`),
+      ).toBeVisible({ timeout: 30_000 });
+      await expectWorkspaceHeader(page, {
+        title: prompt,
+        subtitle: openedProject.projectDisplayName,
+      });
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeVisible({ timeout: 30_000 });
@@ -517,7 +375,7 @@ test.describe("New workspace flow", () => {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: openedProject.workspaceId,
@@ -545,15 +403,16 @@ test.describe("New workspace flow", () => {
       await agentCreatedDelay.waitForCreateRequest();
       await agentCreatedDelay.waitForDelayedCreatedStatus();
 
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+      const createdWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
         serverId,
         client,
         previousWorkspaceId: openedProject.workspaceId,
         projectDisplayName: openedProject.projectDisplayName,
-        assertSidebarRow: false,
+        assertDiscoverable: false,
         assertHeader: false,
       });
-      createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
+      localWorkspaceIds.add(createdWorkspace.workspaceId);
+      expect(createdWorkspace.workspaceDirectory).toBe(tempRepo.path);
 
       await expect(page).toHaveURL(
         buildHostWorkspaceRoute(serverId, createdWorkspace.workspaceId),
@@ -583,121 +442,32 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("new workspace with initial agent never appears in the Done status group", async ({
+  async function createAndVisitWorktree(
+    page: Page,
+    input: Parameters<typeof createWorktreeViaDaemon>[1],
+  ) {
+    const worktree = await createWorktreeViaDaemon(client, input);
+    createdWorktreeDirectories.add(worktree.workspaceDirectory);
+    await switchWorkspaceViaCommandCenter({
+      page,
+      serverId: getServerId(),
+      workspaceId: worktree.workspaceId,
+    });
+    await expectWorkspaceHeader(page, {
+      title: worktree.workspaceName,
+      subtitle: worktree.projectDisplayName,
+    });
+    await expectWorkspaceSelected({
+      page,
+      serverId: getServerId(),
+      workspaceId: worktree.workspaceId,
+    });
+    return worktree;
+  }
+
+  test("an explicit branch becomes the base of a daemon-created workspace worktree", async ({
     page,
   }) => {
-    const serverId = getServerId();
-
-    const tempRepo = await createTempGitRepo("new-workspace-status-optimistic-");
-
-    try {
-      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
-
-      await gotoAppShell(page);
-      await waitForSidebarHydration(page);
-
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        workspaceId: openedProject.workspaceId,
-      });
-      await expectWorkspaceHeader(page, {
-        title: openedProject.workspaceName,
-        subtitle: openedProject.projectDisplayName,
-      });
-
-      await switchSidebarToStatusGrouping(page);
-      await startTrackingSidebarStatusGroups(page);
-
-      await openGlobalNewWorkspaceComposer(page);
-      await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
-      await submitNewWorkspacePrompt(page);
-
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
-        serverId,
-        client,
-        previousWorkspaceId: openedProject.workspaceId,
-        projectDisplayName: openedProject.projectDisplayName,
-        assertSidebarRow: false,
-        assertHeader: false,
-      });
-      createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
-
-      const rowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
-      await expectWorkspaceStatusGroupEvents({
-        page,
-        rowTestId,
-        includes: "running",
-        excludes: "done",
-      });
-    } finally {
-      await tempRepo.cleanup();
-    }
-  });
-
-  test("new workspace without an initial agent appears in the Done status group", async ({
-    page,
-  }) => {
-    const serverId = getServerId();
-
-    const tempRepo = await createTempGitRepo("new-workspace-status-empty-");
-
-    try {
-      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
-
-      await gotoAppShell(page);
-      await waitForSidebarHydration(page);
-
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        workspaceId: openedProject.workspaceId,
-      });
-      await expectWorkspaceHeader(page, {
-        title: openedProject.workspaceName,
-        subtitle: openedProject.projectDisplayName,
-      });
-
-      await switchSidebarToStatusGrouping(page);
-      await startTrackingSidebarStatusGroups(page);
-
-      await openGlobalNewWorkspaceComposer(page);
-      await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
-      await submitNewWorkspaceWithoutPrompt(page);
-
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
-        serverId,
-        client,
-        previousWorkspaceId: openedProject.workspaceId,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
-
-      const rowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
-      await expectWorkspaceStatusGroupEvents({
-        page,
-        rowTestId,
-        includes: "done",
-        excludes: "running",
-        excludesIndicator: "workspace-status-indicator-loading",
-      });
-      await expectWorkspaceStatusGroupEvents({
-        page,
-        rowTestId,
-        includes: "done",
-        excludes: "running",
-        excludesIndicator: "workspace-status-indicator-running",
-      });
-    } finally {
-      await tempRepo.cleanup();
-    }
-  });
-
-  test("selected branch becomes the base of a new workspace worktree", async ({ page }) => {
-    const serverId = getServerId();
-
     const tempRepo = await createTempGitRepo("new-workspace-ref-", {
       branches: ["main", "dev"],
     });
@@ -705,44 +475,16 @@ test.describe("New workspace flow", () => {
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
-
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        workspaceId: openedProject.workspaceId,
+      const createdWorkspace = await createAndVisitWorktree(page, {
+        cwd: tempRepo.path,
+        slug: `dev-${Date.now()}`,
+        action: "branch-off",
+        refName: "refs/heads/dev",
       });
-      await expectWorkspaceHeader(page, {
-        title: openedProject.workspaceName,
-        subtitle: openedProject.projectDisplayName,
-      });
-
-      await openNewWorkspaceComposer(page, {
-        projectKey: openedProject.projectKey,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      await selectWorkspaceIsolation(page, "worktree");
-      await openStartingRefPicker(page);
-      await selectBranchInPicker(page, "dev");
-
-      const createButton = page
-        .getByTestId("message-input-root")
-        .getByRole("button", { name: "Create" });
-      await expect(createButton).toBeVisible({ timeout: 30_000 });
-      await createButton.click();
-
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
-        serverId,
-        client,
-        previousWorkspaceId: openedProject.workspaceId,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
-
       expect(existsSync(createdWorkspace.workspaceDirectory)).toBe(true);
-
       const branchInfo = await readWorktreeBranchInfo({
         worktreePath: createdWorkspace.workspaceDirectory,
       });
@@ -754,39 +496,23 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  // The starting ref the daemon actually cuts from is the thing that broke: the picker said
-  // one ref and the worktree was created from another. Every assertion here reads the
-  // created worktree's commits or its recorded base, never the trigger text alone.
-  test.describe("default starting ref", () => {
-    async function openWorktreeComposerForRepo(
-      page: import("@playwright/test").Page,
-      repoPath: string,
-    ) {
+  // Modern forms create local workspaces. Explicit worktree refs remain supported
+  // through the daemon API; assert the resulting checkout, not removed picker UI.
+  test.describe("worktree starting refs", () => {
+    async function openRepo(page: Page, repoPath: string) {
       const openedProject = await openProjectViaDaemon(client, repoPath);
       localWorkspaceIds.add(openedProject.workspaceId);
-
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await openNewWorkspaceComposer(page, {
-        projectKey: openedProject.projectKey,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      await selectWorkspaceIsolation(page, "worktree");
-      return openedProject;
     }
 
-    async function createWorktreeAndRead(
-      page: import("@playwright/test").Page,
-      openedProject: Awaited<ReturnType<typeof openProjectViaDaemon>>,
-    ) {
-      await submitNewWorkspaceEmpty(page);
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
-        serverId: getServerId(),
-        client,
-        previousWorkspaceId: openedProject.workspaceId,
-        projectDisplayName: openedProject.projectDisplayName,
+    async function createWorktreeAndRead(page: Page, cwd: string, refName: string) {
+      const createdWorkspace = await createAndVisitWorktree(page, {
+        cwd,
+        slug: `base-${Date.now()}`,
+        action: "branch-off",
+        refName,
       });
-      createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
       return {
         ...createdWorkspace,
         branchInfo: await readWorktreeBranchInfo({
@@ -795,19 +521,18 @@ test.describe("New workspace flow", () => {
       };
     }
 
-    test("branches off the upstream when the local branch is ahead and the picker is untouched", async ({
-      page,
-    }) => {
+    test("branches off the upstream without including local-only commits", async ({ page }) => {
       const tempRepo = await createTempGitRepo("ref-default-ahead-", { withRemote: true });
-
       try {
         const originHead = readRepoRef(tempRepo.path, "refs/remotes/origin/main");
         commitLocalOnly(tempRepo.path, "one");
         const localHead = commitLocalOnly(tempRepo.path, "two");
-
-        const openedProject = await openWorktreeComposerForRepo(page, tempRepo.path);
-        const created = await createWorktreeAndRead(page, openedProject);
-
+        await openRepo(page, tempRepo.path);
+        const created = await createWorktreeAndRead(
+          page,
+          tempRepo.path,
+          "refs/remotes/origin/main",
+        );
         expect(created.branchInfo.hasAncestor(originHead)).toBe(true);
         expect(created.branchInfo.hasAncestor(localHead)).toBe(false);
       } finally {
@@ -815,71 +540,32 @@ test.describe("New workspace flow", () => {
       }
     });
 
-    test("branches off the local ref when the local row is chosen explicitly", async ({
-      page,
-    }, testInfo) => {
+    test("branches off the local ref when requested explicitly", async ({ page }) => {
       const tempRepo = await createTempGitRepo("ref-default-local-pick-", { withRemote: true });
-
       try {
         commitLocalOnly(tempRepo.path, "one");
         const localHead = commitLocalOnly(tempRepo.path, "two");
-
-        const openedProject = await openWorktreeComposerForRepo(page, tempRepo.path);
-
-        await openStartingRefPicker(page);
-        await expectStartingRefRows(page, [
-          "main, origin branch",
-          "main, local branch, 2 commits ahead of origin main",
-        ]);
-        const screenshotPath = testInfo.outputPath("ref-picker-local-ahead.png");
-        await captureStartingRefPicker(page, screenshotPath);
-        await testInfo.attach("Ref picker: local ahead of upstream", {
-          path: screenshotPath,
-          contentType: "image/png",
-        });
-        await startingRefRow(page, "main, local branch, 2 commits ahead of origin main").click();
-        await expectPickerSelected(page, "main (local)");
-
-        const created = await createWorktreeAndRead(page, openedProject);
+        await openRepo(page, tempRepo.path);
+        const created = await createWorktreeAndRead(page, tempRepo.path, "refs/heads/main");
         expect(created.branchInfo.hasAncestor(localHead)).toBe(true);
       } finally {
         await tempRepo.cleanup();
       }
     });
 
-    test("branches off a fork's upstream remote and records the branch name", async ({
-      page,
-    }, testInfo) => {
+    test("branches off a fork's upstream remote and records the branch name", async ({ page }) => {
       const tempRepo = await createTempGitRepo("ref-default-fork-", { withRemote: true });
-
       try {
         const upstreamHead = await trackForkUpstream(tempRepo.path);
         const originHead = readRepoRef(tempRepo.path, "refs/remotes/origin/main");
-
-        const openedProject = await openWorktreeComposerForRepo(page, tempRepo.path);
-
-        await openStartingRefPicker(page);
-        // Branch suggestions only know about origin, so the upstream the fork actually
-        // tracks gets its own row rather than silently sharing origin's. Two rows reading
-        // "main" is the ambiguity this whole change exists to remove.
-        await expectStartingRefRows(page, [
-          "main (upstream), upstream branch",
-          "main, origin branch",
-        ]);
-        await expectPickerSelected(page, "main (upstream)");
-        const screenshotPath = testInfo.outputPath("ref-picker-fork.png");
-        await captureStartingRefPicker(page, screenshotPath);
-        await testInfo.attach("Ref picker: fork tracking upstream/main", {
-          path: screenshotPath,
-          contentType: "image/png",
-        });
-        await closeBranchPicker(page);
-
-        const created = await createWorktreeAndRead(page, openedProject);
-
+        await openRepo(page, tempRepo.path);
+        const created = await createWorktreeAndRead(
+          page,
+          tempRepo.path,
+          "refs/remotes/upstream/main",
+        );
         expect(created.branchInfo.hasAncestor(upstreamHead)).toBe(true);
         expect(upstreamHead).not.toBe(originHead);
-        // The name is what the UI shows; the ref is what resolves back to this commit.
         expect(await readWorktreeBaseMetadata(created.workspaceDirectory)).toEqual({
           baseRefName: "main",
           baseRef: "refs/remotes/upstream/main",
@@ -890,60 +576,11 @@ test.describe("New workspace flow", () => {
     });
   });
 
-  test("branch picker opens via keyboard and selects the filtered option on Enter", async ({
+  test("pasted GitHub PR shows PR context in the composer without a starting ref control", async ({
     page,
+    context,
   }) => {
-    const tempRepo = await createTempGitRepo("picker-keyboard-", { branches: ["main", "dev"] });
-
-    try {
-      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
-
-      await gotoAppShell(page);
-      await waitForSidebarHydration(page);
-      await openNewWorkspaceComposer(page, {
-        projectKey: openedProject.projectKey,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      await selectWorkspaceIsolation(page, "worktree");
-
-      await openBranchPicker(page);
-      await expectPickerOpen(page);
-      await selectPickerOptionByKeyboard(page, "dev");
-      await expectPickerSelected(page, "dev");
-      await expectPickerClosed(page);
-    } finally {
-      await tempRepo.cleanup();
-    }
-  });
-
-  test("branch picker closes on Escape without selecting an option", async ({ page }) => {
-    const tempRepo = await createTempGitRepo("picker-escape-");
-
-    try {
-      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
-
-      await gotoAppShell(page);
-      await waitForSidebarHydration(page);
-      await openNewWorkspaceComposer(page, {
-        projectKey: openedProject.projectKey,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      await selectWorkspaceIsolation(page, "worktree");
-
-      await openBranchPicker(page);
-      await expectPickerOpen(page);
-      await closeBranchPicker(page);
-      await expectPickerClosed(page);
-    } finally {
-      await tempRepo.cleanup();
-    }
-  });
-
-  test("selected GitHub PR shows PR context in the trigger and composer", async ({ page }) => {
     test.skip(!hasGithubAuth(), "Requires GitHub authentication (gh auth login)");
-
     const ghRepo = await createTempGithubRepo({
       category: "new-workspace-pr-ref",
       prs: [{ title: "Review selected start ref", state: "open" }],
@@ -953,39 +590,31 @@ test.describe("New workspace flow", () => {
     try {
       const openedProject = await openProjectViaDaemon(client, pr.localPath);
       localWorkspaceIds.add(openedProject.workspaceId);
-
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: openedProject.projectKey,
         projectDisplayName: openedProject.projectDisplayName,
       });
-      await selectWorkspaceIsolation(page, "worktree");
-      await openStartingRefPicker(page);
-      await selectGitHubPrInPicker(page, pr.number);
-
-      await expectStartingRefPickerTriggerPr(page, {
-        number: pr.number,
-        title: pr.title,
-        headRef: pr.branch,
-      });
+      await pasteGithubPrUrl(page, context, pr.url);
       await expectComposerGithubAttachmentPill(page, {
         number: pr.number,
         title: pr.title,
       });
+      await expect(page.getByTestId("workspace-create-isolation-trigger")).toHaveCount(0);
+      await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(0);
     } finally {
       await ghRepo.cleanup();
     }
   });
 
-  test("pasted GitHub PR replaces a selected branch and creates its worktree", async ({
+  test("pasted GitHub PR and file attachments create a local workspace; the API can check out its PR", async ({
     page,
     context,
   }) => {
     const fixture = await createLocalGithubPrFixture();
     localGithubFixtures.add(fixture);
     const { pr, mainCheckout } = fixture;
-
     const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
     localWorkspaceIds.add(openedProject.workspaceId);
     localProjectIds.add(openedProject.projectId);
@@ -996,39 +625,36 @@ test.describe("New workspace flow", () => {
       projectKey: openedProject.projectKey,
       projectDisplayName: openedProject.projectDisplayName,
     });
-    await selectWorkspaceIsolation(page, "worktree");
-    await openStartingRefPicker(page);
-    await selectBranchInPicker(page, "main");
-
     await pasteGithubPrUrl(page, context, pr.url);
-
     const createButton = page.getByTestId("workspace-create-submit");
     await expect(createButton).toBeDisabled();
     await expect(createButton.getByRole("progressbar")).toHaveCount(0);
-
     await dropFileOnComposer(page, BACKGROUND_RESOLUTION_FILE);
     await expectAttachmentPill(page, "composer-file-attachment-pill");
-
     await expectComposerGithubAttachmentPill(page, {
       number: pr.number,
       title: pr.title,
     });
-    await expectStartingRefPickerTriggerPr(page, {
-      number: pr.number,
-      title: pr.title,
-      headRef: pr.branch,
-    });
-
+    await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(0);
     await submitNewWorkspaceWithoutPrompt(page);
 
-    const worktree = await assertNewWorkspaceSidebarAndHeader(page, {
+    const localWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
       serverId: getServerId(),
       client,
       previousWorkspaceId: openedProject.workspaceId,
       projectDisplayName: openedProject.projectDisplayName,
     });
-    createdWorktreeDirectories.add(worktree.workspaceDirectory);
+    localWorkspaceIds.add(localWorkspace.workspaceId);
+    expect(localWorkspace.workspaceDirectory).toBe(mainCheckout.path);
+    expect(existsSync(path.join(localWorkspace.workspaceDirectory, "pr-1.txt"))).toBe(false);
 
+    const worktree = await createAndVisitWorktree(page, {
+      cwd: mainCheckout.path,
+      slug: `pr-${Date.now()}`,
+      action: "checkout",
+      refName: pr.branch,
+      checkoutSource: { kind: "change_request", forge: "github", number: pr.number },
+    });
     const branchInfo = await readWorktreeBranchInfo({
       worktreePath: worktree.workspaceDirectory,
     });
@@ -1036,14 +662,13 @@ test.describe("New workspace flow", () => {
     expect(existsSync(path.join(worktree.workspaceDirectory, "pr-1.txt"))).toBe(true);
   });
 
-  test("branches remain searchable after a pasted PR and determine the created worktree", async ({
+  test("a pasted PR keeps local creation on main and an explicit worktree base remains independent", async ({
     page,
     context,
   }) => {
     const fixture = await createLocalGithubPrFixture();
     localGithubFixtures.add(fixture);
     const { pr, mainCheckout } = fixture;
-
     const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
     localWorkspaceIds.add(openedProject.workspaceId);
     localProjectIds.add(openedProject.projectId);
@@ -1054,37 +679,39 @@ test.describe("New workspace flow", () => {
       projectKey: openedProject.projectKey,
       projectDisplayName: openedProject.projectDisplayName,
     });
-    await selectWorkspaceIsolation(page, "worktree");
     await pasteGithubPrUrl(page, context, pr.url);
-    await expectStartingRefPickerTriggerPr(page, {
+    await expectComposerGithubAttachmentPill(page, {
       number: pr.number,
       title: pr.title,
-      headRef: pr.branch,
     });
-
-    await openStartingRefPicker(page);
-    await searchAndSelectBranchInPicker(page, "main");
-    await expectPickerSelected(page, "main");
     await fillNewWorkspaceDraft(page, `${pr.url}\nKeep this checkout on main`);
-    await expectPickerSelected(page, "main");
+    await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(0);
     await submitNewWorkspaceWithoutPrompt(page);
-
-    const worktree = await assertNewWorkspaceSidebarAndHeader(page, {
+    const localWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
       serverId: getServerId(),
       client,
       previousWorkspaceId: openedProject.workspaceId,
       projectDisplayName: openedProject.projectDisplayName,
     });
-    createdWorktreeDirectories.add(worktree.workspaceDirectory);
+    localWorkspaceIds.add(localWorkspace.workspaceId);
+    expect(localWorkspace.workspaceDirectory).toBe(mainCheckout.path);
+    const localBranch = await readWorktreeBranchInfo({ worktreePath: mainCheckout.path });
+    expect(localBranch.currentBranch).toBe("main");
+    expect(existsSync(path.join(localWorkspace.workspaceDirectory, "pr-1.txt"))).toBe(false);
 
+    const worktree = await createAndVisitWorktree(page, {
+      cwd: mainCheckout.path,
+      slug: `main-${Date.now()}`,
+      action: "branch-off",
+      refName: "refs/heads/main",
+    });
     expect(existsSync(path.join(worktree.workspaceDirectory, "pr-1.txt"))).toBe(false);
   });
 
-  test("selected GitHub PR creates the worktree from the PR head even when the head branch is not fetched", async ({
+  test("the API creates a PR worktree visible in the browser when its head branch is not fetched", async ({
     page,
   }) => {
     test.skip(!hasGithubAuth(), "Requires GitHub authentication (gh auth login)");
-
     const ghRepo = await createTempGithubRepo({
       category: "new-workspace-pr-worktree",
       prs: [{ title: "Checkout PR worktree", state: "open" }],
@@ -1095,26 +722,15 @@ test.describe("New workspace flow", () => {
     try {
       const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
       localWorkspaceIds.add(openedProject.workspaceId);
-
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await openNewWorkspaceComposer(page, {
-        projectKey: openedProject.projectKey,
-        projectDisplayName: openedProject.projectDisplayName,
+      const worktree = await createAndVisitWorktree(page, {
+        cwd: mainCheckout.path,
+        slug: `pr-unfetched-${Date.now()}`,
+        action: "checkout",
+        refName: pr.branch,
+        checkoutSource: { kind: "change_request", forge: "github", number: pr.number },
       });
-      await selectWorkspaceIsolation(page, "worktree");
-      await openStartingRefPicker(page);
-      await selectGitHubPrInPicker(page, pr.number);
-      await submitNewWorkspaceWithoutPrompt(page);
-
-      const worktree = await assertNewWorkspaceSidebarAndHeader(page, {
-        serverId: getServerId(),
-        client,
-        previousWorkspaceId: openedProject.workspaceId,
-        projectDisplayName: openedProject.projectDisplayName,
-      });
-      createdWorktreeDirectories.add(worktree.workspaceDirectory);
-
       const branchInfo = await readWorktreeBranchInfo({
         worktreePath: worktree.workspaceDirectory,
       });

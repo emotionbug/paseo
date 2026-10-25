@@ -29,7 +29,9 @@ async function openAgent(page: Page, agent: { id: string; workspaceId: string })
 }
 
 async function openAgentTabTooltip(page: Page, agentId: string, title: string): Promise<Locator> {
-  await page.getByRole("button", { name: normalizedTitle(title), exact: true }).hover();
+  const tab = page.getByTestId(`workspace-tab-agent_${agentId}`).filter({ visible: true });
+  await expect(tab).toHaveAccessibleName(normalizedTitle(title));
+  await tab.hover();
   const tooltip = page.getByTestId(`workspace-tab-tooltip-agent_${agentId}`);
   await expect(tooltip).toBeVisible({ timeout: 10_000 });
   return tooltip;

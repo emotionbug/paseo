@@ -1,29 +1,30 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
-import { gotoWorkspace } from "../support/helpers/launcher";
 import {
-  assertNewWorkspaceSidebarAndHeader,
+  assertNewWorkspaceNavigationAndHeader,
   connectNewWorkspaceDaemonClient,
   openGlobalNewWorkspaceComposer,
   selectNewWorkspaceProject,
-  selectWorkspaceIsolation,
   submitNewWorkspaceEmpty,
 } from "../support/helpers/new-workspace";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
-import { expectExplorerEntryVisible } from "../support/helpers/file-explorer";
+import {
+  expectExplorerEntryHidden,
+  expectExplorerEntryVisible,
+} from "../support/helpers/file-explorer";
 import { getServerId } from "../support/helpers/server-id";
 import { openFilesPanel } from "../support/helpers/workspace-tabs";
-import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
-import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
+import {
+  switchWorkspaceViaCommandCenter,
+  waitForSidebarHydration,
+  waitForWorkspaceInCommandCenter,
+} from "../support/helpers/workspace-ui";
 
-// Model B reshape: a workspace is the unit, its isolation (local checkout or
-// worktree) is a CHOICE at creation, and creation NEVER dedupes by
-// directory. These specs drive the real creation UI (workspace-create-* test
-// IDs) to prove a single directory can back any number of workspaces.
-
-function workspaceRowTestId(workspaceId: string): string {
-  return `sidebar-workspace-row-${getServerId()}:${workspaceId}`;
-}
+// Modern creation always adds a workspace in the selected project's directory.
+// Worktree-backed workspaces created through the daemon remain independently
+// selectable alongside workspaces sharing the project's original checkout.
 
 async function openFilesTab(page: Page): Promise<void> {
   await openFilesPanel(page);
@@ -34,26 +35,20 @@ async function createWorkspaceViaUi(
   page: Page,
   input: {
     project: { projectKey: string; projectDisplayName: string };
-    // null when the project has no git checkout: there is no Isolation control to
-    // touch, the isolation is implicitly local.
-    isolation: "local" | "worktree" | null;
     previousWorkspaceId: string;
     client: Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
   },
 ): Promise<{ workspaceId: string; workspaceName: string; workspaceDirectory: string }> {
   await openGlobalNewWorkspaceComposer(page);
   await selectNewWorkspaceProject(page, input.project);
-  if (input.isolation !== null) {
-    await selectWorkspaceIsolation(page, input.isolation);
-  }
   await submitNewWorkspaceEmpty(page);
 
-  return assertNewWorkspaceSidebarAndHeader(page, {
+  return assertNewWorkspaceNavigationAndHeader(page, {
     serverId: getServerId(),
     client: input.client,
     previousWorkspaceId: input.previousWorkspaceId,
     projectDisplayName: input.project.projectDisplayName,
-    assertSidebarRow: false,
+    assertDiscoverable: false,
     assertHeader: false,
   });
 }
@@ -86,13 +81,13 @@ test.describe("Workspace multiplicity creation flow", () => {
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await expect(page.getByTestId(workspaceRowTestId(seeded.workspaceId))).toBeVisible({
-        timeout: 30_000,
+      await waitForWorkspaceInCommandCenter(page, {
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
       });
 
       const second = await createWorkspaceViaUi(page, {
         project,
-        isolation: "local",
         previousWorkspaceId: seeded.workspaceId,
         client,
       });
@@ -102,20 +97,30 @@ test.describe("Workspace multiplicity creation flow", () => {
       expect(second.workspaceId).not.toBe(seeded.workspaceId);
       expect(second.workspaceDirectory).toBe(seeded.workspaceDirectory);
 
-      // Both rows live under the same project and are distinct.
-      const firstRow = page.getByTestId(workspaceRowTestId(seeded.workspaceId));
-      const secondRow = page.getByTestId(workspaceRowTestId(second.workspaceId));
-      await expect(firstRow).toBeVisible({ timeout: 30_000 });
-      await expect(secondRow).toBeVisible({ timeout: 30_000 });
-      await expect(secondRow).toContainText(second.workspaceName);
+      await waitForWorkspaceInCommandCenter(page, {
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
+      });
+      await waitForWorkspaceInCommandCenter(page, {
+        serverId: getServerId(),
+        workspaceId: second.workspaceId,
+      });
 
       // Selecting the second workspace shows the shared checkout's files.
-      await gotoWorkspace(page, second.workspaceId);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: second.workspaceId,
+      });
       await openFilesTab(page);
       await expectExplorerEntryVisible(page, "README.md");
 
       // Selecting the first workspace shows the SAME shared directory data.
-      await gotoWorkspace(page, seeded.workspaceId);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
+      });
       await openFilesTab(page);
       await expectExplorerEntryVisible(page, "README.md");
     } finally {
@@ -123,54 +128,75 @@ test.describe("Workspace multiplicity creation flow", () => {
     }
   });
 
-  test("New worktree isolation creates a worktree-backed workspace in a distinct directory", async ({
+  test("a daemon-created worktree has a distinct directory and independently selectable files", async ({
     page,
   }) => {
     const seeded: SeededWorkspace = await seedWorkspace({
       repoPrefix: "multiplicity-worktree-",
     });
+    let worktreeDirectory: string | undefined;
 
     try {
-      const project = {
-        projectKey: seeded.projectKey,
-        projectDisplayName: seeded.projectDisplayName,
-      };
+      const created = await client.createWorkspace({
+        source: {
+          kind: "worktree",
+          cwd: seeded.repoPath,
+          action: "branch-off",
+          worktreeSlug: "multiplicity-worktree",
+        },
+      });
+      expect(created.error).toBeNull();
+      if (!created.workspace) throw new Error("Expected a worktree-backed workspace");
+      const worktree = created.workspace;
+      worktreeDirectory = worktree.workspaceDirectory;
+      expect(worktree.id).not.toBe(seeded.workspaceId);
+      if (!worktreeDirectory) throw new Error("Expected a worktree directory");
+      expect(worktreeDirectory).not.toBe(seeded.workspaceDirectory);
+      expect(worktree.workspaceKind).toBe("worktree");
+
+      await writeFile(path.join(seeded.workspaceDirectory, "checkout-only.txt"), "checkout\n");
+      await writeFile(path.join(worktreeDirectory, "worktree-only.txt"), "worktree\n");
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await expect(page.getByTestId(workspaceRowTestId(seeded.workspaceId))).toBeVisible({
-        timeout: 30_000,
+      await waitForWorkspaceInCommandCenter(page, {
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
       });
-
-      const worktree = await createWorkspaceViaUi(page, {
-        project,
-        isolation: "worktree",
-        previousWorkspaceId: seeded.workspaceId,
-        client,
+      await waitForWorkspaceInCommandCenter(page, {
+        serverId: getServerId(),
+        workspaceId: worktree.id,
       });
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: worktree.id,
+      });
+      await openFilesTab(page);
+      await expectExplorerEntryVisible(page, "README.md");
+      await expectExplorerEntryVisible(page, "worktree-only.txt");
+      await expectExplorerEntryHidden(page, "checkout-only.txt");
 
-      // The worktree row appears, pointing at a directory distinct from the
-      // local checkout.
-      const worktreeRow = page.getByTestId(workspaceRowTestId(worktree.workspaceId));
-      await expect(worktreeRow).toBeVisible({ timeout: 30_000 });
-      expect(worktree.workspaceId).not.toBe(seeded.workspaceId);
-      expect(worktree.workspaceDirectory).not.toBe(seeded.workspaceDirectory);
-
-      // The daemon descriptor confirms the worktree kind (○ row).
-      const descriptor = (await client.fetchWorkspaces()).entries.find(
-        (entry) => entry.id === worktree.workspaceId,
-      );
-      expect(descriptor?.workspaceKind).toBe("worktree");
-
-      await client
-        .archivePaseoWorktree({ worktreePath: worktree.workspaceDirectory })
-        .catch(() => undefined);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
+      });
+      await openFilesTab(page);
+      await expectExplorerEntryVisible(page, "README.md");
+      await expectExplorerEntryVisible(page, "checkout-only.txt");
+      await expectExplorerEntryHidden(page, "worktree-only.txt");
     } finally {
+      if (worktreeDirectory) {
+        await client
+          .archivePaseoWorktree({ worktreePath: worktreeDirectory })
+          .catch(() => undefined);
+      }
       await seeded.cleanup();
     }
   });
 
-  test("two Local workspaces appear under the same non-git project", async ({ page }) => {
+  test("two Local workspaces remain selectable in the same non-git project", async ({ page }) => {
     const seeded: SeededWorkspace = await seedWorkspace({
       repoPrefix: "multiplicity-local-nongit-",
       git: false,
@@ -184,19 +210,13 @@ test.describe("Workspace multiplicity creation flow", () => {
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      // Model B: a non-git project is an expandable parent like any other, with
-      // its single workspace already rendered as its own row underneath.
-      await expect(
-        page.getByTestId(`sidebar-project-row-${projectEquivalenceViewKey(seeded.projectKey)}`),
-      ).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId(workspaceRowTestId(seeded.workspaceId))).toBeVisible({
-        timeout: 30_000,
+      await waitForWorkspaceInCommandCenter(page, {
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
       });
 
       const second = await createWorkspaceViaUi(page, {
         project,
-        // Non-git project: no Isolation control, isolation is implicitly local.
-        isolation: null,
         previousWorkspaceId: seeded.workspaceId,
         client,
       });
@@ -204,17 +224,16 @@ test.describe("Workspace multiplicity creation flow", () => {
       expect(second.workspaceId).not.toBe(seeded.workspaceId);
       expect(second.workspaceDirectory).toBe(seeded.workspaceDirectory);
 
-      // Both the original and the new workspace render as distinct rows under
-      // the same expandable parent.
-      await expect(
-        page.getByTestId(`sidebar-project-row-${projectEquivalenceViewKey(seeded.projectKey)}`),
-      ).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId(workspaceRowTestId(seeded.workspaceId))).toBeVisible({
-        timeout: 30_000,
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: seeded.workspaceId,
       });
-      const secondRow = page.getByTestId(workspaceRowTestId(second.workspaceId));
-      await expect(secondRow).toBeVisible({ timeout: 30_000 });
-      await expect(secondRow).toContainText(second.workspaceName);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: second.workspaceId,
+      });
     } finally {
       await seeded.cleanup();
     }

@@ -23,16 +23,16 @@ import {
   expectWorkspaceTabsAbsent,
 } from "../support/helpers/workspace-tabs";
 import {
-  expectSidebarWorkspaceSelected,
+  expectWorkspaceSelected,
   expectWorkspaceHeader,
   expectWorkspaceHeaderAbsent,
   expectMenuButtonVisible,
   expectHostConnectingOrOffline,
   expectReconnectingToastVisible,
   expectReconnectingToastGone,
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
-  waitForWorkspaceInSidebar,
+  waitForWorkspaceInCommandCenter,
   workspaceDeckEntryLocator,
   expectWorkspaceDeckEntryCount,
 } from "../support/helpers/workspace-ui";
@@ -210,7 +210,7 @@ test.describe("Workspace navigation regression", () => {
         { timeout: 60_000 },
       );
       await expectWorkspaceHeader(page, {
-        title: workspace.workspaceName,
+        title: agent.title,
         subtitle: workspace.projectDisplayName,
       });
       await waitForWorkspaceTabsVisible(page);
@@ -223,7 +223,7 @@ test.describe("Workspace navigation regression", () => {
       await daemonGate.waitForBlockedConnection();
       await expectReconnectingToastVisible(page);
       await expectWorkspaceHeader(page, {
-        title: workspace.workspaceName,
+        title: agent.title,
         subtitle: workspace.projectDisplayName,
       });
       await waitForWorkspaceTabsVisible(page);
@@ -237,7 +237,7 @@ test.describe("Workspace navigation regression", () => {
       await expectReconnectingToastGone(page);
       await monitorReconnect;
       await expectWorkspaceHeader(page, {
-        title: workspace.workspaceName,
+        title: agent.title,
         subtitle: workspace.projectDisplayName,
       });
       await waitForWorkspaceTabsVisible(page);
@@ -257,7 +257,7 @@ test.describe("Workspace navigation regression", () => {
     });
 
     try {
-      await Promise.all([
+      const [primaryAgent, secondaryAgent] = await Promise.all([
         createMockIdleAgent(primaryWorkspace.client, {
           cwd: primaryWorkspace.repoPath,
           workspaceId: primaryWorkspace.workspaceId,
@@ -276,21 +276,13 @@ test.describe("Workspace navigation regression", () => {
         label: "Inactive host",
         port: secondaryHost.port,
       });
-      await waitForWorkspaceInSidebar(page, {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId: secondaryHost.serverId,
         workspaceId: secondaryWorkspace.workspaceId,
       });
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId: secondaryHost.serverId,
-        workspaceId: secondaryWorkspace.workspaceId,
-      });
+      await page.getByTestId(`session-row-${secondaryHost.serverId}-${secondaryAgent.id}`).click();
       await waitForWorkspaceTabsVisible(page);
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId: getServerId(),
-        workspaceId: primaryWorkspace.workspaceId,
-      });
+      await page.getByTestId(`session-row-${getServerId()}-${primaryAgent.id}`).click();
       await waitForWorkspaceTabsVisible(page);
 
       await secondaryHost.close();
@@ -323,7 +315,9 @@ test.describe("Workspace navigation regression", () => {
     await expect(page).toHaveURL(/\/settings\/general$/);
   });
 
-  test("cold workspace URL keeps sidebar workspace navigation functional", async ({ page }) => {
+  test("cold workspace URL keeps command-center workspace navigation functional", async ({
+    page,
+  }) => {
     const serverId = getServerId();
 
     const firstWorkspace = await seedWorkspace({ repoPrefix: "workspace-cold-url-a-" });
@@ -336,11 +330,11 @@ test.describe("Workspace navigation regression", () => {
         timeout: 30_000,
       });
 
-      const secondRow = page.getByTestId(
-        `sidebar-workspace-row-${serverId}:${secondWorkspace.workspaceId}`,
-      );
-      await expect(secondRow).toBeVisible({ timeout: 30_000 });
-      await secondRow.click();
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId,
+        workspaceId: secondWorkspace.workspaceId,
+      });
 
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, secondWorkspace.workspaceId), {
         timeout: 30_000,
@@ -382,28 +376,24 @@ test.describe("Workspace navigation regression", () => {
         secondWorkspace.workspaceId,
       );
 
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        workspaceId: firstWorkspace.workspaceId,
-      });
+      await page.getByTestId(`session-row-${serverId}-${firstAgent.id}`).click();
       await waitForWorkspaceTabsVisible(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId), {
         timeout: 30_000,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: firstWorkspace.workspaceId,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: secondWorkspace.workspaceId,
         selected: false,
       });
       await expectWorkspaceHeader(page, {
-        title: firstWorkspace.workspaceName,
+        title: firstAgent.title,
         subtitle: firstWorkspace.projectDisplayName,
       });
       await expectWorkspaceTabVisible(page, firstAgent.id);
@@ -414,28 +404,24 @@ test.describe("Workspace navigation regression", () => {
       ]);
       await expect(firstDeckEntry).toBeVisible({ timeout: 30_000 });
 
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        workspaceId: secondWorkspace.workspaceId,
-      });
+      await page.getByTestId(`session-row-${serverId}-${secondAgent.id}`).click();
       await waitForWorkspaceTabsVisible(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, secondWorkspace.workspaceId), {
         timeout: 30_000,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: secondWorkspace.workspaceId,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: firstWorkspace.workspaceId,
         selected: false,
       });
       await expectWorkspaceHeader(page, {
-        title: secondWorkspace.workspaceName,
+        title: secondAgent.title,
         subtitle: secondWorkspace.projectDisplayName,
       });
       await expectWorkspaceTabVisible(page, secondAgent.id);
@@ -479,11 +465,7 @@ test.describe("Workspace navigation regression", () => {
       await expect(firstDeckEntry).toBeHidden();
       await expectWorkspaceDeckEntryCount(page, 2);
 
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        workspaceId: firstWorkspace.workspaceId,
-      });
+      await page.getByTestId(`session-row-${serverId}-${firstAgent.id}`).click();
       await waitForWorkspaceTabsVisible(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId), {
         timeout: 30_000,
@@ -515,13 +497,13 @@ test.describe("Workspace navigation regression", () => {
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId), {
         timeout: 30_000,
       });
-      await expectSidebarWorkspaceSelected({
+      await expectWorkspaceSelected({
         page,
         serverId,
         workspaceId: firstWorkspace.workspaceId,
       });
       await expectWorkspaceHeader(page, {
-        title: firstWorkspace.workspaceName,
+        title: firstAgent.title,
         subtitle: firstWorkspace.projectDisplayName,
       });
       await expectWorkspaceTabVisible(page, firstAgent.id);

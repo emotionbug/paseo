@@ -28,7 +28,10 @@ async function selectHost(page: Page, serverId: string): Promise<void> {
 }
 
 async function expectChronologicalTitles(page: Page, titles: string[]): Promise<void> {
-  const rows = page.getByRole("button").filter({ hasText: NONCE });
+  const rows = page
+    .getByTestId(/^agent-row-/)
+    .and(page.getByRole("button"))
+    .filter({ hasText: NONCE });
   await expect(rows).toHaveCount(titles.length, { timeout: 30_000 });
   for (const [index, title] of titles.entries()) {
     await expect(rows.nth(index)).toContainText(title, { timeout: 30_000 });
@@ -97,7 +100,10 @@ test.describe("History search across hosts", () => {
       // Back to all hosts, and clearing the query returns every seeded session.
       await selectHost(page, ALL_HOSTS_OPTION_ID);
       await page.getByTestId("sessions-search-clear").click();
-      const rows = page.getByRole("button").filter({ hasText: NONCE });
+      const rows = page
+        .getByTestId(/^agent-row-/)
+        .and(page.getByRole("button"))
+        .filter({ hasText: NONCE });
       await expect(rows).toHaveCount(3, { timeout: 30_000 });
     } finally {
       await primaryWorkspace?.cleanup().catch(() => undefined);

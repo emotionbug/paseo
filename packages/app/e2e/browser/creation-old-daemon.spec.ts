@@ -11,8 +11,7 @@ import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 import { buildSeededHost, buildCreateAgentPreferences } from "../support/helpers/daemon-registry";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import {
-  openNewWorkspaceComposer,
-  selectWorkspaceIsolation,
+  selectNewWorkspaceProject,
   loadSessionMessageReaders,
 } from "../support/helpers/new-workspace";
 import { fillComposerDraft } from "../support/helpers/composer";
@@ -99,8 +98,15 @@ for (const version of ["0.2.5", "0.7.2", "0.8.0"]) {
       gate,
     }) => {
       await openOldHost(page, project.workspaceId);
-      await openNewWorkspaceComposer(page, project);
-      await selectWorkspaceIsolation(page, "worktree");
+      await page.getByTestId(`session-new-${daemon.serverId}`).filter({ visible: true }).click();
+      await expect(page).toHaveURL(/\/new(?:\?.*)?$/);
+      await selectNewWorkspaceProject(page, project);
+      const supportsMultiplicity =
+        client.getLastServerInfoMessage()?.features?.workspaceMultiplicity === true;
+      await expect(page.getByTestId("workspace-create-isolation-trigger")).toHaveCount(0);
+      await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(
+        supportsMultiplicity ? 0 : 1,
+      );
       const prompt = "Create this workspace: emit 1 coalesced agent stream updates";
       await fillComposerDraft(page, prompt);
       await pressSubmitBeforeTheNextRender(page, "Create");
@@ -115,6 +121,11 @@ for (const version of ["0.2.5", "0.7.2", "0.8.0"]) {
           workspace.projectId === project.projectId && workspace.id !== project.workspaceId,
       );
       expect(workspaces).toHaveLength(1);
+      if (supportsMultiplicity) {
+        expect(workspaces[0]!.workspaceDirectory).toBe(project.workspaceDirectory);
+      } else {
+        expect(workspaces[0]!.workspaceDirectory).not.toBe(project.workspaceDirectory);
+      }
       gate.release();
       await gate.waitForCreated();
       await expect.poll(async () => (await client.fetchAgents()).entries.length).toBe(1);
@@ -124,6 +135,9 @@ for (const version of ["0.2.5", "0.7.2", "0.8.0"]) {
       await expect(
         page.getByTestId(`workspace-tab-agent_${first.id}`).filter({ visible: true }),
       ).toHaveText(prompt);
+      await expect(page.getByTestId("workspace-header-title").filter({ visible: true })).toHaveText(
+        prompt,
+      );
 
       await createAgentTabFromMenu(page);
       const secondPrompt = "Create another agent: emit 1 coalesced agent stream updates";
@@ -140,6 +154,9 @@ for (const version of ["0.2.5", "0.7.2", "0.8.0"]) {
       await expect(
         page.getByTestId(`workspace-tab-agent_${second.id}`).filter({ visible: true }),
       ).toHaveText(secondPrompt);
+      await expect(page.getByTestId("workspace-header-title").filter({ visible: true })).toHaveText(
+        secondPrompt,
+      );
       await expect(
         page
           .getByTestId("user-message")

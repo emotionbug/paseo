@@ -260,9 +260,7 @@ test.describe("CodeMirror workspace file editing", () => {
       });
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      const workspaceRow = page.getByTestId(
-        `sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`,
-      );
+      const workspaceRow = page.getByTestId(`session-row-${getServerId()}-${agent.id}`);
       await expect(workspaceRow).toBeVisible({ timeout: 30_000 });
       await workspaceRow.click();
       await page.getByTestId(`workspace-tab-agent_${agent.id}`).filter({ visible: true }).click();

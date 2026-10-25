@@ -2,7 +2,8 @@ import { test, expect, type Page } from "../support/fixtures";
 import { clickNewTerminal, gotoWorkspace } from "../support/helpers/launcher";
 import { renameModalInput, renameModalSubmit } from "../support/helpers/rename";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
-import { selectWorkspaceInSidebar } from "../support/helpers/sidebar";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
+import { getServerId } from "../support/helpers/server-id";
 
 function terminalTab(page: Page, terminalId: string) {
   // Terminal tab chips have no tab role; their persistent identity survives title loading.
@@ -70,13 +71,25 @@ test("restored terminal titles do not flash a default name while loading", async
 
     await test.step("first workspace visit in a fresh page session", async () => {
       await gotoWorkspace(page, other.workspaceId);
-      await selectWorkspaceInSidebar(page, workspace.workspaceId);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: workspace.workspaceId,
+      });
       await expectRestoredTitle(page, terminalId, title, "first-visit");
     });
 
     await test.step("return to the workspace with its titles already loaded", async () => {
-      await selectWorkspaceInSidebar(page, other.workspaceId);
-      await selectWorkspaceInSidebar(page, workspace.workspaceId);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: other.workspaceId,
+      });
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: workspace.workspaceId,
+      });
       await expectRestoredTitle(page, terminalId, title, "return-visit");
     });
   } finally {

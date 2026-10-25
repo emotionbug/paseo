@@ -1,35 +1,21 @@
 import type { Page } from "@playwright/test";
+import { buildHostWorkspaceRoute, decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import { test, expect } from "../support/fixtures";
-import { gotoAppShell } from "../support/helpers/app";
+import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-import { revealSidebarProjectWorkspaces } from "../support/helpers/sidebar";
-import {
-  expectSidebarWorkspaceSelected,
-  switchWorkspaceViaSidebar,
-} from "../support/helpers/workspace-ui";
+import { waitForWorkspaceInCommandCenter } from "../support/helpers/workspace-ui";
 
-async function readVisibleWorkspaceOrder(page: Page): Promise<string[]> {
-  const rows = page.getByRole("button", { name: /^Workspace \d{2}$/ });
-  await expect(rows).toHaveCount(12);
-  return rows.evaluateAll(
-    (elements, prefix) =>
-      elements.map((element) => element.getAttribute("data-testid")!.slice(prefix.length)),
-    `sidebar-workspace-row-${getServerId()}:`,
+async function selectedWorkspace(page: Page): Promise<string> {
+  await expect(page).toHaveURL(/\/workspace\/[^/?#]+$/);
+  const workspaceId = decodeWorkspaceIdFromPathSegment(
+    new URL(page.url()).pathname.split("/").at(-1)!,
   );
+  if (!workspaceId) throw new Error(`Expected a workspace route, got ${page.url()}`);
+  return workspaceId;
 }
 
-async function navigateWorkspace(
-  page: Page,
-  direction: "next" | "previous",
-  workspaceId: string,
-): Promise<void> {
-  await page.keyboard.press(direction === "next" ? "Alt+]" : "Alt+[");
-  await expectSidebarWorkspaceSelected({ page, serverId: getServerId(), workspaceId });
-  await expect(page).toHaveURL(new RegExp(`/workspace/${workspaceId}$`));
-}
-
-test("previous and next traverse every visible workspace while digit shortcuts stop at nine", async ({
+test("previous and next traverse every workspace while digit shortcuts stop at nine", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -38,57 +24,51 @@ test("previous and next traverse every visible workspace while digit shortcuts s
     title: "Workspace 01",
   });
   try {
+    const workspaceIds = [project.workspaceId];
     for (let index = 2; index <= 12; index += 1) {
       const created = await project.client.createWorkspace({
         source: { kind: "directory", path: project.repoPath },
         title: `Workspace ${String(index).padStart(2, "0")}`,
       });
       expect(created.error).toBeNull();
+      if (!created.workspace) throw new Error("Workspace creation returned no workspace");
+      workspaceIds.push(created.workspace.id);
     }
-    await page.setViewportSize({ width: 1440, height: 1100 });
     await gotoAppShell(page);
-    await revealSidebarProjectWorkspaces(page, project.projectKey);
-    const order = await readVisibleWorkspaceOrder(page);
-
-    await test.step("next crosses the ninth workspace and previous returns to it", async () => {
-      await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId: order[8] });
-      await navigateWorkspace(page, "next", order[9]);
-      await navigateWorkspace(page, "previous", order[8]);
-    });
-
-    await test.step("wrapping uses the true first and last visible workspace", async () => {
-      await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId: order[0] });
-      await navigateWorkspace(page, "previous", order[11]);
-      await navigateWorkspace(page, "next", order[0]);
-    });
-
-    await test.step("the ninth digit shortcut still selects the ninth workspace", async () => {
-      await page.keyboard.press("Alt+9");
-      await expectSidebarWorkspaceSelected({
-        page,
+    for (const workspaceId of workspaceIds) {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId: getServerId(),
-        workspaceId: order[8],
+        workspaceId,
+        query: "Workspace",
       });
-    });
-    await test.step("hidden Done rows remain shortcut targets without expanding the project", async () => {
-      await expectHiddenWorkspaceShortcuts(page, order);
-    });
+    }
+
+    await openSettings(page);
+    await page.keyboard.press("Alt+1");
+    const first = await selectedWorkspace(page);
+    const order = [first];
+    for (let index = 1; index < workspaceIds.length; index += 1) {
+      const previousUrl = page.url();
+      await page.keyboard.press("Alt+]");
+      await expect(page).not.toHaveURL(previousUrl);
+      order.push(await selectedWorkspace(page));
+    }
+    expect([...order].sort()).toEqual([...workspaceIds].sort());
+    await page.keyboard.press("Alt+]");
+    await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), first));
+
+    for (const workspaceId of order.toReversed()) {
+      await page.keyboard.press("Alt+[");
+      await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), workspaceId));
+    }
+
+    await page.keyboard.press("Alt+9");
+    await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), order[8]));
+    await page.keyboard.press("Alt+]");
+    await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), order[9]));
+    await page.keyboard.press("Alt+[");
+    await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), order[8]));
   } finally {
     await project.cleanup();
   }
 });
-
-async function expectHiddenWorkspaceShortcuts(page: Page, order: string[]) {
-  await page.getByLabel("Show less", { exact: true }).click();
-  const rows = page.getByRole("button", { name: /^Workspace \d{2}$/ });
-  await expect(rows).toHaveCount(7);
-  await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId: order[0] });
-  await page.keyboard.press("Alt+9");
-  await expect(page).toHaveURL(new RegExp(`/workspace/${order[8]}$`));
-  await expect(page.getByTestId(`sidebar-workspace-row-${getServerId()}:${order[8]}`)).toHaveCount(
-    0,
-  );
-  await page.keyboard.press("Alt+]");
-  await expect(page).toHaveURL(new RegExp(`/workspace/${order[9]}$`));
-  await expect(rows).toHaveCount(7);
-}

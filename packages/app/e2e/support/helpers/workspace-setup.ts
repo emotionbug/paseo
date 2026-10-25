@@ -6,7 +6,8 @@ import { gotoAppShell } from "./app";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { getServerId } from "./server-id";
 import { withProjectOwnership } from "./project-ownership";
-import { switchWorkspaceViaSidebar } from "./workspace-ui";
+import { switchWorkspaceViaCommandCenter, waitForSidebarHydration } from "./workspace-ui";
+import { openGlobalNewWorkspaceComposer } from "./new-workspace";
 import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type WorkspaceSetupDaemonClient = Pick<
@@ -79,37 +80,22 @@ export function projectNameFromPath(repoPath: string): string {
   return repoPath.replace(/\/+$/, "").split("/").findLast(Boolean) ?? repoPath;
 }
 
-export async function openHomeWithProject(page: Page, repoPath: string): Promise<void> {
+export async function openHomeWithHost(page: Page): Promise<void> {
   await gotoAppShell(page);
-  await expect(
-    page
-      .locator('[data-testid^="sidebar-project-row-"]')
-      .filter({ hasText: projectNameFromPath(repoPath) })
-      .first(),
-  ).toBeVisible({ timeout: 30_000 });
+  await waitForSidebarHydration(page);
 }
 
-function createWorkspaceButton(page: Page, repoPath: string) {
-  return page.getByRole("button", {
-    name: `Create a new workspace for ${projectNameFromPath(repoPath)}`,
-  });
-}
-
-async function revealWorkspaceButton(page: Page, repoPath: string): Promise<void> {
-  await page
-    .locator('[data-testid^="sidebar-project-row-"]')
-    .filter({ hasText: projectNameFromPath(repoPath) })
-    .first()
-    .hover();
-}
-
-export async function createWorkspaceFromSidebar(page: Page, repoPath: string): Promise<void> {
-  const button = createWorkspaceButton(page, repoPath);
-  await revealWorkspaceButton(page, repoPath);
-  await expect(button).toBeVisible({ timeout: 30_000 });
-  await expect(button).toBeEnabled({ timeout: 30_000 });
-  await button.click();
-  await expect(page).toHaveURL(/\/new\?/, { timeout: 30_000 });
+export async function createWorkspaceFromProjectPicker(
+  page: Page,
+  repoPath: string,
+): Promise<void> {
+  await openGlobalNewWorkspaceComposer(page);
+  await page.getByTestId("new-workspace-project-picker-trigger").click();
+  const project = page
+    .locator('[data-testid^="new-workspace-project-picker-option-"]')
+    .filter({ hasText: projectNameFromPath(repoPath) });
+  await expect(project).toBeVisible({ timeout: 30_000 });
+  await project.click();
   await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeVisible({
     timeout: 30_000,
   });
@@ -275,11 +261,11 @@ export async function fetchWorkspaceById(
   return workspace;
 }
 
-export async function navigateToWorkspaceViaSidebar(
+export async function navigateToWorkspaceViaCommandCenter(
   page: Page,
   workspaceId: string,
 ): Promise<void> {
-  await switchWorkspaceViaSidebar({
+  await switchWorkspaceViaCommandCenter({
     page,
     serverId: getServerId(),
     workspaceId,

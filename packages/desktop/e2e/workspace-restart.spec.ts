@@ -12,7 +12,7 @@ import { getServerId } from "../../app/e2e/support/helpers/server-id";
 import { waitForWorkspaceTabsVisible } from "../../app/e2e/support/helpers/workspace-tabs";
 import {
   expectWorkspaceHeader,
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
 } from "../../app/e2e/support/helpers/workspace-ui";
 import { installDesktopRuntime, waitForDesktopDaemonStartRequest } from "./support/runtime";
@@ -100,7 +100,7 @@ test("refresh keeps one continuous splash before restoring the desktop workspace
     });
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
-    await switchWorkspaceViaSidebar({ page, serverId, workspaceId: workspace.workspaceId });
+    await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: workspace.workspaceId });
     await waitForWorkspaceTabsVisible(page);
     await expectWorkspaceTabVisible(page, agent.id);
     await expectWorkspaceLocation(page, { serverId, workspace });

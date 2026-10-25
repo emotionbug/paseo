@@ -39,8 +39,8 @@ import { observeTimelineSubscriptions } from "../support/helpers/timeline-delive
 import { rememberTimelineRequestCounts } from "../support/helpers/timeline-resume";
 import {
   recordPanelToasts,
-  switchWorkspaceViaSidebar,
-  waitForWorkspaceInSidebar,
+  switchWorkspaceViaCommandCenter,
+  waitForWorkspaceInCommandCenter,
   workspaceDeckEntryLocator,
 } from "../support/helpers/workspace-ui";
 import {
@@ -481,10 +481,11 @@ async function expectHiddenStreamingSubmissionOrderAfterWorkspaceEviction(
     // subscription and retires the IDs stamped on already-buffered frames.
     await visitEvictionWorkspaces(page, evictionAgents);
     await subscriptions.waitForSubscribedAgents(openAgentIds);
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: target.workspaceId,
+      query: `submission-hidden-stream-${testInfo.workerIndex}-`,
     });
     await expectWorkspaceTabVisible(page, target.agentId);
     await expectComposerVisible(page);
@@ -512,14 +513,16 @@ async function expectHiddenStreamingSubmissionOrderAfterWorkspaceEviction(
     );
     gate.releaseHeldAgentStreamEvent("turn_started");
     const requestsBeforeReturn = rememberTimelineRequestCounts(gate, target.agentId);
-    await waitForWorkspaceInSidebar(page, {
+    await waitForWorkspaceInCommandCenter(page, {
       serverId: getServerId(),
       workspaceId: target.workspaceId,
+      query: `submission-hidden-stream-${testInfo.workerIndex}-`,
     });
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: target.workspaceId,
+      query: `submission-hidden-stream-${testInfo.workerIndex}-`,
     });
     await expectComposerVisible(page);
     await subscriptions.waitForSubscribedAgents(openAgentIds);

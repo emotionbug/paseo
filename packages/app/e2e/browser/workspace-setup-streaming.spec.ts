@@ -21,8 +21,8 @@ import {
   setupCommandOutput,
   createWorkspaceThroughDaemon,
   expectSetupPanel,
-  openHomeWithProject,
-  navigateToWorkspaceViaSidebar,
+  openHomeWithHost,
+  navigateToWorkspaceViaCommandCenter,
   leaveWorkspaceViaHistory,
   openWorkspaceScriptsMenu,
   startWorkspaceScriptFromMenu,
@@ -63,8 +63,8 @@ test.describe("Workspace setup streaming", () => {
         cwd: repo.path,
         worktreeSlug: `setup-open-${Date.now()}`,
       });
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
 
       await expectSetupTabNotSeeded(page, workspace.id);
     } finally {
@@ -73,7 +73,9 @@ test.describe("Workspace setup streaming", () => {
     }
   });
 
-  test("runs setup through the sidebar and leaves the workspace usable", async ({ page }) => {
+  test("runs setup after command-center navigation and leaves the workspace usable", async ({
+    page,
+  }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-ui-flow-", {
       paseoConfig: {
@@ -102,8 +104,8 @@ test.describe("Workspace setup streaming", () => {
       });
       await completed;
 
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
 
       await expectSetupTabNotSeeded(page, workspace.id);
       await expectSetupPanel(page);
@@ -138,8 +140,8 @@ test.describe("Workspace setup streaming", () => {
         worktreeSlug: "setup-membership",
       });
       await completed;
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
       await expectSetupTabNotSeeded(page, workspace.id);
       await traffic.expectNoDemand();
       await expectSetupPanel(page);
@@ -235,14 +237,14 @@ test.describe("Workspace setup streaming", () => {
       expect(setupCommandOutput(failedPayload.detail)).toContain("setup failed");
       expect(failedPayload.error).toMatch(/failed/i);
 
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
       await waitForWorkspaceTabsVisible(page);
       await expectFailedSetupTabSeededInMainPane(page, workspace.id);
 
       await closeSetupTab(page, workspace.id);
       await leaveWorkspaceViaHistory(page);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
       await expectSetupTabNotSeeded(page, workspace.id);
     } finally {
       await client.close();
@@ -270,8 +272,8 @@ test.describe("Workspace setup streaming", () => {
       expect(failedPayload.error).toContain("Failed to parse paseo.json");
       expect(failedPayload.detail.commands).toEqual([]);
 
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
       await expectFailedSetupTabSeededInMainPane(page, workspace.id);
       await expect(page.getByText(/Failed to parse paseo\.json at/)).toBeVisible();
       await closeSetupTab(page, workspace.id);
@@ -347,8 +349,8 @@ test.describe("Workspace setup streaming", () => {
       });
       await completed;
 
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspace.id);
 
       await waitForWorkspaceTabsVisible(page);
       await expectNoTerminalTabs(page);

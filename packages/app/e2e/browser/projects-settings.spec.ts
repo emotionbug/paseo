@@ -58,6 +58,7 @@ import {
   buildSettingsRoute,
 } from "@/utils/host-routes";
 import { getServerId } from "../support/helpers/server-id";
+import { expectOpenedProject } from "../support/helpers/project-picker-ui";
 
 const updatedSetup = ["npm install", "npm run build"];
 
@@ -165,7 +166,7 @@ async function readProjectConfigFile(project: ProjectsSettingsProject): Promise<
   return readFile(path.join(project.path, "paseo.json"), "utf8");
 }
 
-async function addProjectFromSidebar(page: Page, projectPath: string): Promise<string> {
+async function addProjectFromPicker(page: Page, projectPath: string): Promise<string> {
   await openAddProjectFlow(page);
   await chooseAddProjectMethod(page, "directory-search");
 
@@ -173,33 +174,11 @@ async function addProjectFromSidebar(page: Page, projectPath: string): Promise<s
   await input.fill(projectPath);
   await page.keyboard.press("Enter");
 
-  const projectRow = page
-    .locator('[data-testid^="sidebar-project-row-"]')
-    .filter({ hasText: path.basename(projectPath) })
-    .first();
-  await expect(projectRow).toBeVisible({ timeout: 30_000 });
-
-  const testId = await projectRow.getAttribute("data-testid");
-  expect(testId).not.toBeNull();
-  return testId!.replace("sidebar-project-row-", "");
-}
-
-async function openProjectSettingsFromSidebar(page: Page, projectId: string): Promise<void> {
-  const projectRow = page.getByTestId(`sidebar-project-row-${projectId}`);
-  await expect(projectRow).toBeVisible({ timeout: 30_000 });
-  await projectRow.hover();
-
-  const kebab = page.getByTestId(`sidebar-project-kebab-${projectId}`);
-  await expect(kebab).toBeVisible({ timeout: 10_000 });
-  await kebab.click();
-
-  const openSettingsItem = page.getByTestId(`sidebar-project-menu-open-settings-${projectId}`);
-  await expect(openSettingsItem).toBeVisible({ timeout: 10_000 });
-  await openSettingsItem.click();
+  return expectOpenedProject(page, path.basename(projectPath));
 }
 
 test.describe("Projects settings", () => {
-  test("freshly-added project with no workspace is editable from the sidebar without a reload", async ({
+  test("freshly-added project with no workspace is editable from settings without a reload", async ({
     page,
   }) => {
     const repo = await createTempGitRepo("projects-settings-empty-");
@@ -209,8 +188,9 @@ test.describe("Projects settings", () => {
     try {
       await gotoAppShell(page);
 
-      projectId = await addProjectFromSidebar(page, repo.path);
-      await openProjectSettingsFromSidebar(page, projectId);
+      projectId = await addProjectFromPicker(page, repo.path);
+      await openProjects(page);
+      await openProjectSettings(page, path.basename(repo.path));
 
       await expectProjectSettingsFormVisible(page);
       await expect(page.getByTestId("project-settings-back-button")).not.toBeVisible();

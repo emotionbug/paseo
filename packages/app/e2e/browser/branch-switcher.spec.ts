@@ -10,30 +10,17 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { readWorktreeBranchInfo } from "../support/helpers/workspace";
 import {
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
 } from "../support/helpers/workspace-ui";
+import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
 
-async function renameWorkspaceViaSidebar(
+async function renameWorkspaceFromCommandCenter(
   page: Page,
-  input: { workspaceId: string; title: string },
+  input: { title: string },
 ): Promise<void> {
-  const serverId = getServerId();
-  const row = page.getByTestId(`sidebar-workspace-row-${serverId}:${input.workspaceId}`);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.hover();
-
-  const kebab = page.getByTestId(`sidebar-workspace-kebab-${serverId}:${input.workspaceId}`);
-  await expect(kebab).toBeVisible({ timeout: 10_000 });
-  await kebab.click();
-
-  const renameItem = page.getByTestId(
-    `sidebar-workspace-menu-rename-${serverId}:${input.workspaceId}`,
-  );
-  await expect(renameItem).toBeVisible({ timeout: 10_000 });
-  await renameItem.click();
-
-  const modalPrefix = `sidebar-workspace-rename-modal-${serverId}:${input.workspaceId}`;
+  await runWorkspaceActionFromCommandCenter(page, "Rename workspace");
+  const modalPrefix = "workspace-rename-modal-global";
   const renameInput = page.getByTestId(`${modalPrefix}-input`);
   await expect(renameInput).toBeVisible({ timeout: 10_000 });
   await renameInput.fill(input.title);
@@ -61,11 +48,10 @@ test.describe("Branch switcher", () => {
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: workspace.workspaceId });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: workspace.workspaceId });
 
       const customTitle = "Payments Refactor";
-      await renameWorkspaceViaSidebar(page, {
-        workspaceId: workspace.workspaceId,
+      await renameWorkspaceFromCommandCenter(page, {
         title: customTitle,
       });
 

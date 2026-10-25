@@ -5,11 +5,13 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
-import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
+import { openProjectSettings } from "../support/helpers/project-settings";
+import { buildProjectsSettingsRoute } from "../../src/utils/host-routes";
+import { getServerId } from "../support/helpers/server-id";
 import { connectSeedClient } from "../support/helpers/seed-client";
 
 interface SeededProject {
-  projectKey: string;
+  projectName: string;
   cleanup(): Promise<void>;
 }
 
@@ -35,7 +37,7 @@ async function seedProjectNamedWithTrailingSpace(): Promise<SeededProject> {
       throw new Error(`The daemon added ${directoryPath} without a project key`);
     }
     return {
-      projectKey: project.projectKey,
+      projectName: project.projectDisplayName,
       cleanup: async () => {
         await client.removeProject(project.projectId).catch(() => undefined);
         await client.close().catch(() => undefined);
@@ -49,27 +51,22 @@ async function seedProjectNamedWithTrailingSpace(): Promise<SeededProject> {
   }
 }
 
-async function expectProjectRow(page: Page, projectKey: string): Promise<void> {
-  const row = page.getByTestId(`sidebar-project-row-${projectEquivalenceViewKey(projectKey)}`);
-  await expect(row).toBeVisible({ timeout: 60_000 });
+async function expectProjectSettings(page: Page, projectName: string): Promise<void> {
+  await page.goto(buildProjectsSettingsRoute(getServerId()));
+  await openProjectSettings(page, projectName);
 }
 
 async function expectAppShellRendered(page: Page): Promise<void> {
   await expect(page.getByText("Paseo ran into a problem.")).toHaveCount(0);
 }
 
-// A project view key carries the project's path, so a directory whose name ends
-// in a space produces a key that ends in a space. The sidebar order store used
-// to trim it on write, which left the reconcile effect writing a new order on
-// every render until React tore the app down with "Maximum update depth
-// exceeded" on every load (#4880).
-test("a project whose folder name ends in a space renders in the sidebar", async ({ page }) => {
+test("a project whose folder name ends in a space opens in settings", async ({ page }) => {
   const project = await seedProjectNamedWithTrailingSpace();
 
   try {
     await gotoAppShell(page);
 
-    await expectProjectRow(page, project.projectKey);
+    await expectProjectSettings(page, project.projectName);
     await expectAppShellRendered(page);
   } finally {
     await project.cleanup();

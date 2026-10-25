@@ -18,7 +18,7 @@ import { connectSeedClient } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import {
   waitForSidebarHydration,
-  waitForWorkspaceInSidebar,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 
 test.describe("Auto-archive after pull request merge", () => {
@@ -36,7 +36,7 @@ test.describe("Auto-archive after pull request merge", () => {
 
       await scenario.refreshMergedPullRequest();
       await scenario.expectWorkspaceRemainsActive();
-      await waitForWorkspaceInSidebar(page, {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId: getServerId(),
         workspaceId: scenario.workspaceId,
       });
@@ -181,5 +181,5 @@ async function restoreWorkspace(page: Page, workspaceId: string): Promise<void> 
   const action = page.getByTestId("workspace-recovery-action");
   await expect(action).toHaveText("Restore");
   await action.click();
-  await waitForWorkspaceInSidebar(page, { serverId: getServerId(), workspaceId });
+  await waitForWorkspaceInCommandCenter(page, { serverId: getServerId(), workspaceId });
 }

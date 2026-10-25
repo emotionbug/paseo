@@ -5,9 +5,11 @@ import { metroTest as test, expect } from "../support/fixtures";
 import { startIsolatedHostDaemon } from "../support/helpers/isolated-host-daemon";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { buildSeededHost } from "../support/helpers/daemon-registry";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
 
-test("published old daemon keeps workspace navigation and gates sorting", async ({ page }) => {
+test("published old daemon keeps workspace navigation without removed sorting controls", async ({
+  page,
+}) => {
   test.setTimeout(180_000);
   const daemon = await startIsolatedHostDaemon(`srv_sort_old_${randomUUID()}`, {
     publishedVersion: "0.8.0",
@@ -19,12 +21,16 @@ test("published old daemon keeps workspace navigation and gates sorting", async 
         source: { kind: "directory", path: project.repoPath, projectId: project.projectId },
         title: "Second old workspace",
       });
-      expect(second.workspace).toBeTruthy();
+      if (!second.workspace) throw new Error(second.error ?? "Failed to create old-host workspace");
       await openPublishedHost(page, daemon, project.workspaceId);
-      await openWorkspace(page, daemon.serverId, second.workspace!.id);
-      await expectSortingRequiresHostUpdate(page);
-      await selectSidebarStatusGrouping(page);
-      await expectStatusHasNoSorting(page);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: daemon.serverId,
+        workspaceId: second.workspace.id,
+      });
+      await page.getByLabel("Display preferences", { exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: /^Sort/ })).toHaveCount(0);
+      await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
     } finally {
       await project.cleanup();
     }
@@ -52,36 +58,4 @@ async function openPublishedHost(
     );
   }, host);
   await page.goto(buildHostWorkspaceRoute(daemon.serverId, workspaceId));
-}
-
-async function openWorkspace(page: Page, serverId: string, workspaceId: string) {
-  const row = page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`);
-  await expect(row).toBeVisible();
-  await row.click();
-  await expect(page).toHaveURL(new RegExp(workspaceId));
-}
-
-async function expectSortingRequiresHostUpdate(page: Page) {
-  await page.getByLabel("Display preferences", { exact: true }).click();
-  await page.getByRole("menuitem", { name: /^Sort/ }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Update hosts to sort workspaces" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Update hosts to sort workspaces" }),
-  ).toBeDisabled();
-  await expect(page.getByRole("menuitem", { name: "Created", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: "Last prompt", exact: true })).toHaveCount(0);
-  await page.getByRole("menuitem", { name: "Manual", exact: true }).click();
-  await page.getByLabel("Display preferences", { exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: /^Sort/ })).toContainText("Manual");
-  await page.keyboard.press("Escape");
-}
-
-async function expectStatusHasNoSorting(page: Page) {
-  await page.getByLabel("Display preferences", { exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "Update hosts to sort workspaces" })).toHaveCount(
-    0,
-  );
-  await expect(page.getByRole("menuitem", { name: /^Sort/ })).toHaveCount(0);
 }

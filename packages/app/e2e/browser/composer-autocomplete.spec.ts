@@ -8,7 +8,7 @@ import {
 import { expectWorkspaceTabVisible, openSessions } from "../support/helpers/archive-tab";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { getServerId } from "../support/helpers/server-id";
-import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
 import {
   closeMobileAgentSidebar,
   expectMobileAgentSidebarHidden,
@@ -415,7 +415,7 @@ test.describe("Composer autocomplete", () => {
       await expectComposerVisible(page, { timeout: 30_000 });
 
       await openAppWideNewWorkspace(page);
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: second.workspaceId });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: second.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {
         expectedDeckEntryCount: 2,
@@ -432,7 +432,7 @@ test.describe("Composer autocomplete", () => {
       });
 
       await openSessions(page);
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: third.workspaceId });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: third.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {
         expectedDeckEntryCount: sessions.length,
@@ -441,7 +441,7 @@ test.describe("Composer autocomplete", () => {
       });
 
       await openAppWideNewWorkspace(page);
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: first.workspaceId });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: first.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {
         expectedDeckEntryCount: sessions.length,

@@ -334,9 +334,11 @@ test("an unavailable B child opens its cached workspace with existing reconnecti
       });
     await openFleetChild(page, fleet);
     await expect(page.getByTestId("workspace-header-title").filter({ visible: true })).toHaveText(
-      "B workspace",
+      "MCP child on B",
     );
-    await expect(page.getByRole("button", { name: "MCP child on B", exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId(/^workspace-tab-agent_/).filter({ hasText: "MCP child on B" }),
+    ).toBeVisible();
     await expect(page.getByText(/already connected through another route/)).toHaveCount(0);
   } finally {
     await fleet.close();

@@ -10,8 +10,8 @@ import { pluginRequirements } from "../support/helpers/plugin-fixture";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import {
-  switchWorkspaceViaSidebar,
-  waitForWorkspaceInSidebar,
+  switchWorkspaceViaCommandCenter,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 
 const PLUGIN_ID = "plugin-icons-e2e";
@@ -88,8 +88,8 @@ test.describe("plugin icons", () => {
       await page.setViewportSize({ width: 1280, height: 800 });
       await gotoAppShell(page);
       const target = { serverId: getServerId(), workspaceId: workspace.workspaceId };
-      await waitForWorkspaceInSidebar(page, target);
-      await switchWorkspaceViaSidebar({ page, ...target });
+      await waitForWorkspaceInCommandCenter(page, target);
+      await switchWorkspaceViaCommandCenter({ page, ...target });
 
       await test.step("Command Center rows draw each icon form", async () => {
         const panel = await openCommandCenter(page);

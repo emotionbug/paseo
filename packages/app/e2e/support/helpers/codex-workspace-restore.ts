@@ -11,7 +11,10 @@ import { openSessions } from "./archive-tab";
 import { getE2EDaemonPort } from "./daemon-port";
 import { assertComposerIdle } from "./rewind-flow";
 import { getServerId } from "./server-id";
-import { archiveWorkspaceFromSidebar, expectWorkspaceAbsentFromSidebar } from "./sidebar";
+import {
+  archiveWorkspaceFromCommandCenter,
+  expectWorkspaceAbsentFromCommandCenter,
+} from "./sidebar";
 import { createTempGitRepo } from "./workspace";
 import { waitForSidebarHydration } from "./workspace-ui";
 import type { SeedDaemonClient } from "./seed-client";
@@ -130,12 +133,12 @@ async function createCodexRestoreJourney(page: Page, client: SeedDaemonClient, i
     async connectFreshBrowser() {
       await page.goto("/");
     },
-    async archiveWorkspaceFromSidebar() {
-      await archiveWorkspaceFromSidebar(page, created().workspaceId);
+    async archiveWorkspaceFromCommandCenter() {
+      await archiveWorkspaceFromCommandCenter(page, created().workspaceId);
     },
     async expectWorkspaceAndAgentArchived() {
       const target = created();
-      await expectWorkspaceAbsentFromSidebar(page, target.workspaceId);
+      await expectWorkspaceAbsentFromCommandCenter(page, target.workspaceId);
       await expect
         .poll(() => client.fetchAgent({ agentId: target.agentId }))
         .toMatchObject({

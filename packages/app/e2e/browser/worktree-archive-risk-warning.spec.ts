@@ -13,13 +13,13 @@ import {
 } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
 import {
-  clickArchiveWorkspaceMenuItem,
-  expectWorkspaceAbsentFromSidebar,
+  clickArchiveWorkspaceCommand,
+  expectWorkspaceAbsentFromCommandCenter,
 } from "../support/helpers/sidebar";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
   waitForSidebarHydration,
-  waitForWorkspaceInSidebar,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 
 async function seedRiskyWorktree(
@@ -75,7 +75,7 @@ async function clickArchiveAndAnswerWarning(
     warning = dialog;
     void (answer === "accept" ? dialog.accept() : dialog.dismiss());
   });
-  await clickArchiveWorkspaceMenuItem(page, workspaceId);
+  await clickArchiveWorkspaceCommand(page, workspaceId);
   if (!warning) {
     throw new Error("Expected an archive confirmation dialog, but none was shown.");
   }
@@ -119,7 +119,7 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
-    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: worktree.workspaceId });
+    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: worktree.workspaceId });
 
     const firstWarning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "dismiss");
     expect(firstWarning.type()).toBe("confirm");
@@ -127,16 +127,14 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
     expect(firstWarning.message()).toContain("Uncommitted changes");
     expect(firstWarning.message()).toContain("1 unpushed commit");
 
-    await expect(
-      page.getByTestId(`sidebar-workspace-row-${serverId}:${worktree.workspaceId}`),
-    ).toBeVisible({ timeout: 10_000 });
+    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: worktree.workspaceId });
     expect(existsSync(worktree.workspaceDirectory)).toBe(true);
 
     const secondWarning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "accept");
     expect(secondWarning.message()).toContain("Uncommitted changes");
     expect(secondWarning.message()).toContain("1 unpushed commit");
 
-    await expectWorkspaceAbsentFromSidebar(page, worktree.workspaceId);
+    await expectWorkspaceAbsentFromCommandCenter(page, worktree.workspaceId);
     await expect
       .poll(() => existsSync(worktree.workspaceDirectory), { timeout: 30_000 })
       .toBe(false);

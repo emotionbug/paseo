@@ -5,7 +5,7 @@ import { expect, test } from "../support/fixtures";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
   connectWorkspaceSetupClient,
-  openHomeWithProject,
+  openHomeWithHost,
   openWorkspaceScriptsMenu,
   seedProjectForWorkspaceSetup,
   startWorkspaceScriptFromMenu,
@@ -65,7 +65,7 @@ test("fork workspace setup stays blocked until the user runs it", async ({ page 
       throw new Error(result.error ?? "Workspace creation failed");
     expect(result.setupSkippedReason).toContain("Scripts are blocked for PR #2");
 
-    await openHomeWithProject(page, repo.path);
+    await openHomeWithHost(page);
     await page.goto(buildHostWorkspaceRoute(getServerId(), result.workspace.id));
     await waitForWorkspaceTabsVisible(page);
 

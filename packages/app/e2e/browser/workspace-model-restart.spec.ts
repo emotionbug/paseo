@@ -21,9 +21,7 @@ import {
   selectNewWorkspaceProject,
   submitNewWorkspaceEmpty,
 } from "../support/helpers/new-workspace";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import { killProcessTree, spawnTsx } from "../support/helpers/spawn-node";
-import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 import { getVisibleWorkspaceAgentTabIds } from "../support/helpers/workspace-tabs";
 
 const LEGACY_AGENT_ID = "10000000-0000-4000-8000-000000000001";
@@ -356,29 +354,6 @@ function parseWorkspaceIdFromPageUrl(page: Page, serverId: string): string | nul
   return decodeWorkspaceIdFromPathSegment(match[1]);
 }
 
-async function expectWorkspaceRowDoesNotShowIndicator(
-  page: Page,
-  input: { serverId: string; workspaceId: string; indicator: string },
-) {
-  const row = page.getByTestId(`sidebar-workspace-row-${input.serverId}:${input.workspaceId}`);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await expect(
-    row.locator(`[data-testid="workspace-status-indicator-${input.indicator}"]`),
-  ).toHaveCount(0, { timeout: 5_000 });
-}
-
-async function expectWorkspaceRowInStatusBucket(
-  page: Page,
-  input: { serverId: string; workspaceId: string; bucket: string },
-) {
-  await selectSidebarStatusGrouping(page);
-  await expect(
-    page
-      .getByTestId(`sidebar-status-group-rows-${input.bucket}`)
-      .getByTestId(`sidebar-workspace-row-${input.serverId}:${input.workspaceId}`),
-  ).toBeVisible({ timeout: 30_000 });
-}
-
 async function fetchLegacyAgent(client: RestartDaemonClient) {
   const agents = await client.fetchAgents({ scope: "active" });
   return agents.entries.find(hasLegacyAgentId)?.agent ?? null;
@@ -431,12 +406,7 @@ test.describe("Workspace model restart regressions", () => {
         .toEqual({ [seeded.workspaceA]: "done", [seeded.workspaceB]: "done" });
 
       await page.goto(buildHostWorkspaceRoute(serverId, seeded.workspaceA));
-      await waitForSidebarHydration(page);
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        serverId,
-        workspaceId: seeded.workspaceB,
-        indicator: "running",
-      });
+      await expect(page.getByTestId(`session-host-${serverId}`)).toBeVisible({ timeout: 60_000 });
       await expect
         .poll(() => getVisibleWorkspaceAgentTabIds(page), { timeout: 30_000 })
         .toContain(`workspace-tab-agent_${LEGACY_AGENT_ID}`);
@@ -481,26 +451,6 @@ test.describe("Workspace model restart regressions", () => {
           [createdWorkspaceId]: "done",
         });
 
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        serverId,
-        workspaceId: seeded.workspaceB,
-        indicator: "running",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        serverId,
-        workspaceId: createdWorkspaceId,
-        indicator: "running",
-      });
-      await expectWorkspaceRowInStatusBucket(page, {
-        serverId,
-        workspaceId: seeded.workspaceB,
-        bucket: "done",
-      });
-      await expectWorkspaceRowInStatusBucket(page, {
-        serverId,
-        workspaceId: createdWorkspaceId,
-        bucket: "done",
-      });
       await expect
         .poll(() => getVisibleWorkspaceAgentTabIds(page), { timeout: 30_000 })
         .toEqual([]);

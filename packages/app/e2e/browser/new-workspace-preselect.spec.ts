@@ -11,7 +11,7 @@ import { seedSavedSettingsHosts } from "../support/helpers/settings";
 import { LAST_WORKSPACE_SELECTION_STORAGE_KEY } from "@/stores/last-workspace-selection";
 import { buildHostWorkspaceRoute, buildNewWorkspaceRoute } from "@/utils/host-routes";
 import {
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
   waitForSidebarHydration,
 } from "../support/helpers/workspace-ui";
 
@@ -176,7 +176,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
 
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: projectB.workspaceId,
@@ -184,7 +184,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await pressNewWorkspaceShortcut(page);
     await expectNewWorkspaceProjectSelected(page, projectB.projectDisplayName);
 
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: projectA.workspaceId,
@@ -197,7 +197,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
 
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: projectB.workspaceId,
@@ -205,7 +205,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await openGlobalNewWorkspaceComposer(page);
     await expectNewWorkspaceProjectSelected(page, projectB.projectDisplayName);
 
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: projectA.workspaceId,

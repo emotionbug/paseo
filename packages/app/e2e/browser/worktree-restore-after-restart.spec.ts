@@ -27,7 +27,6 @@ import {
 } from "../support/helpers/new-workspace";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo } from "../support/helpers/workspace";
-import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
 test.describe("Worktree restore after daemon restart", () => {
   const serverId = `srv_worktree_restart_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
@@ -134,7 +133,7 @@ test.describe("Worktree restore after daemon restart", () => {
 
     await seedBrowser(page);
     await gotoAppShell(page);
-    await waitForSidebarHydration(page);
+    await expect(page.getByTestId(`session-host-${serverId}`)).toBeVisible({ timeout: 60_000 });
     await openSessions(page);
     await expectSessionRowArchived(page, agent.title);
 

@@ -27,7 +27,7 @@ async function search(page: Page, query: string): Promise<void> {
 }
 
 function rowTitles(page: Page) {
-  return page.getByRole("button");
+  return page.getByTestId(/^agent-row-/).and(page.getByRole("button"));
 }
 
 async function expectVisibleTitles(page: Page, titles: string[]): Promise<void> {
@@ -70,12 +70,12 @@ async function verifyRecencyBeforeMatchStrength(page: Page): Promise<void> {
 async function verifyExactAndTypoHighlights(page: Page): Promise<void> {
   await test.step("highlights exact and typo-resolved matches", async () => {
     await search(page, `${NONCE} billing`);
-    const row = page.getByRole("button").filter({ hasText: NONCE }).first();
+    const row = rowTitles(page).filter({ hasText: NONCE }).first();
     await expect(row.getByText("billing", { exact: true })).toBeVisible({ timeout: 30_000 });
 
     await search(page, `${NONCE} bulling`);
     await expectVisibleTitles(page, [TITLES.billing]);
-    const typoRow = page.getByRole("button").filter({ hasText: NONCE }).first();
+    const typoRow = rowTitles(page).filter({ hasText: NONCE }).first();
     await expect(typoRow.getByText("billing", { exact: true })).toBeVisible({
       timeout: 30_000,
     });

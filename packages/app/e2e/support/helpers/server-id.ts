@@ -1,7 +1,7 @@
 /**
  * Resolves the isolated E2E daemon's server id, which Playwright's globalSetup
  * publishes into the environment before any spec runs. Helpers and specs that
- * build host routes or `sidebar-workspace-row-${serverId}:${id}` selectors share
+ * build host routes or session-row selectors share
  * this accessor instead of re-reading the env var.
  */
 export function getServerId(): string {

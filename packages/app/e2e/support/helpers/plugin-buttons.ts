@@ -334,9 +334,9 @@ export async function withButtonShowcase(
           const recovered = (await observation.textContent())!;
           expect([first, second]).not.toContain(recovered);
           await showcase.setTitle("Healthy app after button failure");
-          await expect(page.getByTestId("workspace-header-title")).toHaveText(
-            "Healthy app after button failure",
-          );
+          await expect(
+            page.getByText("Healthy app after button failure", { exact: true }),
+          ).toBeVisible();
           await press(page, "Close deployment details");
           await expect.poll(() => released.has(recovered)).toBe(true);
           await showcase.setTitle("Button showcase");

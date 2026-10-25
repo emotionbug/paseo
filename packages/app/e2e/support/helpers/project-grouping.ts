@@ -1,24 +1,14 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { gotoAppShell } from "./app";
 import { addConnectedHostsAndReload, waitForConnectedHost } from "./hosts";
 import { openProjectSettings } from "./project-settings";
 import { selectSettingsHost } from "./settings";
 import { waitForSidebarHydration } from "./workspace-ui";
 import { buildProjectsSettingsRoute } from "@/utils/host-routes";
+import { openCommandCenter, closeCommandCenter } from "./command-center";
+import { openGlobalNewWorkspaceComposer, submitNewWorkspaceEmpty } from "./new-workspace";
 
 const PROJECT_VISIBILITY_TIMEOUT = 30_000;
-
-function projectGroup(page: Page, projectName: string): Locator {
-  return page.getByRole("group", { name: projectName, exact: true });
-}
-
-function projectGroupWithWorkspace(
-  page: Page,
-  projectName: string,
-  workspaceName: string,
-): Locator {
-  return projectGroup(page, projectName).filter({ hasText: workspaceName });
-}
 
 export async function openProjectDirectory(page: Page): Promise<void> {
   await gotoAppShell(page);
@@ -43,35 +33,13 @@ export async function openProjectDirectoryWithHosts(
   await waitForSidebarHydration(page);
 }
 
-export async function expectProjectContainsWorkspaces(
-  page: Page,
-  input: { projectName: string; workspaceNames: string[] },
-): Promise<void> {
-  const group = projectGroup(page, input.projectName);
-  await expect(group).toHaveCount(1, { timeout: PROJECT_VISIBILITY_TIMEOUT });
-  for (const workspaceName of input.workspaceNames) {
-    await expect(group.getByRole("button").filter({ hasText: workspaceName })).toBeVisible({
-      timeout: PROJECT_VISIBILITY_TIMEOUT,
-    });
-  }
-}
-
-export async function expectSeparateProjects(
-  page: Page,
-  projects: Array<{ projectName: string; workspaceName: string }>,
-): Promise<void> {
-  for (const project of projects) {
-    await expect(
-      projectGroupWithWorkspace(page, project.projectName, project.workspaceName),
-    ).toHaveCount(1, { timeout: PROJECT_VISIBILITY_TIMEOUT });
-  }
-}
-
 export async function beginWorkspaceFromProject(page: Page, projectName: string): Promise<void> {
-  const group = projectGroup(page, projectName);
-  await expect(group).toBeVisible({ timeout: PROJECT_VISIBILITY_TIMEOUT });
-  await group.hover();
-  await group.getByLabel(`Create a new workspace for ${projectName}`).click();
+  await openGlobalNewWorkspaceComposer(page);
+  await page.getByTestId("new-workspace-project-picker-trigger").click();
+  await page
+    .locator('[data-testid^="new-workspace-project-picker-option-"]')
+    .filter({ hasText: projectName })
+    .click();
   await expect(page.getByRole("button", { name: "Workspace project", exact: true })).toContainText(
     projectName,
     { timeout: PROJECT_VISIBILITY_TIMEOUT },
@@ -85,18 +53,23 @@ export async function selectWorkspaceHost(page: Page, hostName: string): Promise
 }
 
 export async function createWorkspaceWithoutAgent(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await submitNewWorkspaceEmpty(page);
+  await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
 }
 
 export async function expectProjectWorkspaceCountForHost(
   page: Page,
   input: { projectName: string; hostName: string; count: number },
 ): Promise<void> {
-  const group = projectGroup(page, input.projectName);
-  await expect(group.getByRole("button").filter({ hasText: input.hostName })).toHaveCount(
-    input.count,
-    { timeout: PROJECT_VISIBILITY_TIMEOUT },
-  );
+  const panel = await openCommandCenter(page);
+  await panel.getByTestId("command-center-input").fill(input.projectName);
+  await expect(
+    panel
+      .getByTestId(/^command-center-workspace-.*:/)
+      .filter({ hasText: input.projectName })
+      .filter({ hasText: input.hostName }),
+  ).toHaveCount(input.count, { timeout: PROJECT_VISIBILITY_TIMEOUT });
+  await closeCommandCenter(page);
 }
 
 export async function renameProject(page: Page, name: string): Promise<void> {
@@ -140,8 +113,11 @@ export async function openGroupedProjectWorkspace(
   projectName: string,
   workspaceName: string,
 ): Promise<void> {
-  await projectGroup(page, projectName)
-    .getByRole("button")
+  const panel = await openCommandCenter(page);
+  await panel.getByTestId("command-center-input").fill(workspaceName);
+  await panel
+    .getByTestId(/^command-center-workspace-.*:/)
+    .filter({ hasText: projectName })
     .filter({ hasText: workspaceName })
     .click();
   await expect(page).toHaveURL(/\/workspace\//);

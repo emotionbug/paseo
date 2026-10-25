@@ -32,7 +32,7 @@ import {
 import { gotoAppShell } from "../support/helpers/app";
 import {
   waitForSidebarHydration,
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
 } from "../support/helpers/workspace-ui";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { hasGithubAuth, createTempGithubRepo } from "../support/helpers/github-fixtures";
@@ -187,7 +187,7 @@ test.describe("Composer attachments", () => {
     try {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId: getServerId(),
         workspaceId: workspace.workspaceId,
@@ -278,7 +278,7 @@ test.describe("Composer attachments", () => {
     try {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId,
         workspaceId: workspace.workspaceId,

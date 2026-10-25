@@ -8,7 +8,7 @@ import {
   expectCommittedFile,
   expectCommittedFileAfterReload,
 } from "../support/helpers/workspace-recovery";
-import { archiveWorkspaceFromSidebar } from "../support/helpers/sidebar";
+import { archiveWorkspaceFromCommandCenter } from "../support/helpers/sidebar";
 import { rename } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
@@ -37,7 +37,7 @@ import { getServerId } from "../support/helpers/server-id";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
   waitForSidebarHydration,
-  waitForWorkspaceInSidebar,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 
 test.describe("Worktree restore", () => {
@@ -267,7 +267,7 @@ test.describe("Worktree restore", () => {
         .poll(() => existsSync(worktree.workspaceDirectory), { timeout: 30_000 })
         .toBe(true);
       await secondaryWorkspaceUpdate;
-      await waitForWorkspaceInSidebar(page, {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId: getServerId(),
         workspaceId: worktree.workspaceId,
       });
@@ -297,7 +297,7 @@ test.describe("Worktree restore", () => {
     await expectWorkspaceBranch(page, switchedBranch);
     await expect(
       page.getByTestId("workspace-header-title").filter({ visible: true }).first(),
-    ).toHaveText(switchedBranch, { timeout: 30_000 });
+    ).toHaveText(agent.title, { timeout: 30_000 });
   });
 
   test("restores the workspace before explicitly unarchiving each selected agent", async ({
@@ -457,7 +457,7 @@ test.describe("Worktree restore", () => {
     await expect
       .poll(() => existsSync(worktree.workspaceDirectory), { timeout: 30_000 })
       .toBe(true);
-    await waitForWorkspaceInSidebar(page, {
+    await waitForWorkspaceInCommandCenter(page, {
       serverId: getServerId(),
       workspaceId: worktree.workspaceId,
     });
@@ -529,7 +529,7 @@ async function archiveCommittedWorkspace(
   page: Page,
   worktree: { workspaceId: string; workspaceDirectory: string },
 ): Promise<void> {
-  await archiveWorkspaceFromSidebar(page, worktree.workspaceId);
+  await archiveWorkspaceFromCommandCenter(page, worktree.workspaceId);
   await expect.poll(() => existsSync(worktree.workspaceDirectory)).toBe(false);
 }
 

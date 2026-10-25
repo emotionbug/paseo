@@ -5,7 +5,7 @@ import { seedWorkspace, type SeedDaemonClient } from "../support/helpers/seed-cl
 import { getServerId } from "../support/helpers/server-id";
 import { observeTimelineSubscriptions } from "../support/helpers/timeline-delivery";
 import { waitForWorkspaceTabsVisible } from "../support/helpers/workspace-tabs";
-import { selectWorkspaceInSidebar } from "../support/helpers/sidebar";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
 import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
 import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
 import {
@@ -265,7 +265,11 @@ test.describe("Viewed agent timelines", () => {
       const [first, second, third, fourth] = scenario.chats;
       await openAgent(page, first!, first!.agentId);
       await selectAgent(page, second!.title);
-      await selectWorkspaceInSidebar(page, third!.workspaceId);
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId: third!.workspaceId,
+      });
       await selectAgent(page, third!.title);
       await selectAgent(page, fourth!.title);
       await subscriptions.waitForSubscribedAgents(scenario.chats.map((chat) => chat.agentId));
@@ -393,10 +397,9 @@ test.describe("Viewed agent timelines", () => {
         exact: true,
       });
       await expect(previousMessage).toBeVisible();
-      await expect(page.getByRole("button", { name: "First viewed chat" })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
+      await expect(
+        page.getByTestId(`workspace-tab-agent_${scenario.firstAgentId}`),
+      ).toHaveAttribute("aria-selected", "true");
       await gate.drop();
       await gate.waitForBlockedConnection();
       await expectReconnectingToastVisible(page);

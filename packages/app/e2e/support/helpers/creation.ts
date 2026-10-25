@@ -5,19 +5,14 @@ import { gotoAppShell } from "./app";
 import { gotoWorkspace } from "./launcher";
 import { fillComposerDraft } from "./composer";
 import { createAgentTabFromMenu } from "./workspace-tabs";
-import {
-  openNewWorkspaceComposer,
-  selectWorkspaceIsolation,
-  loadSessionMessageReaders,
-} from "./new-workspace";
+import { openNewWorkspaceComposer, loadSessionMessageReaders } from "./new-workspace";
 import { seedWorkspace } from "./seed-client";
 import {
   waitForSidebarHydration,
-  switchWorkspaceViaSidebar,
+  switchWorkspaceViaCommandCenter,
   workspaceDeckEntryLocator,
 } from "./workspace-ui";
 import { getServerId } from "./server-id";
-import { revealSidebarProjectWorkspaces } from "./sidebar";
 import { WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES } from "@/screens/workspace/workspace-deck-retention";
 import type { installDaemonWebSocketGate } from "./daemon-websocket-gate";
 
@@ -144,11 +139,10 @@ export async function createCreationScenario(page: Page) {
   let workspaceId = project.workspaceId;
   return {
     cleanup: project.cleanup,
-    async openWorkspaceForm(isolation: "local" | "worktree") {
+    async openWorkspaceForm() {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, project);
-      await selectWorkspaceIsolation(page, isolation);
     },
     async openAgentDraft() {
       await gotoWorkspace(page, project.workspaceId);
@@ -276,15 +270,20 @@ export async function createCreationScenario(page: Page) {
           source: { kind: "directory", path: project.repoPath },
         });
         if (!result.workspace) throw new Error(result.error ?? "Failed to seed eviction workspace");
-        await switchWorkspaceViaSidebar({
+        await switchWorkspaceViaCommandCenter({
           page,
           serverId: getServerId(),
           workspaceId: result.workspace.id,
+          query: project.projectDisplayName,
         });
       }
       await expect(workspaceDeckEntryLocator(page, getServerId(), workspaceId)).toHaveCount(0);
-      await revealSidebarProjectWorkspaces(page, project.projectKey);
-      await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId });
+      await switchWorkspaceViaCommandCenter({
+        page,
+        serverId: getServerId(),
+        workspaceId,
+        query: project.projectDisplayName,
+      });
       await page
         .getByTestId(draftTestId!)
         .filter({ visible: true })

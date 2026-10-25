@@ -8,7 +8,7 @@ import {
   openSettingsHostSection,
 } from "../support/helpers/settings";
 import { seedWorkspace } from "../support/helpers/seed-client";
-import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
 
 test.describe("Settings host selection", () => {
   test.describe.configure({ timeout: 180_000 });
@@ -35,7 +35,7 @@ test.describe("Settings host selection", () => {
       });
 
       await clickSettingsBackToWorkspace(page);
-      await switchWorkspaceViaSidebar({
+      await switchWorkspaceViaCommandCenter({
         page,
         serverId: remoteDaemon.serverId,
         workspaceId: remoteWorkspace.workspaceId,

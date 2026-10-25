@@ -213,10 +213,9 @@ test.describe("Compact sidebar inspection", () => {
   test("canceling Import session retains the compact sidebar", async ({ page }) => {
     await gotoAppShell(page);
     await openSidebar(page);
-    await page
-      .getByTestId("sidebar-project-empty-state")
-      .getByRole("button", { name: "Import session", exact: true })
-      .click();
+    const panel = await openCommandCenter(page);
+    await panel.getByTestId("command-center-input").fill("Import session");
+    await panel.getByRole("button", { name: /^Import session(?:\s|$)/ }).click();
     await expect(page.getByTestId("import-session-sheet")).toBeVisible();
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByTestId("import-session-sheet")).not.toBeVisible();

@@ -158,7 +158,7 @@ export async function openHostAppearanceSettings(page: Page, serverId: string): 
   await expect(page.getByTestId("host-appearance-preview")).toBeVisible({ timeout: 15_000 });
 }
 
-// Settings replaces the workspace sidebar, so badge assertions need the app shell back. Going
+// Settings replaces session navigation, so host-row assertions need the app shell back. Going
 // through the in-app back control (rather than a fresh goto) also keeps the auto-seed fixture
 // from rewriting the host registry, since init scripts only re-run on a real navigation.
 export async function leaveHostAppearanceSettings(page: Page): Promise<void> {
@@ -188,59 +188,6 @@ export async function chooseHostBadgeDisplay(
   await page.getByTestId("host-appearance-badge-display").click();
   await page.getByRole("menuitem", { name: option, exact: true }).click();
   await expect(page.getByRole("button", { name: `Sidebar badge, ${option}` })).toBeVisible();
-}
-
-// The badge is visual-only; the workspace row owns its accessible name. Test IDs keep visual
-// assertions from coupling to that row-level accessibility contract.
-function hostBadge(page: Page, input: HostBadgeTarget) {
-  return page
-    .getByTestId(`sidebar-workspace-row-${input.serverId}:${input.workspaceId}`)
-    .getByTestId(`host-badge-${input.serverId}`);
-}
-
-interface HostBadgeTarget {
-  serverId: string;
-  workspaceId: string;
-  hostName: string;
-}
-
-export async function expectHostBadgeName(page: Page, target: HostBadgeTarget): Promise<void> {
-  const badge = hostBadge(page, target);
-  await expect(badge).toBeVisible({ timeout: 15_000 });
-  await expect(badge).toHaveText(target.hostName);
-}
-
-export async function expectHostBadgeIconOnly(page: Page, target: HostBadgeTarget): Promise<void> {
-  const badge = hostBadge(page, target);
-  await expect(badge).toBeVisible({ timeout: 15_000 });
-  await expect(badge).not.toHaveText(target.hostName);
-  await expect(
-    page.getByTestId(`sidebar-workspace-row-${target.serverId}:${target.workspaceId}`),
-  ).toHaveAccessibleName(new RegExp(target.hostName));
-}
-
-export async function expectNoHostBadge(page: Page, target: HostBadgeTarget): Promise<void> {
-  await expect(hostBadge(page, target)).toHaveCount(0, { timeout: 15_000 });
-}
-
-// The host sits on the meta line as plain secondary text, so its identity colour lives on the
-// server icon alone. The label stays muted like every other item on that line — asserting a
-// tinted label or a pill fill would re-assert the design the meta row replaced.
-//
-// The icon takes the *foreground* variant of the identity colour, not the fill one: it is a
-// stroked glyph on a surface, so it has to clear contrast against that surface rather than
-// behind white letters. That variant is per-scheme, and the browser project runs light.
-export async function expectHostBadgeTinted(
-  page: Page,
-  target: HostBadgeTarget & { color: IdentityColorName },
-): Promise<void> {
-  const badge = hostBadge(page, target);
-  await expect(badge).toBeVisible({ timeout: 15_000 });
-  await expect(badge).toHaveText(target.hostName);
-  await expect(badge.locator("svg")).toHaveAttribute(
-    "stroke",
-    identityForeground(target.color, "light"),
-  );
 }
 
 export async function expectHostAppearancePreview(

@@ -1,6 +1,6 @@
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
-import { seedWorkspace } from "../support/helpers/seed-client";
+import { seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { getServerId } from "../support/helpers/server-id";
 import { openSettingsSection } from "../support/helpers/settings";
 
@@ -18,8 +18,8 @@ test("shows Pure black in the appearance picker", async ({ page }, testInfo) => 
   });
 });
 
-test("keeps the selected workspace visible in Light", async ({ page }, testInfo) => {
-  const workspace = await seedWorkspace({
+test("keeps the selected session visible in Light", async ({ page }, testInfo) => {
+  const workspace = await seedMockAgentWorkspace({
     repoPrefix: "light-selected-workspace-",
     title: "Selected workspace",
   });
@@ -30,12 +30,12 @@ test("keeps the selected workspace visible in Light", async ({ page }, testInfo)
     });
     await gotoAppShell(page);
 
-    const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
+    const row = page.getByTestId(`session-row-${getServerId()}-${workspace.agentId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
 
     await expect(row).toHaveAttribute("aria-selected", "true");
-    await expect(row).toHaveCSS("background-color", "rgb(212, 212, 216)");
+    await expect(row.locator("..")).toHaveCSS("background-color", "rgb(228, 228, 231)");
     await page.screenshot({
       path: testInfo.outputPath("light-selected-workspace.png"),
       fullPage: true,
@@ -45,8 +45,8 @@ test("keeps the selected workspace visible in Light", async ({ page }, testInfo)
   }
 });
 
-test("keeps the selected workspace visible in Pure black", async ({ page }, testInfo) => {
-  const workspace = await seedWorkspace({
+test("keeps the selected session visible in Pure black", async ({ page }, testInfo) => {
+  const workspace = await seedMockAgentWorkspace({
     repoPrefix: "pure-black-selected-workspace-",
     title: "Selected workspace",
   });
@@ -57,12 +57,12 @@ test("keeps the selected workspace visible in Pure black", async ({ page }, test
     });
     await gotoAppShell(page);
 
-    const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
+    const row = page.getByTestId(`session-row-${getServerId()}-${workspace.agentId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
 
     await expect(row).toHaveAttribute("aria-selected", "true");
-    await expect(row).toHaveCSS("background-color", "rgb(17, 17, 17)");
+    await expect(row.locator("..")).toHaveCSS("background-color", "rgb(28, 28, 28)");
     await page.screenshot({
       path: testInfo.outputPath("pure-black-selected-workspace.png"),
       fullPage: true,

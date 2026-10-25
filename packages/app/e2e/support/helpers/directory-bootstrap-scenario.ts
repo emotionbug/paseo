@@ -57,7 +57,7 @@ export class DirectoryBootstrapScenario {
       (url) => url.pathname.includes("/workspace/") && !url.searchParams.has("open"),
     );
     await waitForWorkspaceTabsVisible(page);
-    await expect(page.getByRole("button", { name: agent.title, exact: true })).toBeVisible();
+    await expect(page.getByTestId(`workspace-tab-agent_${agent.id}`)).toBeVisible();
     return scenario;
   }
 
@@ -75,11 +75,11 @@ export class DirectoryBootstrapScenario {
     const workspace = await this.seedWorkspace("directory-bootstrap-background-");
     const agent = await createRunningMockAgent(workspace, "Background directory agent");
 
-    const workspaceLink = this.page.getByText(workspace.projectDisplayName, { exact: true });
+    const workspaceLink = this.page.getByTestId(`session-row-${getServerId()}-${agent.id}`);
     await expect(workspaceLink).toHaveCount(1);
     await expect(workspaceLink).toBeVisible();
     await openCommandCenter(this.page);
-    const agentLink = this.page.getByText(agent.title, { exact: true });
+    const agentLink = this.page.getByTestId(`command-center-agent-${getServerId()}:${agent.id}`);
     await expect(agentLink).toHaveCount(1);
     await expect(agentLink).toBeVisible();
     await this.page.keyboard.press("Escape");
@@ -96,7 +96,7 @@ export class DirectoryBootstrapScenario {
       "Reconnected directory agent",
     );
     await expect(
-      this.page.getByText(this.disconnectedWorkspace.projectDisplayName, { exact: true }),
+      this.page.getByTestId(`session-row-${getServerId()}-${this.disconnectedAgent.id}`),
     ).toHaveCount(0);
     await expect(this.page.getByText(this.disconnectedAgent.title, { exact: true })).toHaveCount(0);
 
@@ -108,11 +108,11 @@ export class DirectoryBootstrapScenario {
   async expectVisibleReconciliationAndNavigateAgent(): Promise<void> {
     const workspace = this.requireDisconnectedWorkspace();
     const agent = this.requireDisconnectedAgent();
-    const workspaceLink = this.page.getByText(workspace.projectDisplayName, { exact: true });
+    const workspaceLink = this.page.getByTestId(`session-row-${getServerId()}-${agent.id}`);
     await expect(workspaceLink).toHaveCount(1);
     await expect(workspaceLink).toBeVisible();
     await openCommandCenter(this.page);
-    const agentLink = this.page.getByText(agent.title, { exact: true });
+    const agentLink = this.page.getByTestId(`command-center-agent-${getServerId()}:${agent.id}`);
     await expect(agentLink).toHaveCount(1);
     await expect(agentLink).toBeVisible();
     await agentLink.click();
@@ -121,7 +121,7 @@ export class DirectoryBootstrapScenario {
         `/workspace/${workspace.workspaceId}/agent/${agent.id}|/workspace/${workspace.workspaceId}`,
       ),
     );
-    await expect(this.page.getByRole("button", { name: agent.title, exact: true })).toHaveAttribute(
+    await expect(this.page.getByTestId(`workspace-tab-agent_${agent.id}`)).toHaveAttribute(
       "aria-selected",
       "true",
     );

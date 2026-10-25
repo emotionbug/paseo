@@ -4,7 +4,7 @@ import { createTempGitRepo } from "./workspace";
 import { connectSeedClient, type SeedDaemonClient } from "./seed-client";
 import { gotoAppShell } from "./app";
 import { connectWorkspaceSetupClient } from "./workspace-setup";
-import { selectWorkspaceInSidebar } from "./sidebar";
+import { switchWorkspaceViaCommandCenter } from "./workspace-ui";
 import { getServerId } from "./server-id";
 import { waitForTabBar } from "./launcher";
 import { waitForSettledPosition } from "./sheet-layout";
@@ -313,7 +313,11 @@ export async function openGithubWorkspace(
   }
   const workspace = createdWorkspace.workspace;
   await gotoAppShell(page);
-  await selectWorkspaceInSidebar(page, workspace.id);
+  await switchWorkspaceViaCommandCenter({
+    page,
+    serverId: getServerId(),
+    workspaceId: workspace.id,
+  });
   await waitForTabBar(page);
   return {
     cleanup: async () => {

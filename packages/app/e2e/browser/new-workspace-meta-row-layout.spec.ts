@@ -1,12 +1,7 @@
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
-import {
-  openNewWorkspaceComposer,
-  openStartingRefPicker,
-  selectBranchInPicker,
-  selectWorkspaceIsolation,
-} from "../support/helpers/new-workspace";
+import { openNewWorkspaceComposer } from "../support/helpers/new-workspace";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { seedSavedSettingsHosts } from "../support/helpers/settings";
@@ -14,8 +9,8 @@ import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
 const LONG_HOST_NAME =
   "development-macbook-pro.local-connected-through-a-very-long-private-hostname";
-const LONG_BRANCH_NAME =
-  "feat/app/add-amoled-theme-with-a-very-long-pull-request-and-branch-description";
+const LONG_PROJECT_NAME =
+  "development-project-with-a-very-long-name-and-a-detailed-feature-description";
 
 function measureControlRightEdges(controls: HTMLElement[]) {
   const measurements: Array<{ label: string | null; right: number }> = [];
@@ -31,8 +26,7 @@ test.describe("New workspace metadata row layout", () => {
 
   test.beforeEach(async () => {
     workspace = await seedWorkspace({
-      repoPrefix: "new-workspace-layout-",
-      repo: { branches: [LONG_BRANCH_NAME] },
+      repoPrefix: `${LONG_PROJECT_NAME}-`,
     });
   });
 
@@ -40,7 +34,7 @@ test.describe("New workspace metadata row layout", () => {
     await workspace?.cleanup();
   });
 
-  test("long host and branch names stay inside the composer's right rail", async ({ page }) => {
+  test("long host and project names stay inside the composer's right rail", async ({ page }) => {
     await page.setViewportSize({ width: 2048, height: 878 });
     await seedSavedSettingsHosts(page, [
       {
@@ -61,9 +55,12 @@ test.describe("New workspace metadata row layout", () => {
       projectKey: workspace.projectKey,
       projectDisplayName: workspace.projectDisplayName,
     });
-    await selectWorkspaceIsolation(page, "worktree");
-    await openStartingRefPicker(page);
-    await selectBranchInPicker(page, LONG_BRANCH_NAME);
+    await expect(page.getByTestId("host-picker-trigger")).toContainText(LONG_HOST_NAME);
+    await expect(page.getByTestId("new-workspace-project-picker-trigger")).toContainText(
+      LONG_PROJECT_NAME,
+    );
+    await expect(page.getByTestId("workspace-create-isolation-trigger")).toHaveCount(0);
+    await expect(page.getByTestId("new-workspace-ref-picker-trigger")).toHaveCount(0);
 
     const composer = page.locator('[data-testid="message-input-root"]:visible');
     const metadataRow = page.getByTestId("new-workspace-ref-picker-row");
@@ -75,6 +72,7 @@ test.describe("New workspace metadata row layout", () => {
       metadataRow.getByRole("button").evaluateAll(measureControlRightEdges),
     ]);
     expect(composerBox).not.toBeNull();
+    expect(controlBoxes.length).toBeGreaterThanOrEqual(2);
     const composerRightRail = composerBox!.x + composerBox!.width;
 
     for (const control of controlBoxes) {

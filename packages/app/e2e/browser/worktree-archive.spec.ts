@@ -9,13 +9,13 @@ import {
 } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
 import {
-  archiveWorkspaceFromSidebar,
-  expectWorkspaceAbsentFromSidebar,
+  archiveWorkspaceFromCommandCenter,
+  expectWorkspaceAbsentFromCommandCenter,
 } from "../support/helpers/sidebar";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
   waitForSidebarHydration,
-  waitForWorkspaceInSidebar,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 
 test.describe("Workspace archive with worktree backing", () => {
@@ -64,18 +64,18 @@ test.describe("Workspace archive with worktree backing", () => {
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
-    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: first.workspaceId });
-    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });
+    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: first.workspaceId });
+    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: sibling.id });
 
-    await archiveWorkspaceFromSidebar(page, first.workspaceId);
+    await archiveWorkspaceFromCommandCenter(page, first.workspaceId);
 
-    await expectWorkspaceAbsentFromSidebar(page, first.workspaceId);
+    await expectWorkspaceAbsentFromCommandCenter(page, first.workspaceId);
     expect(existsSync(first.workspaceDirectory)).toBe(true);
-    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });
+    await waitForWorkspaceInCommandCenter(page, { serverId, workspaceId: sibling.id });
 
-    await archiveWorkspaceFromSidebar(page, sibling.id);
+    await archiveWorkspaceFromCommandCenter(page, sibling.id);
 
-    await expectWorkspaceAbsentFromSidebar(page, sibling.id);
+    await expectWorkspaceAbsentFromCommandCenter(page, sibling.id);
     await expect.poll(() => existsSync(first.workspaceDirectory), { timeout: 30_000 }).toBe(false);
   });
 });

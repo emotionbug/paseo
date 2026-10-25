@@ -8,7 +8,7 @@ import {
   selectAllHostsFilter,
   toggleHostFilter,
 } from "../support/helpers/hosts";
-import { seedWorkspace } from "../support/helpers/seed-client";
+import { seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { getServerId } from "../support/helpers/server-id";
 
 const SECONDARY_HOST_ID = "host-filter-secondary";
@@ -17,11 +17,12 @@ test.describe("Sidebar host filter (multi-select)", () => {
   test.describe.configure({ timeout: 120_000 });
 
   test("pins the sidebar to multiple selected hosts at once", async ({ page }) => {
-    const seeded = await seedWorkspace({ repoPrefix: "host-filter-" });
+    const seeded = await seedMockAgentWorkspace({
+      repoPrefix: "host-filter-",
+      title: "Filtered session",
+    });
     const serverId = getServerId();
-    const workspaceRow = page.getByTestId(
-      `sidebar-workspace-row-${serverId}:${seeded.workspaceId}`,
-    );
+    const workspaceRow = page.getByTestId(`session-row-${serverId}-${seeded.agentId}`);
 
     try {
       // A second (offline) host is enough to surface the host filter without a second daemon.

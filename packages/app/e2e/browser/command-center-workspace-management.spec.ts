@@ -4,14 +4,10 @@ import { gotoAppShell } from "../support/helpers/app";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-
-// These actions used to be reachable only from the sidebar workspace ⋯ menu, the workspace header
-// menu, or an unlisted keybind. Rename was the worst of them: its dialog lived inside the sidebar
-// row, so it vanished whenever that row was unmounted — a collapsed section, or focus mode.
-
-function workspaceRow(page: Page, workspaceId: string): Locator {
-  return page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspaceId}`);
-}
+import {
+  switchWorkspaceViaCommandCenter,
+  expectWorkspaceHeader,
+} from "../support/helpers/workspace-ui";
 
 function action(panel: Locator, title: string): Locator {
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -19,26 +15,9 @@ function action(panel: Locator, title: string): Locator {
 }
 
 async function openWorkspace(page: Page, workspaceId: string): Promise<void> {
-  const row = workspaceRow(page, workspaceId);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.click();
-  await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
+  await switchWorkspaceViaCommandCenter({ page, serverId: getServerId(), workspaceId });
 }
 
-// Collapsing the project section unmounts every workspace row under it, which is exactly the state
-// that used to make the sidebar-owned rename dialog unreachable.
-async function collapseProjectSection(page: Page, project: SeededWorkspace): Promise<void> {
-  const header = page
-    .locator('[data-testid^="sidebar-project-row-"]')
-    .filter({ hasText: project.projectDisplayName });
-  await expect(header).toHaveCount(1, { timeout: 30_000 });
-  await header.click();
-  await expect(workspaceRow(page, project.workspaceId)).toHaveCount(0, { timeout: 10_000 });
-}
-
-// The shared helper clicks the sidebar's search button, which is inside the Workspaces section
-// header — absent on /settings and once every workspace has moved to Pinned. Cmd-K is the
-// surface under test anyway, and it works from every route.
 async function openCommandCenter(page: Page): Promise<Locator> {
   await page.keyboard.press("ControlOrMeta+K");
   const panel = page.getByTestId("command-center-panel");
@@ -108,13 +87,12 @@ async function rejectNextLabelAssignment(page: Page): Promise<void> {
 }
 
 test.describe("Command center workspace management", () => {
-  test("renames the active workspace while its sidebar row is unmounted", async ({ page }) => {
+  test("renames the active workspace without a sidebar workspace row", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "cc-rename-" });
 
     try {
       await gotoAppShell(page);
       await openWorkspace(page, workspace.workspaceId);
-      await collapseProjectSection(page, workspace);
 
       await runCommand(page, "rename", "Rename workspace");
 
@@ -129,13 +107,14 @@ test.describe("Command center workspace management", () => {
       await page.getByTestId("workspace-rename-modal-global-submit").click();
       await expect(input).toHaveCount(0, { timeout: 15_000 });
 
-      // Re-expand the section to read the row back.
-      const header = page
-        .locator('[data-testid^="sidebar-project-row-"]')
-        .filter({ hasText: workspace.projectDisplayName });
-      await header.click();
-      await expect(workspaceRow(page, workspace.workspaceId)).toContainText(customTitle, {
-        timeout: 15_000,
+      await expectWorkspaceHeader(page, {
+        title: customTitle,
+        subtitle: workspace.projectDisplayName,
+      });
+      await page.reload();
+      await expectWorkspaceHeader(page, {
+        title: customTitle,
+        subtitle: workspace.projectDisplayName,
       });
     } finally {
       await workspace.cleanup();
@@ -168,7 +147,15 @@ test.describe("Command center workspace management", () => {
       await openWorkspace(page, workspace.workspaceId);
 
       await runCommand(page, "pin", "Pin to top");
-      await expect(page.getByTestId("sidebar-pinned-section")).toBeVisible({ timeout: 15_000 });
+      await expect
+        .poll(async () => {
+          const { entries } = await workspace.client.fetchWorkspaces();
+          for (const entry of entries) {
+            if (entry.id === workspace.workspaceId) return entry.pinnedAt != null;
+          }
+          return false;
+        })
+        .toBe(true);
 
       const panel = await openCommandCenter(page);
       await panel.getByTestId("command-center-input").fill("pin");

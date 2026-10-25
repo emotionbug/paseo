@@ -5,7 +5,6 @@ import { gotoAppShell } from "./app";
 import { scrollTimelineToOldestLoadedEdge } from "./timeline-pagination";
 import {
   archiveLocalWorkspaceFromDaemon,
-  archiveWorkspaceFromDaemon,
   connectNewWorkspaceDaemonClient,
   countWorkspaceAgents,
   countWorkspaceTerminals,
@@ -14,7 +13,6 @@ import {
   fillNewWorkspaceDraft,
   openNewWorkspaceComposer,
   openProjectViaDaemon,
-  selectWorkspaceIsolation,
   submitNewWorkspaceEmpty,
   submitNewWorkspacePrompt,
   waitForCreatedWorkspace,
@@ -31,7 +29,7 @@ import {
   submitTerminalLaunch,
   type TerminalProfile,
 } from "./new-workspace-launch";
-import { switchWorkspaceViaSidebar, waitForSidebarHydration } from "./workspace-ui";
+import { switchWorkspaceViaCommandCenter, waitForSidebarHydration } from "./workspace-ui";
 import { dropFileOnComposer, expectAttachmentPill } from "./composer";
 
 const PROMPT = "Hello from the navigation guard";
@@ -52,7 +50,6 @@ export async function verifyDelayedWorkspaceCreation(
   page: Page,
   launch: "chat" | "terminal" | "empty",
   destination: "leave" | "stay" | "new-draft",
-  isolation: "local" | "worktree" = "local",
 ): Promise<void> {
   const client = await connectNewWorkspaceDaemonClient();
   const repo = await createTempGitRepo("workspace-focus-");
@@ -60,7 +57,7 @@ export async function verifyDelayedWorkspaceCreation(
   const delay = await delayBrowserWorkspaceCreatedResponse(page);
   const serverId = getServerId();
   let localWorkspaceId: string | undefined;
-  let createdDirectory: string | undefined;
+  let createdWorkspaceId: string | undefined;
   let newDraftRoute = "";
 
   try {
@@ -69,11 +66,10 @@ export async function verifyDelayedWorkspaceCreation(
     const knownIds = new Set((await client.fetchWorkspaces()).entries.map((entry) => entry.id));
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
-    await switchWorkspaceViaSidebar({ page, serverId, workspaceId: project.workspaceId });
+    await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: project.workspaceId });
 
     await test.step("Submit workspace creation with the requested content", async () => {
       await openNewWorkspaceComposer(page, project);
-      await selectWorkspaceIsolation(page, isolation);
       if (launch === "chat") {
         await dropFileOnComposer(page, CONTEXT);
         await expectAttachmentPill(page, "composer-file-attachment-pill");
@@ -90,7 +86,7 @@ export async function verifyDelayedWorkspaceCreation(
 
     await test.step("Choose where to work while the creation response is held", async () => {
       if (destination !== "stay") {
-        await switchWorkspaceViaSidebar({ page, serverId, workspaceId: project.workspaceId });
+        await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: project.workspaceId });
       }
       if (destination === "new-draft") {
         await openNewWorkspaceComposer(page, project);
@@ -107,8 +103,9 @@ export async function verifyDelayedWorkspaceCreation(
     });
 
     const created = await waitForCreatedWorkspace(client, knownIds);
-    createdDirectory = created.workspaceDirectory;
-    expect(created.workspaceKind).toBe(isolation === "worktree" ? "worktree" : "local_checkout");
+    createdWorkspaceId = created.id;
+    expect(created.workspaceKind).toBe("local_checkout");
+    expect(created.workspaceDirectory).toBe(project.workspaceDirectory);
     await test.step("Completion creates exactly the requested resource and preserves focus", async () => {
       await expect
         .poll(() => countWorkspaceAgents(client, created.id))
@@ -161,7 +158,7 @@ export async function verifyDelayedWorkspaceCreation(
     });
 
     await test.step("Visit the new workspace and return without submitting a second draft", async () => {
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: created.id });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: created.id });
       if (launch === "chat") {
         await scrollTimelineToOldestLoadedEdge(page);
         await expect(page.getByText(PROMPT, { exact: true }).first()).toBeVisible();
@@ -169,8 +166,8 @@ export async function verifyDelayedWorkspaceCreation(
         await expectWorkspaceOpensWithTerminalTab(page);
         await expectTerminalOutputContains(page, `captured: ${PROMPT}`);
       }
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: project.workspaceId });
-      await switchWorkspaceViaSidebar({ page, serverId, workspaceId: created.id });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: project.workspaceId });
+      await switchWorkspaceViaCommandCenter({ page, serverId, workspaceId: created.id });
       await expect
         .poll(() => countWorkspaceAgents(client, created.id))
         .toBe(launch === "chat" ? 1 : 0);
@@ -193,7 +190,7 @@ export async function verifyDelayedWorkspaceCreation(
     throw error;
   } finally {
     delay.release();
-    if (createdDirectory) await archiveWorkspaceFromDaemon(client, createdDirectory);
+    if (createdWorkspaceId) await archiveLocalWorkspaceFromDaemon(client, createdWorkspaceId);
     if (localWorkspaceId) await archiveLocalWorkspaceFromDaemon(client, localWorkspaceId);
     await profileSeed.restore();
     await client.close();

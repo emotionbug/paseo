@@ -93,7 +93,9 @@ test.describe("Workspace session rename (compact tab switcher)", () => {
       await renameModalSubmit(page, modalPrefix).click();
 
       await expect(input).toHaveCount(0, { timeout: 15_000 });
-      await expect(page.getByText(renamed, { exact: true })).toBeVisible({
+      await expect(
+        page.getByLabel("Bottom Sheet", { exact: true }).getByText(renamed, { exact: true }),
+      ).toBeVisible({
         timeout: 15_000,
       });
       await expect(page.getByRole("button", { name: /Switch tabs/ })).toHaveText("1");
@@ -131,14 +133,21 @@ test("switcher footer creates tabs and returns to the existing chat", async ({
     await captureScreen(page, testInfo, "compact-draft-header");
 
     await openTabSwitcher(page);
-    await expect(page.getByText("Existing chat", { exact: true })).toBeVisible();
+    await expect(
+      page.getByLabel("Bottom Sheet", { exact: true }).getByText("Existing chat", { exact: true }),
+    ).toBeVisible();
     await captureScreen(page, testInfo, "switcher-three-tabs");
-    await page.getByText("Existing chat", { exact: true }).click();
+    await page
+      .getByLabel("Bottom Sheet", { exact: true })
+      .getByText("Existing chat", { exact: true })
+      .click();
     await expect(page.getByRole("button", { name: "Bottom sheet backdrop" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Switch tabs/ })).toHaveText("3");
 
     await openTabSwitcher(page);
-    await expect(page.getByText("Existing chat", { exact: true })).toBeVisible();
+    await expect(
+      page.getByLabel("Bottom Sheet", { exact: true }).getByText("Existing chat", { exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Bottom sheet backdrop" })
       .click({ position: { x: 10, y: 10 } });

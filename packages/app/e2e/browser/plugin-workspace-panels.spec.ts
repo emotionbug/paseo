@@ -15,8 +15,8 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { expectMobileAgentSidebarHidden } from "../support/helpers/sidebar";
 import {
-  switchWorkspaceViaSidebar,
-  waitForWorkspaceInSidebar,
+  switchWorkspaceViaCommandCenter,
+  waitForWorkspaceInCommandCenter,
 } from "../support/helpers/workspace-ui";
 
 const PLUGIN_ID = "workspace-panel-e2e";
@@ -303,17 +303,17 @@ test.describe("plugin workspace panels and Command Center", () => {
         port: secondaryDaemon.port,
         primaryLabel: "Primary plugin host",
       });
-      await waitForWorkspaceInSidebar(page, {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId: getServerId(),
         workspaceId: primary.workspaceId,
       });
-      await waitForWorkspaceInSidebar(page, {
+      await waitForWorkspaceInCommandCenter(page, {
         serverId: secondaryDaemon.serverId,
         workspaceId: secondary.workspaceId,
       });
 
       await test.step("workspace context opens the real wide panel bridge", async () => {
-        await switchWorkspaceViaSidebar({
+        await switchWorkspaceViaCommandCenter({
           page,
           serverId: getServerId(),
           workspaceId: primary.workspaceId,
@@ -403,7 +403,7 @@ test.describe("plugin workspace panels and Command Center", () => {
         };
         await runCommand(page, "Open direct collision surface");
         await openRemoteWorkspaceFromPlugin(page, remoteTarget);
-        await switchWorkspaceViaSidebar({
+        await switchWorkspaceViaCommandCenter({
           page,
           serverId: getServerId(),
           workspaceId: primary.workspaceId,
@@ -413,7 +413,7 @@ test.describe("plugin workspace panels and Command Center", () => {
       });
 
       await test.step("switching hosts removes commands from an uninstalled host", async () => {
-        await switchWorkspaceViaSidebar({
+        await switchWorkspaceViaCommandCenter({
           page,
           serverId: secondaryDaemon.serverId,
           workspaceId: secondary.workspaceId,

@@ -2,59 +2,45 @@ import { expect, type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { gotoHome } from "./app";
 import { expectAppRoute } from "./route-assertions";
+import { openCommandCenter, closeCommandCenter } from "./command-center";
 
 export async function openNewAgentComposer(page: Page): Promise<void> {
   await gotoHome(page);
 }
 
-/**
- * Wait for the sidebar to show at least one project row. Use this after a spec
- * seeds a workspace/project; zero-project flows need their own assertion.
- */
+/** Wait for session host navigation to hydrate, including empty and dedicated test hosts. */
 export async function waitForSidebarHydration(page: Page, timeout = 60_000): Promise<void> {
   await page
-    .locator('[data-testid^="sidebar-project-row-"]')
+    .getByTestId(/^session-host-/)
+    .filter({ visible: true })
     .first()
     .waitFor({ state: "visible", timeout });
 }
 
-export async function waitForNoProjectsInSidebar(page: Page, timeout = 60_000): Promise<void> {
-  await page.getByTestId("sidebar-project-empty-state").waitFor({ state: "visible", timeout });
-}
-
-function workspaceRowLocator(page: Page, serverId: string, workspaceId: string) {
-  return page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).first();
-}
-
-export async function expectSidebarWorkspaceSelected(input: {
+export async function expectWorkspaceSelected(input: {
   page: Page;
   serverId: string;
   workspaceId: string;
   selected?: boolean;
 }): Promise<void> {
-  const row = workspaceRowLocator(input.page, input.serverId, input.workspaceId);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  const expected = input.selected === false ? "false" : "true";
-
-  const hasDataSelected = await row.getAttribute("data-selected");
-  if (hasDataSelected !== null) {
-    await expect(row).toHaveAttribute("data-selected", expected, {
-      timeout: 30_000,
-    });
-    return;
+  const route = buildHostWorkspaceRoute(input.serverId, input.workspaceId);
+  const selected = expect.poll(() => new URL(input.page.url()).pathname, { timeout: 30_000 });
+  if (input.selected === false) {
+    await selected.not.toBe(route);
+  } else {
+    await selected.toBe(route);
   }
-
-  await expect(row).toHaveAttribute("aria-selected", expected, {
-    timeout: 30_000,
-  });
 }
 
-export async function switchWorkspaceViaSidebar(input: {
+export async function switchWorkspaceViaCommandCenter(input: {
   page: Page;
   serverId: string;
   workspaceId: string;
+  query?: string;
 }): Promise<void> {
-  const row = workspaceRowLocator(input.page, input.serverId, input.workspaceId);
+  const panel = await openCommandCenter(input.page);
+  if (input.query) await panel.getByTestId("command-center-input").fill(input.query);
+  const row = panel.getByTestId(`command-center-workspace-${input.serverId}:${input.workspaceId}`);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.click();
 
@@ -62,18 +48,17 @@ export async function switchWorkspaceViaSidebar(input: {
   await expectAppRoute(input.page, targetWorkspaceRoute, { timeout: 30_000 });
 }
 
-/**
- * Wait for a workspace's sidebar row to appear, confirming the workspace
- * descriptor has been hydrated into the session store.
- */
-export async function waitForWorkspaceInSidebar(
+/** Assert that a workspace is discoverable, including workspaces without an agent. */
+export async function waitForWorkspaceInCommandCenter(
   page: Page,
-  input: { serverId: string; workspaceId: string },
+  input: { serverId: string; workspaceId: string; query?: string },
 ): Promise<void> {
-  await workspaceRowLocator(page, input.serverId, input.workspaceId).waitFor({
-    state: "visible",
-    timeout: 60_000,
-  });
+  const panel = await openCommandCenter(page);
+  if (input.query) await panel.getByTestId("command-center-input").fill(input.query);
+  await expect(
+    panel.getByTestId(`command-center-workspace-${input.serverId}:${input.workspaceId}`),
+  ).toBeVisible({ timeout: 60_000 });
+  await closeCommandCenter(page);
 }
 
 export async function expectWorkspaceHeader(

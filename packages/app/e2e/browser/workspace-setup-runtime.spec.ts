@@ -7,8 +7,8 @@ import {
   connectWorkspaceSetupClient,
   createWorkspaceThroughDaemon,
   findWorktreeWorkspaceForProject,
-  navigateToWorkspaceViaSidebar,
-  openHomeWithProject,
+  navigateToWorkspaceViaCommandCenter,
+  openHomeWithHost,
   seedProjectForWorkspaceSetup,
 } from "../support/helpers/workspace-setup";
 
@@ -33,8 +33,8 @@ test.describe("Workspace setup runtime authority", () => {
       expect(wsInfo.workspaceDirectory).not.toBe(repo.path);
       expect(existsSync(wsInfo.workspaceDirectory)).toBe(true);
 
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspaceId);
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspaceId);
       await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
     } finally {
       await client.close();
@@ -64,11 +64,9 @@ test.describe("Workspace setup runtime authority", () => {
       const workspaceDir = result.workspace.workspaceDirectory;
       const workspaceId = result.workspace.id;
 
-      // Navigate to the worktree workspace via sidebar click (direct URL
-      // navigation for freshly created worktree workspaces can race with
-      // Expo Router hydration, so we use the sidebar which is authoritative).
-      await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspaceId);
+      // Empty workspaces are navigable through the command center, not the session list.
+      await openHomeWithHost(page);
+      await navigateToWorkspaceViaCommandCenter(page, workspaceId);
 
       await clickNewTerminal(page);
       await expectTerminalSurfaceVisible(page);

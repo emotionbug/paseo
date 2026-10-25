@@ -1,4 +1,4 @@
-import { expect, test as base } from "../support/fixtures";
+import { test as base } from "../support/fixtures";
 import { openProjectDirectoryWithHosts } from "../support/helpers/project-grouping";
 import { projectPlacementViewKey } from "../support/helpers/project-view-key";
 import {
@@ -14,7 +14,7 @@ import {
 import { connectSeedClient, type SeedDaemonClient } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { addConnectedHostsAndReload } from "../support/helpers/hosts";
-import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
+import { switchWorkspaceViaCommandCenter } from "../support/helpers/workspace-ui";
 import { createTempGitRepo } from "../support/helpers/workspace";
 
 const PRIMARY_HOST_LABEL = "Primary host";
@@ -76,10 +76,7 @@ async function openNewWorkspaceFromContextProject(
     hosts: [scenario.secondaryHost],
     primaryLabel: PRIMARY_HOST_LABEL,
   });
-  await expect(
-    page.getByTestId(`sidebar-project-row-${scenario.selectedProjectViewKey}`),
-  ).toBeVisible();
-  await switchWorkspaceViaSidebar({
+  await switchWorkspaceViaCommandCenter({
     page,
     serverId: getServerId(),
     workspaceId: scenario.contextWorkspaceId,
@@ -208,7 +205,7 @@ test.describe("New workspace host project preservation", () => {
       hosts: [crossHostProject.secondaryHost],
       primaryLabel: PRIMARY_HOST_LABEL,
     });
-    await switchWorkspaceViaSidebar({
+    await switchWorkspaceViaCommandCenter({
       page,
       serverId: getServerId(),
       workspaceId: crossHostProject.primarySharedWorkspaceId,

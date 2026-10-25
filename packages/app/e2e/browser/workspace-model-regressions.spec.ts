@@ -7,16 +7,14 @@ import {
 } from "../support/helpers/composer";
 import { clickNewChat, gotoWorkspace } from "../support/helpers/launcher";
 import {
-  assertNewWorkspaceSidebarAndHeader,
+  assertNewWorkspaceNavigationAndHeader,
   connectNewWorkspaceDaemonClient,
   expectNewWorkspaceProjectSelected,
   openGlobalNewWorkspaceComposer,
-  selectWorkspaceIsolation,
   submitNewWorkspaceEmpty,
   submitNewWorkspacePrompt,
 } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import {
   expectSubagentRowVisible,
@@ -27,7 +25,6 @@ import { expectWorkspaceHeader, waitForSidebarHydration } from "../support/helpe
 import { getVisibleWorkspaceAgentTabIds } from "../support/helpers/workspace-tabs";
 
 type NewWorkspaceDaemonClient = Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
-type WorkspaceIndicator = "attention" | "done" | "failed" | "loading" | "needs_input" | "running";
 
 interface CreatedAgentAssertion {
   workspaceId: string;
@@ -80,71 +77,6 @@ async function fetchWorkspaceStatuses(
 async function fetchAgentStatus(seeded: SeededWorkspace, agentId: string): Promise<string | null> {
   const result = await seeded.client.fetchAgents({ scope: "active" });
   return result.entries.find((entry) => entry.agent.id === agentId)?.agent.status ?? null;
-}
-
-async function switchSidebarToStatusGrouping(page: import("@playwright/test").Page) {
-  await selectSidebarStatusGrouping(page);
-  await expect(page.locator('[data-testid^="sidebar-status-group-"]').first()).toBeVisible({
-    timeout: 30_000,
-  });
-}
-
-function statusGroupRows(page: import("@playwright/test").Page, bucket: string) {
-  return page.getByTestId(`sidebar-status-group-rows-${bucket}`);
-}
-
-async function expectWorkspaceRowInStatusBucket(
-  page: import("@playwright/test").Page,
-  input: { rowTestId: string; bucket: string },
-) {
-  await expect(statusGroupRows(page, input.bucket).getByTestId(input.rowTestId)).toBeVisible({
-    timeout: 30_000,
-  });
-}
-
-async function expectWorkspaceRowNotInStatusBuckets(
-  page: import("@playwright/test").Page,
-  input: { rowTestId: string; buckets: string[] },
-) {
-  for (const bucket of input.buckets) {
-    await expect(statusGroupRows(page, bucket).getByTestId(input.rowTestId)).toHaveCount(0, {
-      timeout: 5_000,
-    });
-  }
-}
-
-async function expectWorkspaceRowHasOnlyIndicator(
-  page: import("@playwright/test").Page,
-  input: { rowTestId: string; indicator: WorkspaceIndicator },
-) {
-  const row = page.getByTestId(input.rowTestId);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  for (const indicator of [
-    "attention",
-    "done",
-    "failed",
-    "loading",
-    "needs_input",
-    "running",
-  ] satisfies WorkspaceIndicator[]) {
-    const locator = row.locator(`[data-testid="workspace-status-indicator-${indicator}"]`);
-    if (indicator === input.indicator) {
-      await expect(locator).toBeVisible({ timeout: 30_000 });
-    } else {
-      await expect(locator).toHaveCount(0);
-    }
-  }
-}
-
-async function expectWorkspaceRowDoesNotShowIndicator(
-  page: import("@playwright/test").Page,
-  input: { rowTestId: string; indicator: WorkspaceIndicator },
-) {
-  const row = page.getByTestId(input.rowTestId);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await expect(
-    row.locator(`[data-testid="workspace-status-indicator-${input.indicator}"]`),
-  ).toHaveCount(0, { timeout: 5_000 });
 }
 
 test.describe("Workspace model regressions", () => {
@@ -271,18 +203,19 @@ test.describe("Workspace model regressions", () => {
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, seeded.projectDisplayName);
-      await selectWorkspaceIsolation(page, "local");
       await submitNewWorkspacePrompt(page, "Fix login bug");
 
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+      const createdWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
         serverId,
         client,
         previousWorkspaceId: seeded.workspaceId,
         projectDisplayName: seeded.projectDisplayName,
       });
-      const createdRow = page.getByTestId(
-        `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`,
-      );
+      const createdAgent = (await seeded.client.fetchAgents({ scope: "active" })).entries.find(
+        (entry) => entry.agent.workspaceId === createdWorkspace.workspaceId,
+      )?.agent;
+      expect(createdAgent).not.toBeUndefined();
+      const createdRow = page.getByTestId(`session-row-${serverId}-${createdAgent!.id}`);
 
       await expect
         .poll(() => fetchWorkspaceName(client, createdWorkspace.workspaceId), {
@@ -307,7 +240,7 @@ test.describe("Workspace model regressions", () => {
     }
   });
 
-  test("running agent in one same-directory workspace only shows the loader on its owning row", async ({
+  test("running agent status remains confined to its owning same-directory workspace", async ({
     page,
   }) => {
     const serverId = getServerId();
@@ -343,29 +276,16 @@ test.describe("Workspace model regressions", () => {
       await gotoWorkspace(page, seeded.workspaceId);
       await waitForSidebarHydration(page);
 
-      const firstRowTestId = `sidebar-workspace-row-${serverId}:${seeded.workspaceId}`;
-      const secondRowTestId = `sidebar-workspace-row-${serverId}:${secondWorkspaceId}`;
-      await expectWorkspaceRowHasOnlyIndicator(page, {
-        rowTestId: firstRowTestId,
-        indicator: "running",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: secondRowTestId,
-        indicator: "running",
-      });
-
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, seeded.projectDisplayName);
-      await selectWorkspaceIsolation(page, "local");
       await submitNewWorkspaceEmpty(page);
 
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+      const createdWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
         serverId,
         client,
         previousWorkspaceId: seeded.workspaceId,
         projectDisplayName: seeded.projectDisplayName,
       });
-      const createdRowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
 
       await expect
         .poll(() => fetchAgentStatus(seeded, runningAgent.id), { timeout: 10_000 })
@@ -387,46 +307,15 @@ test.describe("Workspace model regressions", () => {
           [createdWorkspace.workspaceId]: "done",
         });
 
-      await expectWorkspaceRowHasOnlyIndicator(page, {
-        rowTestId: firstRowTestId,
-        indicator: "running",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: secondRowTestId,
-        indicator: "running",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: createdRowTestId,
-        indicator: "running",
-      });
-
-      await switchSidebarToStatusGrouping(page);
-      await expectWorkspaceRowInStatusBucket(page, {
-        rowTestId: firstRowTestId,
-        bucket: "running",
-      });
-      await expectWorkspaceRowInStatusBucket(page, {
-        rowTestId: secondRowTestId,
-        bucket: "done",
-      });
-      await expectWorkspaceRowInStatusBucket(page, {
-        rowTestId: createdRowTestId,
-        bucket: "done",
-      });
-      await expectWorkspaceRowNotInStatusBuckets(page, {
-        rowTestId: secondRowTestId,
-        buckets: ["running", "needs_input", "attention"],
-      });
-      await expectWorkspaceRowNotInStatusBuckets(page, {
-        rowTestId: createdRowTestId,
-        buckets: ["running", "needs_input", "attention"],
-      });
+      await expect(page.getByTestId(`session-row-${serverId}-${runningAgent.id}`)).toContainText(
+        "Running",
+      );
     } finally {
       await seeded.cleanup();
     }
   });
 
-  test("pending permission in one same-directory workspace marks only its own row needing input", async ({
+  test("pending permission remains confined to its owning same-directory workspace", async ({
     page,
   }) => {
     const serverId = getServerId();
@@ -459,29 +348,16 @@ test.describe("Workspace model regressions", () => {
       await gotoWorkspace(page, seeded.workspaceId);
       await waitForSidebarHydration(page);
 
-      const firstRowTestId = `sidebar-workspace-row-${serverId}:${seeded.workspaceId}`;
-      const secondRowTestId = `sidebar-workspace-row-${serverId}:${secondWorkspaceId}`;
-      await expectWorkspaceRowHasOnlyIndicator(page, {
-        rowTestId: firstRowTestId,
-        indicator: "needs_input",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: secondRowTestId,
-        indicator: "needs_input",
-      });
-
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, seeded.projectDisplayName);
-      await selectWorkspaceIsolation(page, "local");
       await submitNewWorkspaceEmpty(page);
 
-      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+      const createdWorkspace = await assertNewWorkspaceNavigationAndHeader(page, {
         serverId,
         client,
         previousWorkspaceId: seeded.workspaceId,
         projectDisplayName: seeded.projectDisplayName,
       });
-      const createdRowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
 
       await expect
         .poll(
@@ -499,40 +375,7 @@ test.describe("Workspace model regressions", () => {
           [createdWorkspace.workspaceId]: "done",
         });
 
-      await expectWorkspaceRowHasOnlyIndicator(page, {
-        rowTestId: firstRowTestId,
-        indicator: "needs_input",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: secondRowTestId,
-        indicator: "needs_input",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        rowTestId: createdRowTestId,
-        indicator: "needs_input",
-      });
-
-      await switchSidebarToStatusGrouping(page);
-      await expectWorkspaceRowInStatusBucket(page, {
-        rowTestId: firstRowTestId,
-        bucket: "needs_input",
-      });
-      await expectWorkspaceRowInStatusBucket(page, {
-        rowTestId: secondRowTestId,
-        bucket: "done",
-      });
-      await expectWorkspaceRowInStatusBucket(page, {
-        rowTestId: createdRowTestId,
-        bucket: "done",
-      });
-      await expectWorkspaceRowNotInStatusBuckets(page, {
-        rowTestId: secondRowTestId,
-        buckets: ["running", "needs_input", "attention"],
-      });
-      await expectWorkspaceRowNotInStatusBuckets(page, {
-        rowTestId: createdRowTestId,
-        buckets: ["running", "needs_input", "attention"],
-      });
+      await expect(page.getByTestId(`session-row-${serverId}-${agent.id}`)).toBeVisible();
     } finally {
       await seeded.cleanup();
     }
@@ -554,16 +397,8 @@ test.describe("Workspace model regressions", () => {
       await waitForSidebarHydration(page);
       await expectWorkspaceTabVisible(page, agents.child.id);
 
-      const parentRowTestId = `sidebar-workspace-row-${serverId}:${agents.parent.workspaceId}`;
-      const childRowTestId = `sidebar-workspace-row-${serverId}:${agents.child.workspaceId}`;
-      await expectWorkspaceRowHasOnlyIndicator(page, {
-        rowTestId: childRowTestId,
-        indicator: "running",
-      });
-      await expectWorkspaceRowHasOnlyIndicator(page, {
-        rowTestId: parentRowTestId,
-        indicator: "done",
-      });
+      await expect(page.getByTestId(`session-row-${serverId}-${agents.child.id}`)).toHaveCount(0);
+      await expect(page.getByTestId(`session-row-${serverId}-${agents.parent.id}`)).toBeVisible();
 
       await gotoWorkspace(page, agents.parent.workspaceId);
       await openSubagentsTrack(page);

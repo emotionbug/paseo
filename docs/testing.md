@@ -172,6 +172,8 @@ Browser Playwright specs live in `packages/app/e2e/browser/`. Desktop Playwright
 
 Browser navigation follows the session-first sidebar: wait for a host row to hydrate, then use session rows for agent-backed workspaces. Empty and terminal-only workspaces remain reachable through the command center, not removed sidebar workspace rows. Use the shared command-center helpers and a project or title query when the target falls outside the default five results. Project, background-workspace, and label filters still narrow the session tree; keep their behavioral coverage.
 
+New-session creation on hosts advertising `workspaceMultiplicity` uses the selected project directory. Older hosts create a worktree automatically and expose the starting-ref picker; neither path has an isolation chooser. Published-daemon compatibility tests must follow the host's advertised capabilities. Exercise explicit worktree API creation with real checkout/file assertions, rather than looking for the removed chooser on current hosts.
+
 Live provider smoke tests belong in `*.real.e2e.test.ts`, not `*.test.ts`, even when guarded by environment variables. Default unit suites must use deterministic provider adapters/fakes so missing credits, auth outages, and upstream model drift do not block normal CI.
 
 Codex MultiAgentV2 real tests use local Codex authentication rather than the OpenRouter-compatible test provider. OpenRouter does not accept Codex collaboration-history items on the parent follow-up request, so it cannot verify a complete native sub-agent turn.

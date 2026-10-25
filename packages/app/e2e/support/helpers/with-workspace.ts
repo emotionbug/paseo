@@ -2,11 +2,12 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { waitForTabBar } from "./launcher";
-import { selectWorkspaceInSidebar } from "./sidebar";
+import { switchWorkspaceViaCommandCenter } from "./workspace-ui";
+import { getServerId } from "./server-id";
 import { createTempGitRepo, resolveTempRoot } from "./workspace";
 import {
   connectWorkspaceSetupClient,
-  openHomeWithProject,
+  openHomeWithHost,
   type WorkspaceSetupDaemonClient,
 } from "./workspace-setup";
 
@@ -60,7 +61,7 @@ export function createWithWorkspace(page: Page): WithWorkspaceHandle {
         { cwd: repo.path, stdio: "ignore" },
       );
       worktrees.push({ repoPath: repo.path, worktreePath: workspacePath });
-      // Register the parent project so the sidebar lists it before we navigate.
+      // Register the parent project before opening a workspace in its worktree.
       const added = await client.addProject(repo.path);
       if (!added.project) {
         throw new Error(added.error ?? `Failed to add project ${repo.path}`);
@@ -81,8 +82,8 @@ export function createWithWorkspace(page: Page): WithWorkspaceHandle {
       workspaceId,
       repoPath: workspacePath,
       navigateTo: async () => {
-        await openHomeWithProject(page, repo.path);
-        await selectWorkspaceInSidebar(page, workspaceId);
+        await openHomeWithHost(page);
+        await switchWorkspaceViaCommandCenter({ page, serverId: getServerId(), workspaceId });
         await waitForTabBar(page);
       },
     };
