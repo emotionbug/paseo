@@ -615,6 +615,21 @@ async function verifyBackgroundTypingStaysInGuest({ page, client, serverId, brow
   await composer.fill("");
 }
 
+async function openWorkspaceFromCommandCenter(page, serverId, workspaceId) {
+  await page.getByTestId("sidebar-search").click();
+  const commandCenter = page.getByTestId("command-center-panel");
+  await commandCenter
+    .getByTestId("command-center-input")
+    .fill(`Desktop browser workspace ${workspaceIds.indexOf(workspaceId) + 1}`);
+  const row = commandCenter.getByTestId(`command-center-workspace-${serverId}:${workspaceId}`);
+  await row.waitFor({ state: "visible", timeout: timeoutMs });
+  await row.click();
+  await commandCenter.waitFor({ state: "hidden" });
+  await page
+    .getByTestId(`workspace-deck-entry-${serverId}:${workspaceId}`)
+    .waitFor({ state: "visible" });
+}
+
 async function runRegression({
   page,
   client,
@@ -627,11 +642,7 @@ async function runRegression({
 }) {
   const failures = [];
   const originalWorkspaceId = workspaceIds[0];
-  const originalWorkspaceRow = page.getByTestId(
-    `sidebar-workspace-row-${serverId}:${originalWorkspaceId}`,
-  );
-  await originalWorkspaceRow.waitFor({ state: "visible", timeout: timeoutMs });
-  await originalWorkspaceRow.click();
+  await openWorkspaceFromCommandCenter(page, serverId, originalWorkspaceId);
 
   await page.evaluate(() => {
     if (document.getElementById("overlay-root")) return;
@@ -867,10 +878,7 @@ async function runRegression({
   }
 
   for (const workspaceId of workspaceIds.slice(1)) {
-    await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).click();
-    await page
-      .getByTestId(`workspace-deck-entry-${serverId}:${workspaceId}`)
-      .waitFor({ state: "visible" });
+    await openWorkspaceFromCommandCenter(page, serverId, workspaceId);
   }
 
   await page.waitForFunction(
@@ -1179,7 +1187,7 @@ async function main() {
           EXPO_DEV_URL: `http://localhost:${expoPort}`,
           PASEO_ELECTRON_REMOTE_DEBUGGING_PORT: String(cdpPort),
           PASEO_ELECTRON_USER_DATA_DIR: userData,
-          PASEO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
+          PASEO_ELECTRON_FLAGS: `--lang=en-US --remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
         },
       },
       artifactDir,
