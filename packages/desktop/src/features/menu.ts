@@ -100,6 +100,7 @@ function buildApplicationMenuTemplate(
             options.onNewWindow();
           },
         },
+        ...(!isMac ? [{ type: "separator" as const }, { role: "quit" as const }] : []),
       ],
     },
     {

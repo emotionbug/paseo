@@ -21,6 +21,22 @@ the sidebar closes the app window without stopping the host's sessions. If the f
 explorer is open, Back first returns to the session. Settings and other pushed screens
 keep their own navigation.
 
+On Windows, Linux, and macOS, closing the last desktop window hides it in the
+system tray (menu bar on macOS), preserving its open workspace and renderer state.
+Additional windows close normally. Click the tray icon or choose **Open Paseo
+Sessions** to restore the window; launching the app again also restores a hidden
+window instead of opening a duplicate.
+
+Choose **Quit Paseo Sessions** in the tray menu to exit the app, or use the
+application menu's **Quit** command. Explicit quit still follows **Settings →
+local host → Overview → Daemon → Keep daemon running after quit**; hiding the
+window does not stop the daemon.
+
+Linux close-to-tray requires a registered StatusNotifier/AppIndicator host and
+`dbus-send` on `PATH`. GNOME may need an AppIndicator extension. If the host is
+unavailable when closing, or the tray icon cannot be created, closing retains the
+normal platform behavior rather than leaving an inaccessible hidden window.
+
 Android builds use the name **Paseo Sessions** and package `sh.paseo.sessions`, so the
 official app can stay installed. Connect the fork to your existing Paseo host using the
 same Tailscale address and password. Google Play signing and push credentials are not

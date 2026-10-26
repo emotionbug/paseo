@@ -274,6 +274,7 @@ export function setupWindowStatePersistence(win: BrowserWindow, store: WindowSta
   }
 
   function scheduleSave(): void {
+    flushed = false;
     captureState();
     clearTimer();
     saveTimer = setTimeout(() => {
@@ -283,6 +284,7 @@ export function setupWindowStatePersistence(win: BrowserWindow, store: WindowSta
   }
 
   function saveNow(): void {
+    flushed = false;
     captureState();
     clearTimer();
     persist();

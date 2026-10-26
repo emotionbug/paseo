@@ -73,6 +73,35 @@ describe("desktop window owner", () => {
     expect(h.sent).toEqual([{ id: "agent-7" }]);
   });
 
+  it("restores a retained minimized window without creating a new session window", async () => {
+    const h = harness();
+    await h.owner.openPrimary();
+    const window = h.windows[0];
+    let visible = false;
+    let minimized = true;
+    window.isVisible = () => visible;
+    window.isMinimized = () => minimized;
+    window.restore = () => {
+      minimized = false;
+    };
+    window.show = () => {
+      visible = true;
+    };
+
+    await h.owner.restoreWhenActivated();
+
+    expect(visible).toBe(true);
+    expect(minimized).toBe(false);
+    expect(h.windows).toEqual([window]);
+    expect(h.launches).toEqual([{ initialRoute: null, restoreWindowState: true }]);
+  });
+
+  it("opens the primary window when activated after all windows were destroyed", async () => {
+    const h = harness();
+    await h.owner.restoreWhenActivated();
+    expect(h.launches).toEqual([{ initialRoute: null, restoreWindowState: true }]);
+  });
+
   it("removes pending routing state when a window closes", async () => {
     const h = harness();
     await h.owner.openAdditional({ pendingProjectPath: "/project/a" });

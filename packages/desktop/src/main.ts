@@ -58,6 +58,7 @@ import { createBrowserCaptureService } from "./features/browser-capture.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
 import { setupApplicationMenu } from "./features/menu.js";
+import { createDesktopTray } from "./features/tray.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
   decideBrowserWindowOpenRequest,
@@ -124,6 +125,7 @@ const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
 const UPDATE_QUIT_DEADLINE_MS = 5_000;
 const pendingBrowserWindowOpenRequests = new PendingBrowserWindowOpenRequests();
 const agentNavigationInbox = new AgentNavigationInbox();
+let desktopTray: ReturnType<typeof createDesktopTray> = null;
 
 // A second-instance launch can arrive before the packaged protocol handler,
 // IPC handlers, and first window exist. Wait for full bootstrap, not just
@@ -710,6 +712,7 @@ async function createWindow(
     },
   });
   applyDesktopWindowChromeMode({ win: mainWindow, mode: DESKTOP_WINDOW_CHROME_MODE });
+  desktopTray?.attachWindow(mainWindow);
 
   const webContentsId = mainWindow.webContents.id;
   options.onCreated?.(webContentsId);
@@ -891,13 +894,18 @@ function setupSingleInstanceLock(): boolean {
       isDefaultApp: false,
     });
     log.info("[open-project] second-instance openProjectPath:", openProjectPath);
-    // Relaunching the app (CLI `paseo [path]`, double-click, etc.) opens a new
-    // window rather than focusing the existing one. Wait for bootstrap (not just
-    // app.whenReady) so the protocol + IPC handlers exist before the window loads.
+    // Explicit project launches open a new window. A plain relaunch restores a
+    // retained tray window instead of leaving it hidden and creating a duplicate.
     void bootstrapComplete
-      .then(() => desktopWindowOwner.openAdditional({ pendingProjectPath: openProjectPath }))
+      .then(() => {
+        const hasHiddenWindow = BrowserWindow.getAllWindows().some((win) => !win.isVisible());
+        if (!openProjectPath && hasHiddenWindow) {
+          return desktopWindowOwner.restoreWhenActivated();
+        }
+        return desktopWindowOwner.openAdditional({ pendingProjectPath: openProjectPath });
+      })
       .catch((error) => {
-        log.error("[window] failed to create window from second-instance", error);
+        log.error("[window] failed to handle second-instance launch", error);
       });
   });
 
@@ -957,6 +965,17 @@ async function bootstrap(): Promise<void> {
   });
 
   await applyAppIcon();
+  const trayIconPath = await getEffectiveAppIconPath();
+  if (trayIconPath) {
+    desktopTray = createDesktopTray({
+      iconPath: trayIconPath,
+      onShow: () => {
+        void desktopWindowOwner.restoreWhenActivated().catch((error) => {
+          log.error("[tray] failed to restore desktop window", error);
+        });
+      },
+    });
+  }
   setupApplicationMenu({
     onNewWindow: () => {
       void desktopWindowOwner.openAdditional().catch((error) => {
