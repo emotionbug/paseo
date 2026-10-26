@@ -514,13 +514,16 @@ Package imports resolve through package exports to compiled `dist/` output, not 
 Use the named root build targets instead of remembering workspace dependency chains:
 
 ```bash
-npm run build:client       # protocol -> client
-npm run build:server-deps  # highlight -> relay -> protocol -> client
+npm run build:client       # protocol -> relay -> client
+npm run build:server-deps  # client chain -> highlight + plugin
 npm run build:server       # server-deps -> server -> cli
-npm run build:app-deps     # highlight -> protocol -> client -> expo-two-way-audio
+npm run build:app-deps     # highlight -> client chain -> plugin -> expo-two-way-audio
+npm run build:desktop      # clean server chain -> audio -> renderer -> desktop package
 ```
 
 Use `npm run build:server` whenever you have changed any daemon/server-facing package and need clean cross-package types or runtime behavior.
+
+The client build owns protocol and relay compilation. Clean root targets remove those outputs first, then compile each dependency once through that owner. Desktop packaging uses the same clean server build for both the renderer's workspace imports and the bundled daemon; it must not rebuild those dependencies after the renderer export. `npm run build --workspace=@getpaseo/desktop -- <builder arguments>` still builds the server chain for standalone callers. The lower-level desktop `package` script expects that chain and the renderer export to be ready.
 
 The app Metro config disables Watchman and uses Metro's node crawler for exports. Keep that invariant unless you have verified production app exports on machines with and without Watchman installed; distro Watchman builds can differ in capabilities and change Metro's crawl behavior.
 

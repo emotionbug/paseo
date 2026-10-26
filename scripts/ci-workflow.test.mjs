@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { relative as relativePath } from "node:path";
+import { matchesGlob, relative as relativePath } from "node:path";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
@@ -117,21 +117,42 @@ test("pull-request checks run for every base branch, including stacked PRs", () 
   }
 });
 
-test("change gating allows superseded workflow runs to cancel", () => {
-  const ci = readFileSync(ciWorkflowPath, "utf8");
-  assert.match(
-    ci,
-    /^concurrency:\n  group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true$/m,
-    "a newer push to any ref, main included, cancels the superseded run",
-  );
-  for (const workflowPath of [ciWorkflowPath, dockerWorkflowPath, nixWorkflowPath]) {
-    const source = readFileSync(workflowPath, "utf8");
-    assert.doesNotMatch(
-      source,
-      /\$\{\{\s*always\(\)/,
-      "always() keeps jobs alive after concurrency cancellation; use !cancelled() for fail-open gating",
+test("recovery runs only the requested check without narrowing normal CI", () => {
+  const jobs = jobBlocks(readFileSync(ciWorkflowPath, "utf8"));
+  const jobIds = [...gatedCiJobs.keys()];
+  function selected(recoveryJob, cancelled = false) {
+    return jobIds.filter((jobId) => {
+      const expression = /^    if: \$\{\{ (.+) \}\}$/m.exec(jobs.get(jobId).join("\n"))[1];
+      return runInNewContext(expression, {
+        inputs: { recovery_job: recoveryJob },
+        needs: { changes: { outputs: { full: "true" } } },
+        cancelled: () => cancelled,
+      });
+    });
+  }
+  assert.deepEqual(selected(undefined), jobIds);
+  assert.deepEqual(selected("all"), jobIds);
+  for (const jobId of jobIds) {
+    assert.deepEqual(selected(jobId), [jobId]);
+    assert.deepEqual(selected(jobId, true), []);
+  }
+});
+
+test("recovery cannot cancel full CI or a different repair target", () => {
+  const source = readFileSync(ciWorkflowPath, "utf8");
+  const template = /^  group: (.+)$/m.exec(source)[1];
+  function group(workflow, job, ref = "refs/heads/main") {
+    return template.replace(/\$\{\{ (.+?) \}\}/g, (_match, expression) =>
+      runInNewContext(expression, {
+        github: { workflow, ref },
+        inputs: { recovery_job: job },
+      }),
     );
   }
+  assert.equal(group("CI", undefined), group("CI", "all"));
+  assert.notEqual(group("CI", undefined), group("CI Recovery", "quality"));
+  assert.notEqual(group("CI Recovery", "quality"), group("CI Recovery", "typecheck"));
+  assert.notEqual(group("CI", undefined), group("CI", undefined, "refs/heads/fix"));
 });
 
 test("server builds exclude test utilities at every domain depth", () => {
@@ -140,74 +161,26 @@ test("server builds exclude test utilities at every domain depth", () => {
   assert.ok(!tsconfig.exclude.includes("src/server/test-utils/**"));
 });
 
-test("PR routing declares stable behavior ownership", () => {
+test("changed paths select their owning CI contracts", () => {
   const filters = loadFilters(filtersPath);
-  assert.deepEqual(filters, {
-    routing: [".github/ci-paths.yml"],
-    workspace: [
-      ".mise.toml",
-      ".tool-versions",
-      "package.json",
-      "package-lock.json",
-      "patches/**",
-      "scripts/**",
-      "tsconfig.json",
-      "tsconfig.base.json",
-      "vitest.config.ts",
+  const cases = [
+    [".github/workflows/ci-recovery.yml", ["ci", "format"]],
+    ["packages/desktop/src/features/tray.ts", ["desktop", "format", "quality"]],
+    [
+      "packages/app/src/tool-calls/detail-level/grouping.ts",
+      ["app", "browser", "format", "quality"],
     ],
-    ci: [".github/actions/**", ".github/workflows/ci.yml"],
-    format: [
-      ".agents/**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}",
-      ".github/**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}",
-      "**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}",
-      "packages/expo-two-way-audio/**",
-    ],
-    quality: ["**/*.{cjs,js,json,jsx,mjs,ts,tsx}", "packages/expo-two-way-audio/**"],
-    hub: ["packages/cli/src/commands/hub/**", "packages/server/src/server/hub/**"],
-    server: ["plugins/**", "packages/server/**", "packages/app/e2e/support/fixtures/recording.*"],
-    desktop: [
-      "packages/desktop/**",
-      "packages/app/src/desktop/**",
-      "packages/app/src/**/*.electron.{ts,tsx}",
-      "packages/server/src/server/browser-tools/**",
-      "packages/app/e2e/support/**",
-      "packages/app/*config.{cjs,js,ts}",
-      "packages/app/package.json",
-    ],
-    app: ["packages/app/**", "packages/expo-two-way-audio/**"],
-    sdk: [
-      "packages/plugin/**",
-      "plugin-examples/**",
-      "public-docs/plugins/**",
-      "packages/client/**",
-      "packages/highlight/**",
-      "packages/protocol/**",
-    ],
-    browser: [
-      "packages/server/src/server/agent/provider-snapshot-manager.ts",
-      "packages/server/src/server/session/provider/provider-catalog-session.ts",
-      "packages/client/src/compat/normalize-provider-models.ts",
-      "packages/protocol/src/client-capabilities.ts",
-      "packages/server/src/server/agent/provider-registry.ts",
-      "packages/server/src/server/agent/agent-sdk-types.ts",
-      "packages/server/src/server/agent/providers/codex-app-server-agent.ts",
-      "packages/server/src/server/agent/providers/claude/agent.ts",
-      "packages/server/src/server/agent/plugin-provider.ts",
-      "packages/server/src/server/plugins/{index,plugin-process,plugin-process-protocol,runtime}.ts",
-      "packages/server/src/executable-resolution/**",
-      "packages/plugin/src/server/provider.ts",
-      "packages/app/src/!(desktop)/**",
-      "packages/app/e2e/browser/**",
-      "packages/app/e2e/support/**",
-      "packages/app/assets/**",
-      "packages/app/public/**",
-      "packages/app/index.ts",
-      "packages/app/*config.{cjs,js,ts}",
-      "packages/app/package.json",
-    ],
-    relay: ["packages/relay/**"],
-    cli: ["packages/cli/**"],
-  });
+    ["packages/server/src/server/workspace-git-service.ts", ["format", "quality", "server"]],
+    ["scripts/clean-package-dist.mjs", ["format", "quality", "workspace"]],
+    ["README.md", ["format"]],
+  ];
+  for (const [path, expected] of cases) {
+    const selected = Object.entries(filters)
+      .filter(([, patterns]) => patterns.some((pattern) => matchesGlob(path, pattern)))
+      .map(([contract]) => contract)
+      .sort();
+    assert.deepEqual(selected, expected, path);
+  }
 });
 
 test("cross-package invariants live in the suite that owns them", () => {
@@ -419,6 +392,7 @@ test("Windows units and integration run independently with complete routed cover
   function selected(expression, outputs, cancelled = false) {
     return runInNewContext(expression, {
       needs: { changes: { outputs } },
+      inputs: {},
       cancelled: () => cancelled,
     });
   }

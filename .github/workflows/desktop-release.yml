@@ -300,7 +300,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*
+          compression-level: 0
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.AppImage
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.tar.gz
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.deb
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.rpm
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.yml
           retention-days: 7
 
       - name: Upload manifest artifact

@@ -7,13 +7,20 @@ on:
   pull_request:
   merge_group:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      recovery_job:
+        description: One check selected by CI Recovery; normal CI runs every routed check
+        required: false
+        type: string
+        default: all
 
 # A newer push to the same ref cancels the run still in progress, main included.
 # A full run costs about 200 runner-minutes against the org's 20 concurrent
 # jobs, and a superseded main run only answers a question the newer commit
 # answers again.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.recovery_job || 'all' }}
   cancel-in-progress: true
 
 env:
@@ -49,6 +56,16 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Validate recovery target
+        if: ${{ inputs.recovery_job && inputs.recovery_job != 'all' }}
+        env:
+          RECOVERY_JOB: ${{ inputs.recovery_job }}
+        run: |
+          case "$RECOVERY_JOB" in
+            quality|typecheck|server-tests-ubuntu|server-tests-windows|server-integration-windows|server-tests-macos|desktop-tests-ubuntu|desktop-tests-windows|app-tests|playwright-[1-8]|cli-tests-[1-3]) ;;
+            *) echo "::error::Unknown CI recovery target"; exit 2 ;;
+          esac
+
       - name: Detect affected CI contracts
         id: filter
         uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
@@ -61,7 +78,7 @@ jobs:
   quality:
     name: quality
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'quality') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +157,7 @@ jobs:
   typecheck:
     name: typecheck
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'typecheck') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -183,7 +200,7 @@ jobs:
   server-tests-ubuntu:
     name: server-tests (ubuntu-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-tests-ubuntu') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - &server_capacity
@@ -241,7 +258,7 @@ jobs:
   server-tests-windows:
     name: server-tests (windows-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-tests-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
     runs-on: windows-latest
     steps:
       - *server_capacity
@@ -264,7 +281,7 @@ jobs:
   server-integration-windows:
     name: server-integration (windows-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-integration-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
     runs-on: windows-latest
     steps:
       - *server_capacity
@@ -286,7 +303,7 @@ jobs:
   server-tests-macos:
     name: server-tests (macos-14, file observation)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-tests-macos') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -313,7 +330,7 @@ jobs:
   desktop-tests-ubuntu:
     name: desktop-tests (ubuntu-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'desktop-tests-ubuntu') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -388,7 +405,7 @@ jobs:
   desktop-tests-windows:
     name: desktop-tests (windows-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'desktop-tests-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:
@@ -398,7 +415,7 @@ jobs:
   app-tests:
     name: app-tests
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'app-tests') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -432,7 +449,7 @@ jobs:
   playwright-1:
     name: playwright (shard 1/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-1') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "1/8"
@@ -488,7 +505,7 @@ jobs:
   playwright-2:
     name: playwright (shard 2/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-2') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "2/8"
@@ -498,7 +515,7 @@ jobs:
   playwright-3:
     name: playwright (shard 3/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-3') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "3/8"
@@ -508,7 +525,7 @@ jobs:
   playwright-4:
     name: playwright (shard 4/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-4') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "4/8"
@@ -518,7 +535,7 @@ jobs:
   playwright-5:
     name: playwright (shard 5/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-5') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "5/8"
@@ -528,7 +545,7 @@ jobs:
   playwright-6:
     name: playwright (shard 6/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-6') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "6/8"
@@ -538,7 +555,7 @@ jobs:
   playwright-7:
     name: playwright (shard 7/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-7') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "7/8"
@@ -548,7 +565,7 @@ jobs:
   playwright-8:
     name: playwright (shard 8/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-8') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SHARD: "8/8"
@@ -558,7 +575,7 @@ jobs:
   cli-tests-1:
     name: cli-tests (shard 1/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'cli-tests-1') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
@@ -593,7 +610,7 @@ jobs:
   cli-tests-2:
     name: cli-tests (shard 2/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'cli-tests-2') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
@@ -606,7 +623,7 @@ jobs:
   cli-tests-3:
     name: cli-tests (shard 3/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'cli-tests-3') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"

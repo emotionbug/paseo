@@ -83,6 +83,97 @@ test("a fresh checkout read makes a newly initialized repository available to ca
   expect((await service.getCheckout(repo)).isGit).toBe(true);
   const repoRoot = await service.resolveRepoRoot(repo);
   expect(realpathSync.native(repoRoot)).toBe(realpathSync.native(repo));
+
+  rmSync(path.join(repo, ".git"), { recursive: true, force: true });
+  await expect(service.getCheckout(repo)).resolves.toEqual({
+    cwd: repo,
+    isGit: false,
+    currentBranch: null,
+    remoteUrl: null,
+    worktreeRoot: null,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: null,
+  });
+  expect((await service.getSnapshot(repo, { includeForge: false })).git.isGit).toBe(false);
+}, 30_000);
+
+test("checkout metadata stays fresh and distinguishes ordinary checkouts from linked worktrees", async () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "paseo-checkout-metadata-")));
+  const repo = path.join(root, "repo");
+  const linked = path.join(root, "linked");
+  mkdirSync(repo);
+  const service = new WorkspaceGitServiceImpl({
+    logger: pino({ enabled: false }),
+    paseoHome: path.join(root, "home"),
+  });
+  cleanup.push(async () => {
+    await service.dispose();
+    rmSync(root, { recursive: true, force: true });
+  });
+  function git(...args: string[]) {
+    execFileSync("git", args, {
+      cwd: repo,
+      stdio: "pipe",
+      env: {
+        ...process.env,
+        HOME: root,
+        XDG_CONFIG_HOME: path.join(root, "config"),
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+      },
+    });
+  }
+  git("init", "-b", "main");
+  writeFileSync(path.join(repo, "tracked.txt"), "baseline\n");
+  git("add", ".");
+  git(
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "commit",
+    "-m",
+    "baseline",
+  );
+  const initial = {
+    cwd: repo,
+    isGit: true,
+    currentBranch: "main",
+    remoteUrl: null,
+    worktreeRoot: repo,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: null,
+  };
+  await service.getSnapshot(repo, { includeForge: false });
+  await expect(service.getCheckout(repo)).resolves.toEqual(initial);
+
+  git("checkout", "-b", "feature");
+  git("remote", "add", "origin", "https://example.invalid/changed.git");
+  writeFileSync(path.join(repo, "tracked.txt"), "dirty\n");
+  writeFileSync(path.join(repo, "untracked.txt"), "new\n");
+  await expect(service.getCheckout(repo)).resolves.toEqual({
+    ...initial,
+    currentBranch: "feature",
+    remoteUrl: "https://example.invalid/changed.git",
+  });
+
+  git("remote", "remove", "origin");
+  await expect(service.getCheckout(repo)).resolves.toEqual({
+    ...initial,
+    currentBranch: "feature",
+  });
+  git("worktree", "add", "-b", "linked", linked);
+  await expect(service.getCheckout(linked)).resolves.toEqual({
+    ...initial,
+    cwd: linked,
+    currentBranch: "linked",
+    worktreeRoot: linked,
+    mainRepoRoot: repo,
+  });
 }, 30_000);
 
 test("recursive observation updates tracked state and prunes ignored storms", async () => {

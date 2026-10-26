@@ -1272,6 +1272,28 @@ const x = 1;
     expect(shortstat).toEqual({ additions: 1, deletions: 0 });
   });
 
+  it.each([
+    { label: "empty", content: "", additions: 0 },
+    { label: "LF", content: "a\nb\n", additions: 2 },
+    { label: "CRLF", content: "a\r\nb\r\n", additions: 2 },
+    { label: "no final newline", content: "a\nb", additions: 2 },
+    { label: "lone CR", content: "a\rb", additions: 1 },
+    { label: "only LF", content: "\n", additions: 1 },
+    { label: "only CRLF", content: "\r\n", additions: 1 },
+    { label: "mixed endings", content: "a\r\nb\nc\r", additions: 3 },
+  ])(
+    "counts $label untracked content without adding a trailing line",
+    async ({ content, additions }) => {
+      execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+      commitFile(repoDir, "committed.txt", "one\n", "add committed");
+      writeFileSync(join(repoDir, "untracked.txt"), content);
+
+      const shortstat = await getCheckoutShortstat(repoDir);
+
+      expect(shortstat).toEqual({ additions: additions + 1, deletions: 0 });
+    },
+  );
+
   it("uses the merge-base for shortstat when a feature branch diverged from its tracked remote", async () => {
     setupRemoteTrackingMain(repoDir, tempDir);
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });

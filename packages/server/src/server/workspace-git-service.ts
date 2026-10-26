@@ -759,13 +759,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   async getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload> {
     this.assertNotDisposed();
     const normalizedCwd = resolve(cwd);
-    const status = await this.deps.getCheckoutStatus(normalizedCwd, {
+    const facts = await this.deps.getCheckoutSnapshotFacts(normalizedCwd, {
       paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       logger: this.logger,
     });
     const cached = this.getCachedSnapshot(normalizedCwd);
-    if (cached && cached.git.isGit !== status.isGit) {
+    if (cached && cached.git.isGit !== facts.isGit) {
       // A fresh checkout read discovered a repository transition. Keep the
       // shared snapshot current before exposing the new project capability.
       await this.getSnapshot(normalizedCwd, {
@@ -774,7 +774,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         reason: "checkout-classification-changed",
       });
     }
-    if (!status.isGit) {
+    if (!facts.isGit) {
       return checkoutLiteFromGitSnapshot(normalizedCwd, {
         isGit: false,
         currentBranch: null,
@@ -784,13 +784,21 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         mainRepoRoot: null,
       });
     }
+    const isPaseoOwnedWorktree =
+      facts.paseoWorktree.isPaseoOwnedWorktree && Boolean(facts.resolvedBaseRef);
+    let mainRepoRoot = facts.mainRepoRoot;
+    if (isPaseoOwnedWorktree) {
+      mainRepoRoot ??= facts.worktreeRoot;
+    } else if (mainRepoRoot && resolve(mainRepoRoot) === resolve(facts.worktreeRoot)) {
+      mainRepoRoot = null;
+    }
     return checkoutLiteFromGitSnapshot(normalizedCwd, {
       isGit: true,
-      currentBranch: status.currentBranch,
-      remoteUrl: status.remoteUrl,
-      repoRoot: status.repoRoot,
-      isPaseoOwnedWorktree: status.isPaseoOwnedWorktree,
-      mainRepoRoot: status.mainRepoRoot,
+      currentBranch: facts.currentBranch,
+      remoteUrl: facts.remoteUrl,
+      repoRoot: facts.worktreeRoot,
+      isPaseoOwnedWorktree,
+      mainRepoRoot,
     });
   }
 

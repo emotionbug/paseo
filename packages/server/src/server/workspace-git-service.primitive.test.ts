@@ -425,7 +425,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
   test("getCheckout surfaces an unexpected Git read failure", async () => {
     const service = createService({
-      getCheckoutStatus: vi.fn(async () => {
+      getCheckoutSnapshotFacts: vi.fn(async () => {
         throw new Error("Git read failed");
       }),
     });
@@ -434,6 +434,55 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     service.dispose();
   });
+
+  test.each([
+    { owned: false, baseRef: "main", root: REPO_CWD, expectedRoot: null, expectedOwned: false },
+    {
+      owned: false,
+      baseRef: "main",
+      root: `${REPO_CWD}/.`,
+      expectedRoot: null,
+      expectedOwned: false,
+    },
+    {
+      owned: false,
+      baseRef: "main",
+      root: join(REPO_CWD, "main-repo"),
+      expectedRoot: join(REPO_CWD, "main-repo"),
+      expectedOwned: false,
+    },
+    { owned: true, baseRef: "main", root: null, expectedRoot: REPO_CWD, expectedOwned: true },
+    { owned: true, baseRef: "main", root: REPO_CWD, expectedRoot: REPO_CWD, expectedOwned: true },
+    { owned: true, baseRef: null, root: REPO_CWD, expectedRoot: null, expectedOwned: false },
+  ])(
+    "getCheckout preserves placement normalization for $owned/$baseRef/$root",
+    async ({ owned, baseRef, root, expectedRoot, expectedOwned }) => {
+      const service = createService({
+        getCheckoutSnapshotFacts: vi.fn(async () =>
+          createCheckoutFacts(REPO_CWD, {
+            paseoWorktree: owned
+              ? { isPaseoOwnedWorktree: true, worktreeRoot: REPO_CWD }
+              : { isPaseoOwnedWorktree: false },
+            resolvedBaseRef: baseRef,
+            mainRepoRoot: root,
+          }),
+        ),
+      });
+      try {
+        await expect(service.getCheckout(REPO_CWD)).resolves.toEqual({
+          cwd: REPO_CWD,
+          isGit: true,
+          currentBranch: "main",
+          remoteUrl: "https://github.com/acme/repo.git",
+          worktreeRoot: REPO_CWD,
+          isPaseoOwnedWorktree: expectedOwned,
+          mainRepoRoot: expectedRoot,
+        });
+      } finally {
+        await service.dispose();
+      }
+    },
+  );
 
   test("getSnapshot returns the current snapshot without shelling out", async () => {
     let nowMs = Date.parse("2026-04-12T00:00:00.000Z");

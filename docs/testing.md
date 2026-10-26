@@ -206,13 +206,25 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 
 ## Pull-request test routing
 
-PR checks are routed by the behavior each suite proves, using `.github/ci-paths.yml`. A package does not inherit every test suite of its runtime consumers: app changes do not run CLI or Electron-wrapper tests, and protocol changes do not run every package that imports the protocol. Cross-package static compatibility belongs to `typecheck`; full integration coverage runs after merge on main and in manual CI runs.
+PR checks are routed by the behavior each suite proves, using `.github/ci-paths.yml`. A package does not inherit every test suite of its runtime consumers: app changes do not run CLI or Electron-wrapper tests, and protocol changes do not run every package that imports the protocol. Cross-package static compatibility belongs to `typecheck`; full integration coverage runs after merge on main and in normal manual CI runs.
 
 Required matrix legs are declared as statically named jobs. Their shared steps use YAML anchors, while job-level `if` conditions let GitHub report an unaffected leg as genuinely skipped without allocating a runner or losing the exact required-check name.
 
 The smallest meaningful contract wins over package ownership. The routing job runs dependency-free checks only; daemon launch and title synchronization checks run in `quality` after dependencies are installed. Routed integration contracts use stable domain directories. Browser changes select the required Playwright shards; desktop changes select the existing required desktop jobs, with renderer and real-Electron coverage together in the Ubuntu leg. Packaging runs on main in the Desktop Packages, Docker, and Nix workflows. CLI-side Hub changes select one focused test inside the existing required server jobs. The CLI source suite runs once in the third required CLI job; only the separate local E2E runner is sharded, and that runner owns its dependency build. Repository scripts and the shared Vitest configuration run every PR contract because they are cross-cutting toolchain inputs.
 
 The fork retains these build and test jobs. The website deployment and Nix hash bot run only in the upstream repository: their Cloudflare account, domains and GitHub App belong to upstream, not the fork. Nix package builds and smoke checks still run in the fork.
+
+### Fast failure recovery
+
+For a transient failure on the same commit, use GitHub's **Re-run failed jobs**. For a code fix, push a repair branch and run **CI Recovery** against that branch, selecting the failed job or shard:
+
+```bash
+gh workflow run ci-recovery.yml --ref fix/my-failure -f job=playwright-3
+```
+
+This reuses the real CI steps but allocates runners only for change detection and the selected check. Recovery checks have a `Recover /` prefix; they do not replace normal required checks or claim that the whole commit passed. Recovery concurrency is separate from full CI and from other recovery targets. Merge/main and ordinary manual CI still run the complete suite.
+
+The desktop build compiles shared workspace dependencies once before exporting the renderer and packaging the daemon. Linux workflow artifacts contain distributable archives/installers and YAML metadata, not an additional unpacked copy of the same application; extract the tarball when unpacked inspection is needed. Already-compressed distributables are uploaded without a second compression pass.
 
 ## Agent authentication in tests
 

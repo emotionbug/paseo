@@ -2825,9 +2825,15 @@ async function countUntrackedAdditions(
         if (await isLikelyBinaryFile(absolutePath)) continue;
         const content = await readFile(absolutePath, "utf-8");
         if (content.length === 0) continue;
-        const normalized = content.replace(/\r\n/g, "\n");
-        const lineCount = normalized.split("\n").length;
-        additions += normalized.endsWith("\n") ? lineCount - 1 : lineCount;
+        // CRLF and LF contribute the same line break; a lone CR remains content.
+        for (
+          let newline = content.indexOf("\n");
+          newline !== -1;
+          newline = content.indexOf("\n", newline + 1)
+        ) {
+          additions += 1;
+        }
+        if (!content.endsWith("\n")) additions += 1;
       } catch {
         // Skip unreadable files.
       }

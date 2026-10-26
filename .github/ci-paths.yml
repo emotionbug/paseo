@@ -1,6 +1,6 @@
 # Pull-request checks are routed by the behavior they prove. Package consumers
-# do not inherit their dependencies' test suites; main and manual runs execute
-# every contract regardless of these paths.
+# do not inherit their dependencies' test suites; main and normal manual CI runs
+# execute every contract. CI Recovery explicitly selects one existing check.
 routing:
   - ".github/ci-paths.yml"
 
@@ -18,6 +18,7 @@ workspace:
 ci:
   - ".github/actions/**"
   - ".github/workflows/ci.yml"
+  - ".github/workflows/ci-recovery.yml"
 
 format:
   - ".agents/**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}"

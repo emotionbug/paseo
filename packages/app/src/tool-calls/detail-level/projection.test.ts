@@ -452,6 +452,66 @@ describe("tool call detail-level projection", () => {
     expect(result.historyGroupUpdatesByHostId.get("1")).toBe(result.groupsByHostId.get("1"));
   });
 
+  it("overlays live groups with unique hosts without changing earlier projections", () => {
+    const sealed = toolCall("1", { type: "shell", command: "sealed" });
+    const trailing = toolCall("2", { type: "shell", command: "trailing" });
+    const tail = [sealed, assistant("boundary"), trailing];
+    const prepared = prepareToolCallHistory("overview", tail);
+    if (!prepared) {
+      throw new Error("Overview history must be prepared");
+    }
+    const firstCall = toolCall("3", { type: "read", filePath: "/repo/a.ts" });
+    const first = project({
+      level: "overview",
+      tail,
+      head: [firstCall],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+    const secondCall = toolCall("4", { type: "read", filePath: "/repo/b.ts" });
+    const newRun = toolCall("5", { type: "shell", command: "new" });
+    const second = project({
+      level: "overview",
+      tail,
+      head: [firstCall, secondCall, assistant("next"), newRun],
+      isTurnActive: true,
+      preparedHistory: prepared,
+    });
+
+    expect(second.groupsByHostId.size).toBe(3);
+    expect(second.groupsByHostId.get("1")?.run.calls).toEqual([sealed]);
+    expect(second.groupsByHostId.get("2")?.run).toMatchObject({
+      calls: [trailing, firstCall, secondCall],
+      isSealed: true,
+    });
+    expect(second.groupsByHostId.get("5")?.run.calls).toEqual([newRun]);
+    for (const id of ["1", "2", "5"]) {
+      expect(second.groupsByHostId.has(id)).toBe(true);
+    }
+    expect(second.groupsByHostId.has("missing")).toBe(false);
+    expect(second.groupsByHostId.get("missing")).toBeUndefined();
+    expect(second.historyGroupUpdatesByHostId.size).toBe(1);
+    expect(second.historyGroupUpdatesByHostId.get("2")?.run.calls).toEqual([
+      trailing,
+      firstCall,
+      secondCall,
+    ]);
+    expect(second.historyGroupUpdatesByHostId.has("5")).toBe(false);
+
+    expect(first.groupsByHostId.size).toBe(2);
+    expect(first.groupsByHostId.get("2")?.run).toMatchObject({
+      calls: [trailing, firstCall],
+      isSealed: false,
+    });
+    expect(first.groupsByHostId.has("5")).toBe(false);
+    expect(first.historyGroupUpdatesByHostId.get("2")?.run.calls).toEqual([trailing, firstCall]);
+    expect(prepared.grouped.groupsByHostId.size).toBe(2);
+    expect(prepared.grouped.groupsByHostId.get("2")?.run).toMatchObject({
+      calls: [trailing],
+      isSealed: true,
+    });
+  });
+
   it("keeps a trailing history-only group in the retained segment", () => {
     const tail = ["1", "2", "3", "4"].map((id) => toolCall(id, { type: "shell", command: id }));
 

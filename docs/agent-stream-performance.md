@@ -47,6 +47,9 @@ So arrival sets a _target_ and the reveal rate is derived from the backlog inste
   make the next reply progressively more expensive to display. Reuse unchanged history work
   while text arrives, and release obsolete window caches as the reader reveals more history;
   window caches must stay bounded while their source timeline remains loaded.
+  Tool-call projections layer live groups over immutable prepared history through `size/get/has`;
+  do not copy the historical group map for each live update. Rebuild prepared history when it
+  changes instead of mutating maps already referenced by published projections.
 
 ## Native parsing cost
 

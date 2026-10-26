@@ -210,15 +210,27 @@ export function groupLiveToolCalls<TGroup>(input: {
       historyGroupUpdatesByHostId: EMPTY_GROUPS,
     };
   }
-  const groupsByHostId = new Map(input.history.groupsByHostId);
+  const historyGroups = input.history.groupsByHostId;
+  let size = historyGroups.size;
   let historyGroupUpdatesByHostId: Map<string, TGroup> | null = null;
   for (const [id, group] of liveGroups) {
-    groupsByHostId.set(id, group);
-    if (input.history.groupsByHostId.has(id)) {
+    if (historyGroups.has(id)) {
       historyGroupUpdatesByHostId ??= new Map();
       historyGroupUpdatesByHostId.set(id, group);
+    } else {
+      size += 1;
     }
   }
+  // Prepared history is immutable; overlay live groups without copying the retained timeline.
+  const groupsByHostId: ToolCallGroupLookup<TGroup> = {
+    size,
+    get(id) {
+      return liveGroups.has(id) ? liveGroups.get(id) : historyGroups.get(id);
+    },
+    has(id) {
+      return liveGroups.has(id) || historyGroups.has(id);
+    },
+  };
   return {
     tail: input.history.tail,
     head,
