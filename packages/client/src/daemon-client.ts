@@ -120,6 +120,7 @@ import type {
   TerminalInput,
   SessionInboundMessage,
   SessionOutboundMessage,
+  SubscribeCheckoutDiffRequest,
   SendAgentMessageRequest,
   PaseoConfigRaw,
   PaseoConfigRevision,
@@ -523,6 +524,7 @@ type SubscribeCheckoutDiffPayload = Extract<
   { type: "subscribe_checkout_diff_response" }
 >["payload"];
 type CheckoutDiffPayload = Omit<SubscribeCheckoutDiffPayload, "subscriptionId">;
+type CheckoutDiffCompare = SubscribeCheckoutDiffRequest["compare"];
 type CheckoutCommitPayload = CheckoutCommitResponse["payload"];
 type CheckoutMergePayload = CheckoutMergeResponse["payload"];
 type CheckoutMergeFromBasePayload = CheckoutMergeFromBaseResponse["payload"];
@@ -4433,30 +4435,24 @@ export class DaemonClient {
     return responsePromise;
   }
 
-  private normalizeCheckoutDiffCompare(compare: {
-    mode: "uncommitted" | "base" | "all";
-    baseRef?: string;
-    ignoreWhitespace?: boolean;
-  }): { mode: "uncommitted" | "base" | "all"; baseRef?: string; ignoreWhitespace?: boolean } {
+  private normalizeCheckoutDiffCompare(compare: CheckoutDiffCompare): CheckoutDiffCompare {
+    const detail = compare.detail === "summary" ? "summary" : undefined;
+    const ignoreWhitespace = compare.ignoreWhitespace === true;
+    const base = {
+      mode: compare.mode,
+      ...(ignoreWhitespace ? { ignoreWhitespace } : {}),
+      ...(detail ? { detail } : {}),
+    } satisfies CheckoutDiffCompare;
     if (compare.mode === "uncommitted") {
-      return compare.ignoreWhitespace === true
-        ? { mode: "uncommitted", ignoreWhitespace: true }
-        : { mode: "uncommitted" };
+      return base;
     }
     const trimmedBaseRef = compare.baseRef?.trim();
-    if (!trimmedBaseRef) {
-      return compare.ignoreWhitespace === true
-        ? { mode: compare.mode, ignoreWhitespace: true }
-        : { mode: compare.mode };
-    }
-    return compare.ignoreWhitespace === true
-      ? { mode: compare.mode, baseRef: trimmedBaseRef, ignoreWhitespace: true }
-      : { mode: compare.mode, baseRef: trimmedBaseRef };
+    return trimmedBaseRef ? { ...base, baseRef: trimmedBaseRef } : base;
   }
 
   async getCheckoutDiff(
     cwd: string,
-    compare: { mode: "uncommitted" | "base" | "all"; baseRef?: string; ignoreWhitespace?: boolean },
+    compare: CheckoutDiffCompare,
     requestId?: string,
   ): Promise<CheckoutDiffPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4472,7 +4468,7 @@ export class DaemonClient {
 
   observeCheckoutDiff(
     cwd: string,
-    compare: { mode: "uncommitted" | "base" | "all"; baseRef?: string; ignoreWhitespace?: boolean },
+    compare: CheckoutDiffCompare,
     options?: { requestId?: string; signal?: AbortSignal },
   ): OwnedSubscription<SubscribeCheckoutDiffPayload> {
     return this.observe(

@@ -923,6 +923,7 @@ export interface CheckoutDiffCompare {
   mode: "uncommitted" | "base" | "all";
   baseRef?: string;
   ignoreWhitespace?: boolean;
+  detail?: "summary" | "full";
   includeStructured?: boolean;
 }
 
@@ -3823,6 +3824,84 @@ async function processTrackedChanges(
   };
 }
 
+function getDiffSummaryStatus(
+  stat: FileStat,
+  truncated: boolean,
+): NonNullable<ParsedDiffFile["status"]> {
+  if (stat?.isBinary) return "binary";
+  return truncated ? "too_large" : "ok";
+}
+
+async function getUntrackedDiffSummary(
+  cwd: string,
+  change: CheckoutFileChange,
+  ignoreWhitespace: boolean,
+): Promise<{ stat: FileStat; status: NonNullable<ParsedDiffFile["status"]> }> {
+  let inspected: InspectedUntrackedFile | null = null;
+  try {
+    inspected = await inspectUntrackedFile(cwd, change.path);
+  } catch {
+    // Match the full-diff fallback for files that cannot be inspected directly.
+  }
+  if (inspected) {
+    return {
+      stat: inspected.stat,
+      status: getDiffSummaryStatus(inspected.stat, inspected.truncated),
+    };
+  }
+  const result = await getUntrackedDiffText(
+    cwd,
+    change,
+    DEFAULT_UNTRACKED_PATCH_FORMAT,
+    ignoreWhitespace,
+  );
+  return {
+    stat: result.stat,
+    status: getDiffSummaryStatus(result.stat, result.truncated),
+  };
+}
+
+async function buildCheckoutDiffSummary(
+  cwd: string,
+  changes: CheckoutFileChange[],
+  refsForDiff: CheckoutDiffRefs,
+  ignoreWhitespace: boolean,
+): Promise<CheckoutDiffResult> {
+  const trackedChanges = changes.filter((change) => !change.isUntracked);
+  const trackedNumstatByPath =
+    trackedChanges.length > 0
+      ? await getTrackedNumstatByPath(cwd, refsForDiff, ignoreWhitespace)
+      : new Map<string, FileStat>();
+  const structured = createStructuredDiffAccumulator();
+
+  for (const change of changes) {
+    let stat = trackedNumstatByPath.get(change.path) ?? null;
+    let status: ParsedDiffFile["status"] = stat?.isBinary ? "binary" : "ok";
+    if (change.isUntracked) {
+      const summary = await getUntrackedDiffSummary(cwd, change, ignoreWhitespace);
+      stat = summary.stat;
+      status = summary.status;
+    } else if (isWhitespaceOnlyTrackedChange({ change, stat, ignoreWhitespace })) {
+      continue;
+    }
+    const file = {
+      path: change.path,
+      ...(change.oldPath ? { oldPath: change.oldPath } : {}),
+      isNew: change.isNew,
+      isDeleted: change.isDeleted,
+      additions: stat?.additions ?? 0,
+      deletions: stat?.deletions ?? 0,
+      hunks: [],
+      status,
+    } satisfies ParsedDiffFile;
+    if (!appendStructuredFile(structured, file)) {
+      return { diff: "", structured: [], diffTooLarge: true };
+    }
+  }
+
+  return { diff: "", structured: structured.files };
+}
+
 async function resolveCheckoutDiffRefs(
   cwd: string,
   compare: CheckoutDiffCompare,
@@ -3940,6 +4019,10 @@ async function readCheckoutDiff(
     if (a.path === b.path) return 0;
     return a.path < b.path ? -1 : 1;
   });
+
+  if (compare.detail === "summary") {
+    return buildCheckoutDiffSummary(cwd, changes, effectiveRefsForDiff, ignoreWhitespace);
+  }
 
   const structured = createStructuredDiffAccumulator();
   const highlightBudget: StructuredDiffHighlightBudget = {

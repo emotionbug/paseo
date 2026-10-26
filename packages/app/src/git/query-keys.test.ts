@@ -17,6 +17,12 @@ describe("checkout query keys", () => {
   const serverId = "server-1";
   const cwd = "/tmp/repo";
 
+  it("keeps summary and full checkout diff subscriptions independent", () => {
+    expect(checkoutDiffQueryKey(serverId, cwd, "uncommitted")).not.toEqual(
+      checkoutDiffQueryKey(serverId, cwd, "uncommitted", undefined, undefined, "summary"),
+    );
+  });
+
   it("invalidates every query for a checkout without touching other checkouts", async () => {
     const queryClient = new QueryClient();
 

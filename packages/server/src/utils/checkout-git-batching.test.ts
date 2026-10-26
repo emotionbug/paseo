@@ -75,6 +75,27 @@ describe("checkout git diff batching", () => {
     ).toHaveLength(1);
   });
 
+  it("returns tracked file summaries without building patch bodies", async () => {
+    startGitCommandMetrics();
+    const result = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      detail: "summary",
+      includeStructured: true,
+    });
+    const metrics = stopGitCommandMetrics();
+
+    expect(result.diff).toBe("");
+    expect(result.structured).toHaveLength(20);
+    expect(
+      result.structured?.every(
+        (file) => file.hunks.length === 0 && file.additions === 1 && file.deletions === 1,
+      ),
+    ).toBe(true);
+    expect(
+      metrics.commands.filter(({ args }) => args[0] === "diff" && args.includes("--")),
+    ).toHaveLength(0);
+  });
+
   it("batches committed file contents and preserves the highlighted diff", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
     execFileSync("git", ["add", "."], { cwd: repoDir });

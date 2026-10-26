@@ -224,6 +224,20 @@ describe("CheckoutDiffManager", () => {
     });
   });
 
+  test("returns the initial diff before the working tree watch finishes opening", async () => {
+    const { manager, watches } = createPendingManager();
+
+    const subscription = await manager.subscribe(
+      { cwd: "/tmp/repo/packages/server", compare: { mode: "uncommitted" } },
+      () => {},
+    );
+
+    expect(watches).toHaveLength(1);
+    subscription.unsubscribe();
+    watches[0].resolve();
+    await vi.waitFor(() => expect(watches[0].unsubscribeCalls).toBe(1));
+  });
+
   test("shares one opening target between concurrent subscriptions", async () => {
     const { manager, watches } = createPendingManager();
 
@@ -247,7 +261,7 @@ describe("CheckoutDiffManager", () => {
     expect(watches[0].unsubscribeCalls).toBe(1);
   });
 
-  test("diffCwd uses repoRoot from the working tree watch result", async () => {
+  test("the initial diff can resolve the repository from the requested cwd", async () => {
     const { manager, workspaceGitService } = createManager({ repoRoot: "/tmp/repo" });
 
     await manager.subscribe(
@@ -259,7 +273,7 @@ describe("CheckoutDiffManager", () => {
     );
 
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledWith(
-      "/tmp/repo",
+      "/tmp/repo/packages/server",
       expect.objectContaining({ mode: "uncommitted", includeStructured: true }),
       undefined,
     );
@@ -330,7 +344,7 @@ describe("CheckoutDiffManager", () => {
 
     expect(getCheckoutDiff).toHaveBeenNthCalledWith(
       1,
-      "/tmp/repo",
+      "/tmp/repo/packages/server",
       expect.objectContaining({ mode: "uncommitted" }),
       undefined,
     );
@@ -340,6 +354,7 @@ describe("CheckoutDiffManager", () => {
     await vi.advanceTimersByTimeAsync(150);
 
     expect(getCheckoutDiff).toHaveBeenCalledTimes(2);
+    expect(getCheckoutDiff.mock.calls[1]?.[0]).toBe("/tmp/repo");
     const watchFiredCall = getCheckoutDiff.mock.calls[1];
     expect(watchFiredCall[2]).toEqual({
       force: true,

@@ -2207,6 +2207,7 @@ const CheckoutDiffCompareSchema = z.object({
   mode: z.enum(["uncommitted", "base", "all"]),
   baseRef: z.string().optional(),
   ignoreWhitespace: z.boolean().optional(),
+  detail: z.enum(["summary", "full"]).optional(),
 });
 
 export const CheckoutStatusRequestSchema = z.object({

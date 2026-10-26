@@ -115,6 +115,23 @@ test("active reads survive completed-payload eviction and failed reads can retry
   ).toEqual({ diff: "retry" });
 });
 
+test("summary and full payloads use independent cache entries", async () => {
+  const cache = new CheckoutDiffCache(() => 0);
+  let calls = 0;
+  const read = (detail: "summary" | "full") =>
+    cache.read({
+      cwd: "repo",
+      compare: { mode: "uncommitted", detail },
+      load: async () => ({ diff: `${detail}-${++calls}` }),
+    });
+
+  expect(await read("summary")).toEqual({ diff: "summary-1" });
+  expect(await read("full")).toEqual({ diff: "full-2" });
+  expect(await read("summary")).toEqual({ diff: "summary-1" });
+  expect(await read("full")).toEqual({ diff: "full-2" });
+  expect(calls).toBe(2);
+});
+
 test.each(["base", "uncommitted"] as const)(
   "%s invalidation refreshes All changes without merging base-ref cache entries",
   async (mode) => {

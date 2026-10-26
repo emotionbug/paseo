@@ -68,6 +68,7 @@ export function useWorkingDiff({
     mode: diffMode,
     baseRef,
     ignoreWhitespace,
+    detail: presentation === "tree" ? "summary" : undefined,
     enabled: enabled && isGit,
     queryScope,
   });

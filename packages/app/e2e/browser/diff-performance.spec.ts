@@ -34,8 +34,9 @@ const MAX_P95_FRAME_MS = POC_P95_FRAME_MS * 4.4;
 const MANY_FILE_MAX_MEDIAN_FRAME_MS = 50;
 const MANY_FILE_MAX_P95_FRAME_MS = 100;
 const MANY_FILE_MAX_TREE_PANEL_SHELL_MS = 1_000;
-const MANY_FILE_MAX_TREE_FILES_MS = 4_000;
+const MANY_FILE_MAX_TREE_FILES_MS = 3_000;
 const MANY_FILE_MAX_FIRST_DIFF_MS = 1_500;
+const MANY_FILE_MAX_CHANGES_READY_MS = 4_000;
 
 diffPerfDescribe("Diff canvas performance", () => {
   test("opening a review stays responsive in a large diff", async ({ page }) => {
@@ -205,6 +206,7 @@ diffPerfDescribe("Diff canvas performance", () => {
       expect(startup.treePanelShellMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_PANEL_SHELL_MS);
       expect(startup.treeFilesMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_FILES_MS);
       expect(startup.firstDiffMs).toBeLessThanOrEqual(MANY_FILE_MAX_FIRST_DIFF_MS);
+      expect(startup.changesReadyMs).toBeLessThanOrEqual(MANY_FILE_MAX_CHANGES_READY_MS);
       if (!RUN_HEADER_COMPARISON) {
         expect(benchmark.maximumShells).toBeLessThan(120);
         expect(benchmark.maximumStickyCanvases).toBe(2);
@@ -461,6 +463,7 @@ async function configureUnwrappedUnifiedDiff(page: Page): Promise<void> {
             viewMode: "flat",
             wrapLines: false,
             hideWhitespace: false,
+            inlineDiff: false,
           }),
         );
       }

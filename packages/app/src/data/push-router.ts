@@ -36,6 +36,7 @@ interface CheckoutDiffCompare {
   mode: "uncommitted" | "base" | "all";
   baseRef?: string;
   ignoreWhitespace?: boolean;
+  detail?: "summary" | "full";
 }
 
 interface CheckoutDiffRoute {

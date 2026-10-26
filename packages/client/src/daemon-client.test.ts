@@ -4412,7 +4412,10 @@ test("subscribes to checkout diff updates via RPC handshake", async () => {
   mock.triggerOpen();
   await connectPromise;
 
-  const subscription = client.observeCheckoutDiff("/tmp/project", { mode: "uncommitted" });
+  const subscription = client.observeCheckoutDiff("/tmp/project", {
+    mode: "uncommitted",
+    detail: "summary",
+  });
   const promise = subscription.ready;
   await vi.waitFor(() => expect(mock.sent).toHaveLength(1));
 
@@ -4421,7 +4424,7 @@ test("subscribes to checkout diff updates via RPC handshake", async () => {
   expect(request.type).toBe("subscribe_checkout_diff_request");
   expect(request.subscriptionId).toBeUndefined();
   expect(request.cwd).toBe("/tmp/project");
-  expect(request.compare).toEqual({ mode: "uncommitted" });
+  expect(request.compare).toEqual({ mode: "uncommitted", detail: "summary" });
 
   mock.triggerMessage(
     JSON.stringify({

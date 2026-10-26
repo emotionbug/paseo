@@ -45,6 +45,7 @@ interface CheckoutDiffWatchTarget {
   latestPayload: CheckoutDiffSnapshotPayload | null;
   latestFingerprint: string | null;
   openPromise: Promise<void> | null;
+  initialPromise: Promise<CheckoutDiffSnapshotPayload> | null;
 }
 
 export interface CheckoutDiffSubscriptionRequest {
@@ -87,7 +88,11 @@ export class CheckoutDiffManager {
     const compare = this.normalizeCompare(params.compare);
     const target = this.ensureTarget(cwd, compare);
     target.listeners.add(listener);
-    target.openPromise ??= this.openTarget(target);
+    if (!target.openPromise) {
+      target.openPromise = this.openTarget(target);
+      void target.openPromise.catch((error) => this.publishTargetOpenError(target, error));
+    }
+    target.initialPromise ??= this.computeCheckoutDiffSnapshot(target.cwd, target.compare);
 
     let isSubscribed = true;
     const unsubscribe = () => {
@@ -104,12 +109,7 @@ export class CheckoutDiffManager {
     }
 
     try {
-      await target.openPromise;
-      const initial =
-        target.latestPayload ??
-        (await this.computeCheckoutDiffSnapshot(target.cwd, target.compare, {
-          diffCwd: target.diffCwd,
-        }));
+      const initial = target.latestPayload ?? (await target.initialPromise);
       target.latestPayload = initial;
       target.latestFingerprint = JSON.stringify(initial);
       return { initial, unsubscribe };
@@ -153,13 +153,17 @@ export class CheckoutDiffManager {
 
   private normalizeCompare(compare: CheckoutDiffCompareInput): CheckoutDiffCompareInput {
     const ignoreWhitespace = compare.ignoreWhitespace === true;
+    const detail = compare.detail === "summary" ? "summary" : undefined;
     if (compare.mode === "uncommitted") {
-      return { mode: "uncommitted", ignoreWhitespace };
+      return { mode: "uncommitted", ignoreWhitespace, ...(detail ? { detail } : {}) };
     }
     const trimmedBaseRef = compare.baseRef?.trim();
-    return trimmedBaseRef
-      ? { mode: compare.mode, baseRef: trimmedBaseRef, ignoreWhitespace }
-      : { mode: compare.mode, ignoreWhitespace };
+    return {
+      mode: compare.mode,
+      ...(trimmedBaseRef ? { baseRef: trimmedBaseRef } : {}),
+      ignoreWhitespace,
+      ...(detail ? { detail } : {}),
+    };
   }
 
   private buildTargetKey(cwd: string, compare: CheckoutDiffCompareInput): string {
@@ -168,6 +172,7 @@ export class CheckoutDiffManager {
       compare.mode,
       compare.mode !== "uncommitted" ? (compare.baseRef ?? "") : "",
       compare.ignoreWhitespace === true,
+      compare.detail === "summary",
     ]);
   }
 
@@ -223,6 +228,19 @@ export class CheckoutDiffManager {
     }
   }
 
+  private publishTargetOpenError(target: CheckoutDiffWatchTarget, error: unknown): void {
+    if (this.targets.get(target.key) !== target || target.listeners.size === 0) return;
+    const snapshot: CheckoutDiffSnapshotPayload = {
+      ...(target.latestPayload ?? { cwd: target.cwd, files: [] }),
+      error: toCheckoutError(error),
+    };
+    target.latestPayload = snapshot;
+    target.latestFingerprint = JSON.stringify(snapshot);
+    for (const listener of target.listeners) {
+      listener(snapshot);
+    }
+  }
+
   private removeListener(
     target: CheckoutDiffWatchTarget,
     listener: (snapshot: CheckoutDiffSnapshotPayload) => void,
@@ -264,6 +282,7 @@ export class CheckoutDiffManager {
           baseRef: compare.baseRef,
           ignoreWhitespace: compare.ignoreWhitespace,
           includeStructured: true,
+          detail: compare.detail,
         },
         options?.force
           ? { force: true, reason: options.reason ?? "checkout-diff-refresh" }
@@ -358,6 +377,7 @@ export class CheckoutDiffManager {
       latestPayload: null,
       latestFingerprint: null,
       openPromise: null,
+      initialPromise: null,
     };
     this.targets.set(targetKey, target);
     return target;
