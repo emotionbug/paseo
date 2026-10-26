@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "디렉터리 찾아보기",
+      methodDescription: "{{host}}의 디렉터리 찾아보기",
+      title: "디렉터리 찾아보기",
+      home: "홈",
+      manualPath: "검색 또는 경로 입력",
+      select: "이 디렉터리 선택",
+      loading: "디렉터리 불러오는 중...",
+      empty: "하위 디렉터리가 없습니다",
+      error: "디렉터리를 열 수 없습니다",
+      retry: "다시 시도",
+      hostUnavailable: "이 호스트를 사용할 수 없습니다.",
+      disconnected: "호스트 연결이 끊어졌습니다.",
+    },
+  },
   sessionNavigation: {
     sessions: "세션",
     newSession: "새 세션",

@@ -138,6 +138,7 @@ interface WebSocketServerInternals {
 }
 
 const TEST_DAEMON_VERSION = "1.2.3-test";
+const SHUTDOWN_GRACE_MS = 5_000;
 
 const WireEnvelopeSchema = z.object({
   type: z.string().optional(),
@@ -201,7 +202,7 @@ class MockSocket {
 
   once(event: "close" | "error", listener: SocketListener): void {
     const wrapped: SocketListener = (...args) => {
-      this.off(event, wrapped);
+      this.removeListener(event, wrapped);
       listener(...args);
     };
     this.on(event, wrapped);
@@ -223,12 +224,38 @@ class MockSocket {
     }
   }
 
-  private off(event: "close" | "error", listener: SocketListener): void {
+  removeListener(event: "message" | "close" | "error", listener: SocketListener): void {
     const handlers = this.listeners.get(event) ?? [];
     this.listeners.set(
       event,
       handlers.filter((handler) => handler !== listener),
     );
+  }
+
+  listenerCount(event: "message" | "close" | "error"): number {
+    return this.listeners.get(event)?.length ?? 0;
+  }
+}
+
+class ShutdownSocket extends MockSocket {
+  closeCalls = 0;
+  terminateCalls = 0;
+
+  constructor(private readonly closesNormally: boolean) {
+    super();
+  }
+
+  override close(code?: number, reason?: string): void {
+    this.closeCalls += 1;
+    if (this.closesNormally) {
+      super.close(code, reason);
+    }
+  }
+
+  terminate(): void {
+    this.terminateCalls += 1;
+    this.readyState = 3;
+    this.emit("close", 1006, "");
   }
 }
 
@@ -594,6 +621,65 @@ describe("relay external socket reconnect behavior", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  test("bounds authenticated and pending socket close handshakes during shutdown", async () => {
+    const server = createServer();
+    const authenticated = new ShutdownSocket(false);
+    await attachRelayAndHello({
+      server,
+      socket: authenticated,
+      clientId: "stalled-shutdown-authenticated",
+    });
+    const pending = new ShutdownSocket(false);
+    await server.attachExternalSocket(pending, { transport: "relay" });
+    const authenticatedCloseListeners = authenticated.listenerCount("close");
+    const pendingCloseListeners = pending.listenerCount("close");
+
+    const firstClose = server.close();
+    const repeatedClose = server.close();
+    expect(repeatedClose).toBe(firstClose);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(authenticated.closeCalls).toBe(1);
+    expect(pending.closeCalls).toBe(1);
+    expect(authenticated.terminateCalls).toBe(0);
+    expect(pending.terminateCalls).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS - 1);
+    expect(authenticated.terminateCalls).toBe(0);
+    expect(pending.terminateCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    await firstClose;
+
+    expect(authenticated.terminateCalls).toBe(1);
+    expect(pending.terminateCalls).toBe(1);
+    expect(authenticated.listenerCount("close")).toBe(authenticatedCloseListeners);
+    expect(pending.listenerCount("close")).toBe(pendingCloseListeners);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("does not terminate sockets whose shutdown close handshake completes", async () => {
+    const server = createServer();
+    const authenticated = new ShutdownSocket(true);
+    await attachRelayAndHello({
+      server,
+      socket: authenticated,
+      clientId: "normal-shutdown-authenticated",
+    });
+    const pending = new ShutdownSocket(true);
+    await server.attachExternalSocket(pending, { transport: "relay" });
+    const authenticatedCloseListeners = authenticated.listenerCount("close");
+    const pendingCloseListeners = pending.listenerCount("close");
+
+    await server.close();
+
+    expect(authenticated.closeCalls).toBe(1);
+    expect(pending.closeCalls).toBe(1);
+    expect(authenticated.terminateCalls).toBe(0);
+    expect(pending.terminateCalls).toBe(0);
+    expect(authenticated.listenerCount("close")).toBe(authenticatedCloseListeners);
+    expect(pending.listenerCount("close")).toBe(pendingCloseListeners);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   test("keeps the same session when relay reconnects within grace window", async () => {

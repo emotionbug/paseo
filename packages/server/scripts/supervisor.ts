@@ -143,15 +143,24 @@ function createDurableLog(
   };
 
   return {
-    write(chunk: string | Buffer): void {
-      if (!options) {
-        return;
-      }
+    write(chunk: string | Buffer): boolean {
+      if (!options) return true;
       stream ??= open(options);
-      stream.write(chunk, (error) => {
-        if (!error) {
-          failing = false;
-        }
+      return stream.write(chunk, (error) => {
+        if (!error) failing = false;
+      });
+    },
+    waitForDrain(): Promise<void> {
+      const current = stream;
+      if (!current || !current.writableNeedDrain) return Promise.resolve();
+      return new Promise((resolve) => {
+        const done = () => {
+          current.removeListener("drain", done);
+          current.removeListener("error", done);
+          resolve();
+        };
+        current.once("drain", done);
+        current.once("error", done);
       });
     },
     close(): Promise<void> {
@@ -193,8 +202,36 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
     process.stderr.write(`[${options.name}] ${message}\n`);
   });
 
-  const writeDurableChunk = (chunk: string | Buffer): void => {
-    durableLog.write(chunk);
+  const writeDurableChunk = (chunk: string | Buffer): boolean => durableLog.write(chunk);
+
+  const waitForOutputDrain = (output: NodeJS.WriteStream): Promise<void> => {
+    if (!output.writableNeedDrain) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        output.removeListener("drain", done);
+        output.removeListener("error", done);
+        resolve();
+      };
+      output.once("drain", done);
+      output.once("error", done);
+    });
+  };
+
+  const forwardWorkerOutput = (
+    source: NonNullable<ChildProcess["stdout"]>,
+    output: NodeJS.WriteStream,
+    chunk: Buffer,
+  ): void => {
+    const outputReady = output.write(chunk);
+    const logReady = writeDurableChunk(chunk);
+    if (outputReady && logReady) return;
+    source.pause();
+    void Promise.all([
+      outputReady ? Promise.resolve() : waitForOutputDrain(output),
+      logReady ? Promise.resolve() : durableLog.waitForDrain(),
+    ]).finally(() => {
+      if (!source.destroyed) source.resume();
+    });
   };
 
   const writeLifecycleLog = (message: string, fields: Record<string, unknown> = {}): void => {
@@ -320,14 +357,12 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
       writeLifecycleLog("Worker IPC channel disconnected");
     });
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      process.stdout.write(chunk);
-      writeDurableChunk(chunk);
+    currentChild.stdout?.on("data", (chunk: Buffer) => {
+      if (currentChild.stdout) forwardWorkerOutput(currentChild.stdout, process.stdout, chunk);
     });
 
-    child.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(chunk);
-      writeDurableChunk(chunk);
+    currentChild.stderr?.on("data", (chunk: Buffer) => {
+      if (currentChild.stderr) forwardWorkerOutput(currentChild.stderr, process.stderr, chunk);
     });
 
     child.on("message", (msg: unknown) => {

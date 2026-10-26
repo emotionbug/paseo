@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added a host-scoped directory browser to Add Project, including explicit selection, history, retry, and mobile-friendly remote navigation without path entry.
+
+### Improved
+
+- Bounded relay connection fan-out, protected-handshake retries, WebSocket buffering, and supervisor log backpressure.
+- Reduced persisted-agent lookup allocation and isolated terminal latency benchmarks from speech and relay startup.
+- Updated TanStack Start, Electron Updater, Express, Vite, WebSocket, Zod, MCP SDK, YAML, and critical transitive security dependencies.
+- Reduced Changes-pane startup latency by bounding cooperative syntax highlighting and removing per-file Git processes for untracked text files.
+- Made timeline pagination and browser snapshot cleanup scale with returned/live state instead of retained history.
+- Preserved complete desktop release artifacts before publication for 30-day, publication-only and single-architecture recovery, and made partial npm publication resumable.
+
+### Fixed
+
+- Preserved project and workspace registry files when loading invalid data instead of replacing them on the next mutation.
+- Verified daemon process-start identity before sending local signals, and retained managed-helper recovery records after termination timeouts.
+- Cancelled pending Desktop daemon starts during quit and normalized Windows checkout identity across short and canonical paths.
+- Serialized same-file editor saves, prevented rename collisions from replacing files, and made directory listings tolerate inaccessible children.
+- Propagated durable agent-deletion failures instead of acknowledging deletion that could reappear after restart.
+- Cleaned up mirrored terminals after worker crashes and bounded WebSocket shutdown handshakes before forced daemon exit.
+
 ## 0.13.0 - 2026-10-24
 
 Foldable phone layouts, agents that delegate work to other machines, plugin file panels, and plugin translations.

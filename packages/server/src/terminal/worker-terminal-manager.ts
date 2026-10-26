@@ -127,6 +127,14 @@ function isResponse(message: TerminalWorkerToParentMessage): message is Terminal
   return message.type === "response";
 }
 
+function createAbnormalWorkerExitInfo(): TerminalExitInfo {
+  return {
+    exitCode: 1,
+    signal: null,
+    lastOutputLines: [],
+  };
+}
+
 function cloneTerminalInfo(info: RequiredWorkerTerminalInfo): RequiredWorkerTerminalInfo {
   return {
     id: info.id,
@@ -433,12 +441,17 @@ export function createWorkerTerminalManager(
     message: Extract<TerminalWorkerToParentMessage, { type: "terminalExit" }>,
   ): void {
     const record = recordsById.get(message.terminalId);
-    if (!record) {
+    if (!record || record.exitInfo) {
       return;
     }
     record.exitInfo = message.info;
     for (const listener of Array.from(record.exitListeners)) {
-      listener(message.info);
+      try {
+        listener(message.info);
+      } catch {
+        // A broken listener must not prevent the other listeners or manager
+        // indexes from observing the terminal's exit.
+      }
     }
     record.exitListeners.clear();
     const previousBucket = deriveTerminalActivityStatusBucket(record.activity);
@@ -588,6 +601,9 @@ export function createWorkerTerminalManager(
   }
 
   worker.on("message", (message: TerminalWorkerToParentMessage) => {
+    if (workerExited) {
+      return;
+    }
     if (isResponse(message)) {
       const pending = pendingRequests.get(message.requestId);
       if (!pending) {
@@ -606,12 +622,28 @@ export function createWorkerTerminalManager(
   });
 
   worker.on("exit", (code, signal) => {
+    if (workerExited) {
+      return;
+    }
     workerExited = true;
     if (workerShutdownTimer) {
       clearTimeout(workerShutdownTimer);
       workerShutdownTimer = null;
     }
-    rejectPendingRequests(new Error(`Terminal worker exited (${signal ?? code ?? "unknown"})`));
+    const error = new Error(`Terminal worker exited (${signal ?? code ?? "unknown"})`);
+    rejectPendingRequests(error);
+    for (const terminalId of Array.from(recordsById.keys())) {
+      handleTerminalExitEvent({
+        type: "terminalExit",
+        terminalId,
+        info: createAbnormalWorkerExitInfo(),
+      });
+    }
+    // Pending creations may have an activity token but no mirrored record yet.
+    // No messages are accepted after exit, so neither map can produce a live
+    // terminal again.
+    terminalActivityTokenById.clear();
+    pendingCreationsById.clear();
   });
 
   function sendRequest(input: TerminalWorkerRequestInput): Promise<unknown> {

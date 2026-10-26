@@ -59,6 +59,9 @@ describe("quit-lifecycle", () => {
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_KEEP_RUNNING },
+      cancelPendingDaemonStart: async () => {
+        events.push("cancel");
+      },
       isDesktopManagedDaemonRunning: () => {
         events.push("inspect");
         return true;
@@ -80,6 +83,9 @@ describe("quit-lifecycle", () => {
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
+      cancelPendingDaemonStart: async () => {
+        events.push("cancel");
+      },
       isDesktopManagedDaemonRunning: () => false,
       stopDaemon: async () => {
         events.push("stop");
@@ -90,7 +96,7 @@ describe("quit-lifecycle", () => {
     });
 
     expect(stopped).toBe(false);
-    expect(events).toEqual([]);
+    expect(events).toEqual(["cancel"]);
   });
 
   it("shows feedback then stops a desktop-managed daemon", async () => {
@@ -98,6 +104,9 @@ describe("quit-lifecycle", () => {
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
+      cancelPendingDaemonStart: async () => {
+        events.push("cancel");
+      },
       isDesktopManagedDaemonRunning: () => true,
       stopDaemon: async () => {
         events.push("stop");
@@ -108,7 +117,38 @@ describe("quit-lifecycle", () => {
     });
 
     expect(stopped).toBe(true);
-    expect(events).toEqual(["feedback", "stop"]);
+    expect(events).toEqual(["cancel", "feedback", "stop"]);
+  });
+
+  it("waits for a pending daemon start to cancel before deciding whether to stop", async () => {
+    const events: string[] = [];
+    let releaseCancellation!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    const stopping = stopDesktopManagedDaemonOnQuitIfNeeded({
+      settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
+      cancelPendingDaemonStart: async () => {
+        events.push("cancel");
+        await cancellation;
+      },
+      isDesktopManagedDaemonRunning: () => {
+        events.push("inspect");
+        return true;
+      },
+      stopDaemon: async () => {
+        events.push("stop");
+      },
+      showShutdownFeedback: () => {
+        events.push("feedback");
+      },
+    });
+
+    await Promise.resolve();
+    expect(events).toEqual(["cancel"]);
+    releaseCancellation();
+    await expect(stopping).resolves.toBe(true);
+    expect(events).toEqual(["cancel", "inspect", "feedback", "stop"]);
   });
 
   it("revalidates updates after daemon shutdown before exiting", async () => {

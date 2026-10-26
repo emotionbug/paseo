@@ -93,6 +93,29 @@ describe("daemon instance identity across a reboot", () => {
     expect(exited).toBe(false);
     await expect(readFile(join(paseoHome, "paseo.pid"), "utf-8")).rejects.toThrow(/ENOENT/);
   });
+
+  test("refuses to signal a same-boot PID when a legacy lock has no process identity", async () => {
+    const signalMarker = join(paseoHome, "legacy-bystander-signalled");
+    bystander = spawn(
+      process.execPath,
+      [
+        "-e",
+        `process.on("SIGTERM", () => require("node:fs").writeFileSync(${JSON.stringify(signalMarker)}, "SIGTERM"));` +
+          `setTimeout(() => {}, 120_000);`,
+      ],
+      { stdio: "ignore" },
+    );
+    const bystanderPid = bystander.pid;
+    if (bystanderPid === undefined) throw new Error("bystander process did not start");
+    await writeLock(paseoHome, lockFor(bystanderPid, new Date()));
+
+    await expect(stopDaemonInstance(paseoHome)).rejects.toMatchObject({
+      code: "DAEMON_IDENTITY_UNVERIFIED",
+    });
+
+    expect(existsSync(signalMarker)).toBe(false);
+    expect(bystander.exitCode).toBeNull();
+  });
 });
 
 // Linux keeps a boot's id while a VM is paused for a host sleep, though the VM's wall clock
@@ -121,6 +144,18 @@ describe.runIf(process.platform === "linux")("daemon instance identity on Linux"
     await expect(
       acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
     ).rejects.toThrow("Another Paseo daemon is already running");
+  });
+
+  test("rejects a reused PID when the process-start identity differs", async () => {
+    const lock = await acquirePidLock(paseoHome, null, { ownerPid: process.pid }).then(() =>
+      getPidLockInfo(paseoHome),
+    );
+    expect(lock?.processStartIdentity).toMatch(/^linux:/);
+    if (!lock) throw new Error("PID lock was not written");
+    await writeLock(paseoHome, { ...lock, processStartIdentity: "linux:reused-pid" });
+
+    expect(await readDaemonInstance(paseoHome)).toBeNull();
+    expect(await isLocked(paseoHome)).toMatchObject({ locked: false });
   });
 
   test("a lock written during another boot has no running owner", async () => {

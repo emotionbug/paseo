@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "Обзор каталогов",
+      methodDescription: "Обзор каталогов на {{host}}",
+      title: "Обзор каталогов",
+      home: "Домой",
+      manualPath: "Поиск или ввод пути",
+      select: "Выбрать этот каталог",
+      loading: "Загрузка каталогов...",
+      empty: "Нет подкаталогов",
+      error: "Не удалось открыть каталог",
+      retry: "Повторить",
+      hostUnavailable: "Этот хост недоступен.",
+      disconnected: "Хост отключён.",
+    },
+  },
   sessionNavigation: {
     sessions: "Сеансы",
     newSession: "Новый сеанс",

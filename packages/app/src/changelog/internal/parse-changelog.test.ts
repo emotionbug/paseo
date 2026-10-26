@@ -279,9 +279,11 @@ describe("the repository's own CHANGELOG.md", () => {
   );
   const releases = parseChangelog(markdown);
 
-  it("parses every release heading", () => {
+  it("parses unreleased notes and every versioned release", () => {
     expect(releases.length).toBeGreaterThan(50);
-    for (const release of releases) {
+    expect(releases[0]).toMatchObject({ version: "Unreleased", date: "" });
+    expect(releases[0].sections.length).toBeGreaterThan(0);
+    for (const release of releases.slice(1)) {
       expect(release.version).toMatch(/^\d+\.\d+\.\d+/);
       expect(release.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(release.sections.length).toBeGreaterThan(0);

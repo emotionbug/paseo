@@ -30,6 +30,7 @@ interface DeferredUpdateQuit {
 
 export interface StopOnQuitDeps {
   settingsStore: Pick<DesktopSettingsStore, "get">;
+  cancelPendingDaemonStart: () => Promise<void>;
   isDesktopManagedDaemonRunning: () => boolean;
   stopDaemon: () => Promise<unknown>;
   showShutdownFeedback: () => void;
@@ -63,6 +64,7 @@ export async function stopDesktopManagedDaemonOnQuitIfNeeded(
   if (!shouldStopDesktopManagedDaemonOnQuit(settings)) {
     return false;
   }
+  await deps.cancelPendingDaemonStart();
 
   if (!deps.isDesktopManagedDaemonRunning()) {
     return false;

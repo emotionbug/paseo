@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "ディレクトリを参照",
+      methodDescription: "{{host}} のディレクトリを参照",
+      title: "ディレクトリを参照",
+      home: "ホーム",
+      manualPath: "検索またはパスを入力",
+      select: "このディレクトリを選択",
+      loading: "ディレクトリを読み込み中...",
+      empty: "サブディレクトリはありません",
+      error: "ディレクトリを開けません",
+      retry: "再試行",
+      hostUnavailable: "このホストは利用できません。",
+      disconnected: "ホストは切断されています。",
+    },
+  },
   sessionNavigation: {
     sessions: "セッション",
     newSession: "新しいセッション",

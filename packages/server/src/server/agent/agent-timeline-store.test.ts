@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryAgentTimelineStore } from "./agent-timeline-store.js";
+import { TimelineProjection } from "./timeline-projection.js";
 
 describe("InMemoryAgentTimelineStore", () => {
   it("clamps an overshooting before cursor into the bounded tail window", () => {
@@ -142,6 +143,37 @@ describe("projected timeline retention", () => {
         sourceSeqRanges: [{ startSeq: 1, endSeq: 2 }],
       },
     ]);
+  });
+
+  it("serves one-page and metadata reads without cloning the full projection", () => {
+    const store = new InMemoryAgentTimelineStore();
+    store.initialize("agent", { epoch: "e" });
+    for (let index = 1; index <= 1_000; index += 1) {
+      store.append("agent", {
+        type: "user_message",
+        text: `message ${index}`,
+        clientMessageId: `client-${index}`,
+      });
+    }
+    store.append("agent", { type: "assistant_message", text: "latest" });
+    const getRows = vi.spyOn(TimelineProjection.prototype, "getRows");
+
+    const page = store.fetch("agent", { direction: "tail", limit: 1 });
+
+    expect(page.rows).toHaveLength(1);
+    expect(page.rows[0]?.item).toEqual({ type: "assistant_message", text: "latest" });
+    expect(store.getSubmittedUserMessage("agent", "client-1")?.item).toMatchObject({
+      text: "message 1",
+    });
+    expect(store.getLastItem("agent")).toEqual({ type: "assistant_message", text: "latest" });
+    expect(store.getLastAssistantMessage("agent")).toBe("latest");
+    expect(getRows).not.toHaveBeenCalled();
+
+    page.rows[0]!.timestamp = "changed by caller";
+    expect(store.fetch("agent", { direction: "tail", limit: 1 }).rows[0]?.timestamp).not.toBe(
+      "changed by caller",
+    );
+    getRows.mockRestore();
   });
 });
 

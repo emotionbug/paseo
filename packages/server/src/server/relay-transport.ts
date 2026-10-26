@@ -47,6 +47,7 @@ type ControlMessage =
 const CONTROL_PING_INTERVAL_MS = 10_000;
 const CONTROL_STALE_TIMEOUT_MS = 30_000;
 const CONTROL_READY_TIMEOUT_MS = 8_000;
+const MAX_RELAY_DATA_CONNECTIONS = 128;
 const RELAY_WEBSOCKET_OPTIONS = {
   handshakeTimeout: 10_000,
   perMessageDeflate: false,
@@ -339,10 +340,14 @@ export function startRelayTransport({
   };
 
   const ensureClientDataSocket = (connectionId: string): void => {
-    if (stopped) return;
-    if (!connectionId) return;
-    if (dataSockets.has(connectionId)) return;
-
+    if (stopped || !connectionId || dataSockets.has(connectionId)) return;
+    if (dataSockets.size >= MAX_RELAY_DATA_CONNECTIONS) {
+      relayLogger.warn(
+        { connectionId, limit: MAX_RELAY_DATA_CONNECTIONS },
+        "relay_data_connection_limit_reached",
+      );
+      return;
+    }
     const url = buildRelayWebSocketUrl({
       endpoint: relayEndpoint,
       useTls: relayUseTls,

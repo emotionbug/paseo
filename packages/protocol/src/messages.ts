@@ -5863,19 +5863,18 @@ export const PullRequestTimelineResponseSchema = z.object({
   type: z.literal("pull_request_timeline_response"),
   payload: z
     .object({
-      cwd: z.string().optional().default(""),
-      prNumber: z.number().nullable().optional().default(null),
-      items: z.array(PullRequestTimelineItemSchema).optional().default([]),
-      truncated: z.boolean().optional().default(false),
-      error: PullRequestTimelineErrorSchema.nullable().optional().default(null),
-      requestId: z.string().optional().default(""),
-      githubFeaturesEnabled: z.boolean().optional().default(true),
+      cwd: z.string().prefault(""),
+      prNumber: z.number().nullable().prefault(null),
+      items: z.array(PullRequestTimelineItemSchema).prefault([]),
+      truncated: z.boolean().prefault(false),
+      error: PullRequestTimelineErrorSchema.nullable().prefault(null),
+      requestId: z.string().prefault(""),
+      githubFeaturesEnabled: z.boolean().prefault(true),
       // COMPAT(forgeAuthState): added in v0.2.0-beta.1. Remove the legacy
       // githubFeaturesEnabled normalization after 2027-01-17 once the supported
       // daemon floor is >= v0.2.0.
       authState: ForgeAuthStateSchema,
     })
-    .optional()
     .prefault({}),
 });
 
@@ -7491,7 +7490,20 @@ export type CheckoutPrStatusRequest = z.infer<typeof CheckoutPrStatusRequestSche
 export type CheckoutPrStatusResponse = z.infer<typeof CheckoutPrStatusResponseSchema>;
 export type PullRequestTimelineRequest = z.infer<typeof PullRequestTimelineRequestSchema>;
 export type PullRequestTimelineItem = z.infer<typeof PullRequestTimelineItemSchema>;
-export type PullRequestTimelineResponse = z.infer<typeof PullRequestTimelineResponseSchema>;
+export interface PullRequestTimelinePayload {
+  cwd: string;
+  prNumber: number | null;
+  items: PullRequestTimelineItem[];
+  truncated: boolean;
+  error: z.infer<typeof PullRequestTimelineErrorSchema> | null;
+  requestId: string;
+  githubFeaturesEnabled: boolean;
+  authState?: unknown;
+}
+export interface PullRequestTimelineResponse {
+  type: "pull_request_timeline_response";
+  payload: PullRequestTimelinePayload;
+}
 export type CheckoutSwitchBranchRequest = z.infer<typeof CheckoutSwitchBranchRequestSchema>;
 export type CheckoutSwitchBranchResponse = z.infer<typeof CheckoutSwitchBranchResponseSchema>;
 export type CheckoutRenameBranchRequest = z.infer<typeof CheckoutRenameBranchRequestSchema>;

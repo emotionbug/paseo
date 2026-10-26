@@ -24,7 +24,7 @@ beforeAll(async () => {
   fetchAgentHistoryBatch = module.fetchAgentHistoryBatch;
   fetchAgentHistoryPage = module.fetchAgentHistoryPage;
   collectAgentHistoryHostErrors = module.collectAgentHistoryHostErrors;
-});
+}, 30_000);
 
 type FetchAgentHistory = DaemonClient["fetchAgentHistory"];
 type FetchAgentHistoryResult = Awaited<ReturnType<FetchAgentHistory>>;

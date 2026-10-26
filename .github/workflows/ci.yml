@@ -106,6 +106,10 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm audit signatures
 
+      - name: Reject critical production vulnerabilities
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        run: npm audit --omit=dev --audit-level=critical
+
       - name: Lint
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm run lint

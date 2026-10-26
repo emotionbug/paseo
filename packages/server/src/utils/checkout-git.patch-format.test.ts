@@ -127,6 +127,54 @@ describe.skipIf(process.platform === "win32")("quoted paths from real Git", () =
     });
   });
 
+  it("matches canonical added-file patches for representative untracked text", async () => {
+    const cwd = createChangedRepo("core.quotepath=false");
+    writeFileSync(join(cwd, "file.txt"), "before\n");
+    git(cwd, "config", "core.abbrev", "7");
+    const files: Array<readonly [string, string]> = [
+      ["empty.txt", ""],
+      ["line\né.txt", "unicode\nsecond"],
+      ["plain.txt", "alpha\nbeta\n"],
+      ["space only.txt", "  \n\t\n"],
+    ];
+    for (const [name, contents] of files) {
+      writeFileSync(join(cwd, name), contents);
+    }
+
+    const orderedPaths = files.map(([path]) => path).sort();
+    const expected = orderedPaths.map((path) => canonicalUntrackedPatch(cwd, path)).join("");
+    const result = await getCheckoutDiff(cwd, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+
+    expect(result.diff).toBe(expected);
+    expect(
+      result.structured?.map(({ path, additions, deletions, isNew, status }) => ({
+        path,
+        additions,
+        deletions,
+        isNew,
+        status,
+      })),
+    ).toEqual([
+      { path: "empty.txt", additions: 0, deletions: 0, isNew: true, status: "ok" },
+      { path: "line\né.txt", additions: 2, deletions: 0, isNew: true, status: "ok" },
+      { path: "plain.txt", additions: 2, deletions: 0, isNew: true, status: "ok" },
+      { path: "space only.txt", additions: 2, deletions: 0, isNew: true, status: "ok" },
+    ]);
+
+    const ignoringWhitespace = await getCheckoutDiff(cwd, {
+      mode: "uncommitted",
+      ignoreWhitespace: true,
+      includeStructured: true,
+    });
+    expect(ignoringWhitespace.diff).toBe(
+      orderedPaths.map((path) => canonicalUntrackedPatch(cwd, path, true)).join(""),
+    );
+    expect(ignoringWhitespace.structured).toEqual(result.structured);
+  });
+
   it("opens base and commit diffs using the actual paths from the commit list", async () => {
     const cwd = createQuotedPathsRepo();
     git(cwd, "add", "--", ...names);
@@ -250,6 +298,31 @@ it.each(["diff.mnemonicPrefix=true", "color.diff=always", "diff.noprefix=true"])
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
+}
+
+function canonicalUntrackedPatch(cwd: string, path: string, ignoreWhitespace = false): string {
+  try {
+    return execFileSync(
+      "git",
+      [
+        "diff",
+        "--no-ext-diff",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        ...(ignoreWhitespace ? ["-w"] : []),
+        "--no-index",
+        "/dev/null",
+        "--",
+        path,
+      ],
+      { cwd, encoding: "utf8" },
+    );
+  } catch (error) {
+    const result = error as { status?: number; stdout?: string | Buffer };
+    if (result.status !== 1 || result.stdout === undefined) throw error;
+    return typeof result.stdout === "string" ? result.stdout : result.stdout.toString("utf8");
+  }
 }
 
 function createChangedRepo(config: string): string {

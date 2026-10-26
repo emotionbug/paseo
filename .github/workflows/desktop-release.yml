@@ -14,8 +14,21 @@ on:
         description: "Existing tag to build (e.g. v0.1.0)"
         required: true
         type: string
+      mode:
+        description: "Build installers or publish preserved installers from a prior run."
+        required: false
+        default: "build"
+        type: choice
+        options:
+          - build
+          - publish-only
+      recovery_run_id:
+        description: "Exact prior Desktop Release run ID used by publish-only or a single-architecture macOS rebuild."
+        required: false
+        default: ""
+        type: string
       platform:
-        description: "Optional desktop platform to build."
+        description: "Desktop platform or macOS architecture to build."
         required: false
         default: "all"
         type: choice
@@ -24,6 +37,8 @@ on:
           - macos
           - linux
           - windows
+          - macos-arm64
+          - macos-x64
       checkout_ref:
         description: "Optional branch/ref to checkout while using tag for release metadata."
         required: false
@@ -49,19 +64,269 @@ concurrency:
 
 env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.ref_name) || github.ref_name }}
+  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.event.inputs.tag) || github.ref_name }}
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
+  RECOVERY_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'build' }}
+  RECOVERY_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.recovery_run_id || '' }}
   ROLLOUT_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rollout_hours || '36' }}
   DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
+  validate-recovery-request:
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate recovery inputs and source run
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          INPUT_PLATFORM: ${{ github.event.inputs.platform }}
+          INPUT_PUBLISH: ${{ github.event.inputs.publish }}
+          INPUT_RECOVERY_RUN_ID: ${{ github.event.inputs.recovery_run_id }}
+        run: |
+          set -euo pipefail
+          expected_artifacts=()
+
+          case "$INPUT_MODE" in
+            build)
+              if [[ "$INPUT_PLATFORM" =~ ^macos-(arm64|x64)$ && "$INPUT_PUBLISH" == "true" ]]; then
+                if [[ -z "$INPUT_RECOVERY_RUN_ID" ]]; then
+                  echo "::error::recovery_run_id is required when publishing a single-architecture macOS rebuild"
+                  exit 1
+                fi
+                if [[ "$INPUT_PLATFORM" == "macos-arm64" ]]; then
+                  expected_artifacts=(desktop-release-macos-x64)
+                else
+                  expected_artifacts=(desktop-release-macos-arm64)
+                fi
+              elif [[ -n "$INPUT_RECOVERY_RUN_ID" ]]; then
+                echo "::error::recovery_run_id is only accepted for publish-only recovery or a publishing single-architecture macOS rebuild"
+                exit 1
+              fi
+              ;;
+            publish-only)
+              if [[ "$INPUT_PLATFORM" != "all" || "$INPUT_PUBLISH" != "true" ]]; then
+                echo "::error::publish-only requires platform=all and publish=true"
+                exit 1
+              fi
+              if [[ -z "$INPUT_RECOVERY_RUN_ID" ]]; then
+                echo "::error::publish-only requires recovery_run_id"
+                exit 1
+              fi
+              expected_artifacts=(
+                desktop-release-macos-arm64
+                desktop-release-macos-x64
+                desktop-release-linux-x64
+                desktop-release-windows-x64-arm64
+              )
+              ;;
+            *)
+              echo "::error::Unsupported recovery mode: $INPUT_MODE"
+              exit 1
+              ;;
+          esac
+
+          if (( ${#expected_artifacts[@]} == 0 )); then
+            exit 0
+          fi
+          if [[ ! "$INPUT_RECOVERY_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::recovery_run_id must be a positive workflow run ID"
+            exit 1
+          fi
+          if [[ "$INPUT_RECOVERY_RUN_ID" == "$GITHUB_RUN_ID" ]]; then
+            echo "::error::recovery_run_id must identify a prior workflow run"
+            exit 1
+          fi
+
+          run_json="$RUNNER_TEMP/recovery-run.json"
+          artifacts_json="$RUNNER_TEMP/recovery-artifacts.json"
+          gh api "repos/${{ github.repository }}/actions/runs/$INPUT_RECOVERY_RUN_ID" > "$run_json"
+          gh api "repos/${{ github.repository }}/actions/runs/$INPUT_RECOVERY_RUN_ID/artifacts?per_page=100" > "$artifacts_json"
+          EXPECTED_ARTIFACTS="$(IFS=,; echo "${expected_artifacts[*]}")" \
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/recovery-run.json', 'utf8'));
+          if (run.path !== '.github/workflows/desktop-release.yml') {
+            throw new Error(`Recovery run ${run.id} belongs to ${run.path}, not desktop-release.yml`);
+          }
+          if (run.status !== 'completed') {
+            throw new Error(`Recovery run ${run.id} is ${run.status}; only completed runs can be recovered`);
+          }
+
+          const response = JSON.parse(
+            fs.readFileSync(process.env.RUNNER_TEMP + '/recovery-artifacts.json', 'utf8'),
+          );
+          if (response.total_count !== response.artifacts.length) {
+            throw new Error(
+              `Recovery run has ${response.total_count} artifacts, but only ${response.artifacts.length} were inspected`,
+            );
+          }
+          for (const name of process.env.EXPECTED_ARTIFACTS.split(',')) {
+            const matches = response.artifacts.filter((artifact) => artifact.name === name);
+            if (matches.length !== 1 || matches[0].expired) {
+              throw new Error(
+                `Expected exactly one unexpired ${name} artifact in run ${run.id}; found ${matches.length}`,
+              );
+            }
+          }
+          NODE
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.recovery_run_id != ''
+        with:
+          sparse-checkout: scripts
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Resolve recovery release metadata
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.recovery_run_id != ''
+        shell: bash
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+
+      - name: Download preserved macOS arm64 artifact
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.recovery_run_id != '' && (github.event.inputs.mode == 'publish-only' || github.event.inputs.platform == 'macos-x64')
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-macos-arm64
+          path: ${{ runner.temp }}/recovery-preflight/desktop-release-macos-arm64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.recovery_run_id }}
+
+      - name: Download preserved macOS x64 artifact
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.recovery_run_id != '' && (github.event.inputs.mode == 'publish-only' || github.event.inputs.platform == 'macos-arm64')
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-macos-x64
+          path: ${{ runner.temp }}/recovery-preflight/desktop-release-macos-x64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.recovery_run_id }}
+
+      - name: Download preserved Linux artifact
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'publish-only'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-linux-x64
+          path: ${{ runner.temp }}/recovery-preflight/desktop-release-linux-x64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.recovery_run_id }}
+
+      - name: Download preserved Windows artifact
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'publish-only'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-windows-x64-arm64
+          path: ${{ runner.temp }}/recovery-preflight/desktop-release-windows-x64-arm64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.recovery_run_id }}
+
+      - name: Verify preserved artifact identities and outputs
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.recovery_run_id != ''
+        shell: bash
+        env:
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          INPUT_PLATFORM: ${{ github.event.inputs.platform }}
+          INPUT_RECOVERY_RUN_ID: ${{ github.event.inputs.recovery_run_id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const expected = [];
+          if (process.env.INPUT_MODE === 'publish-only') {
+            expected.push(
+              ['desktop-release-macos-arm64', 'macos', 'arm64'],
+              ['desktop-release-macos-x64', 'macos', 'x64'],
+              ['desktop-release-linux-x64', 'linux', 'x64'],
+              ['desktop-release-windows-x64-arm64', 'windows', 'x64+arm64'],
+            );
+          } else if (process.env.INPUT_PLATFORM === 'macos-arm64') {
+            expected.push(['desktop-release-macos-x64', 'macos', 'x64']);
+          } else if (process.env.INPUT_PLATFORM === 'macos-x64') {
+            expected.push(['desktop-release-macos-arm64', 'macos', 'arm64']);
+          }
+
+          for (const [artifactName, platform, architecture] of expected) {
+            const dir = path.join(process.env.RUNNER_TEMP, 'recovery-preflight', artifactName);
+            const names = fs.readdirSync(dir);
+            const identityNames = names.filter((name) =>
+              name.startsWith('paseo-release-identity'),
+            );
+            if (
+              identityNames.length !== 1 ||
+              identityNames[0] !== 'paseo-release-identity.json.yml'
+            ) {
+              throw new Error(
+                `${artifactName} must contain exactly one paseo-release-identity.json.yml`,
+              );
+            }
+            const identity = JSON.parse(
+              fs.readFileSync(path.join(dir, identityNames[0]), 'utf8'),
+            );
+            const requiredIdentity = {
+              schemaVersion: 1,
+              sourceTag: process.env.SOURCE_TAG,
+              releaseTag: process.env.RELEASE_TAG,
+              releaseVersion: process.env.RELEASE_VERSION,
+              releaseChannel: process.env.RELEASE_CHANNEL,
+              platform,
+              architecture,
+              workflowRunId: process.env.INPUT_RECOVERY_RUN_ID,
+            };
+            for (const [field, value] of Object.entries(requiredIdentity)) {
+              if (String(identity[field]) !== String(value)) {
+                throw new Error(
+                  `${artifactName} identity mismatch for ${field}: expected ${value}, found ${identity[field]}`,
+                );
+              }
+            }
+
+            const has = (suffix) => names.some((name) => name.endsWith(suffix));
+            if (platform === 'macos') {
+              if (
+                !names.some((name) => name.endsWith(`-${architecture}.dmg`)) ||
+                !names.some((name) => name.endsWith(`-${architecture}.zip`)) ||
+                !names.includes(`${process.env.RELEASE_CHANNEL}-mac.yml`)
+              ) {
+                throw new Error(`${artifactName} is missing a macOS installer, archive, or manifest`);
+              }
+            } else if (platform === 'linux') {
+              for (const suffix of ['.AppImage', '.tar.gz', '.deb', '.rpm']) {
+                if (!has(suffix)) throw new Error(`${artifactName} is missing ${suffix} output`);
+              }
+              if (!names.includes(`${process.env.RELEASE_CHANNEL}-linux.yml`)) {
+                throw new Error(`${artifactName} is missing its Linux updater manifest`);
+              }
+            } else {
+              for (const architectureName of ['x64', 'arm64']) {
+                if (
+                  !names.some((name) => name.endsWith(`-${architectureName}.exe`)) ||
+                  !names.some((name) => name.endsWith(`-${architectureName}.zip`))
+                ) {
+                  throw new Error(
+                    `${artifactName} is missing Windows ${architectureName} outputs`,
+                  );
+                }
+              }
+              if (!names.includes(`${process.env.RELEASE_CHANNEL}.yml`)) {
+                throw new Error(`${artifactName} is missing its Windows updater manifest`);
+              }
+            }
+          }
+          NODE
+
   create-release:
+    needs: [validate-recovery-request]
     if: ${{ (github.event_name == 'push' && !startsWith(github.ref_name, 'desktop-macos-v') && !startsWith(github.ref_name, 'desktop-linux-v') && !startsWith(github.ref_name, 'desktop-windows-v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'all' && github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: scripts
           ref: ${{ env.CHECKOUT_REF }}
@@ -94,25 +359,20 @@ jobs:
           fi
 
   publish-macos:
-    needs: [create-release]
-    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v')))) }}
+    needs: [validate-recovery-request, create-release]
+    if: ${{ always() && needs.validate-recovery-request.result == 'success' && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'macos-arm64' || github.event.inputs.platform == 'macos-x64')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v')))) }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-14
-            electron_arch: arm64
-            node_heap_mb: 4096
-          - runner: macos-15-intel
-            electron_arch: x64
-            node_heap_mb: 8192
+        electron_arch: ${{ fromJSON(github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'macos-arm64' && '["arm64"]' || github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'macos-x64' && '["x64"]' || '["arm64","x64"]') }}
     permissions:
+      actions: read
       contents: write
       packages: read
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.electron_arch == 'arm64' && 'macos-14' || 'macos-15-intel' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -122,7 +382,7 @@ jobs:
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: "npm"
@@ -131,11 +391,13 @@ jobs:
           scope: "@boudra"
 
       - name: Install JS dependencies
+        if: env.RECOVERY_MODE != 'publish-only'
         run: node scripts/npm-retry.mjs ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set desktop package version from tag
+        if: env.RECOVERY_MODE != 'publish-only'
         shell: bash
         run: |
           node <<'NODE'
@@ -150,8 +412,22 @@ jobs:
           packageJson.version = version;
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
+      - name: Prepare preserved desktop artifact
+        if: env.RECOVERY_MODE == 'publish-only'
+        shell: bash
+        run: rm -rf "${DESKTOP_PACKAGE_PATH}/release"
+
+      - name: Download preserved desktop artifact
+        if: env.RECOVERY_MODE == 'publish-only'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-macos-${{ matrix.electron_arch }}
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.RECOVERY_RUN_ID }}
 
       - name: Build desktop release
+        if: env.RECOVERY_MODE != 'publish-only'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -166,7 +442,7 @@ jobs:
           # Metro's jest workers OOM on the generated ws-outbound.aot.js validator,
           # the last module in the web bundle. Node's default heap is sized from
           # runner RAM, which is not enough on the Intel runner.
-          NODE_OPTIONS: --max-old-space-size=${{ matrix.node_heap_mb }}
+          NODE_OPTIONS: --max-old-space-size=${{ matrix.electron_arch == 'arm64' && '4096' || '8192' }}
         run: |
           set -euo pipefail
           build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
@@ -174,14 +450,84 @@ jobs:
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build:desktop "${build_args[@]}"
 
+      - name: Record and validate workflow artifact identity
+        shell: bash
+        env:
+          ARTIFACT_PLATFORM: macos
+          ARTIFACT_ARCHITECTURE: ${{ matrix.electron_arch }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const releaseDir = path.join(process.env.DESKTOP_PACKAGE_PATH, 'release');
+          const names = fs.readdirSync(releaseDir);
+          const arch = process.env.ARTIFACT_ARCHITECTURE;
+          if (
+            !names.some((name) => name.endsWith(`-${arch}.dmg`)) ||
+            !names.some((name) => name.endsWith(`-${arch}.zip`)) ||
+            !names.includes(`${process.env.RELEASE_CHANNEL}-mac.yml`)
+          ) {
+            throw new Error(`macOS ${arch} output is missing an installer, archive, or updater manifest`);
+          }
+
+          const identityPath = path.join(releaseDir, 'paseo-release-identity.json.yml');
+          let originWorkflowRunId = process.env.GITHUB_RUN_ID;
+          if (fs.existsSync(identityPath)) {
+            const prior = JSON.parse(fs.readFileSync(identityPath, 'utf8'));
+            originWorkflowRunId = prior.originWorkflowRunId ?? prior.workflowRunId;
+          }
+          fs.writeFileSync(
+            identityPath,
+            `${JSON.stringify(
+              {
+                schemaVersion: 1,
+                sourceTag: process.env.SOURCE_TAG,
+                releaseTag: process.env.RELEASE_TAG,
+                releaseVersion: process.env.RELEASE_VERSION,
+                releaseChannel: process.env.RELEASE_CHANNEL,
+                platform: process.env.ARTIFACT_PLATFORM,
+                architecture: arch,
+                originWorkflowRunId: String(originWorkflowRunId),
+                workflowRunId: process.env.GITHUB_RUN_ID,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          NODE
+
       - name: Upload packaged smoke diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktop-smoke-macos-${{ matrix.electron_arch }}
           path: ${{ runner.temp }}/desktop-smoke
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve releasable desktop artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-release-macos-${{ matrix.electron_arch }}
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.dmg
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.zip
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.blockmap
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/paseo-release-identity.json.yml
+          retention-days: 30
+
+      - name: Preserve manifest for finalization
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mac-manifest-${{ matrix.electron_arch }}
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
+          retention-days: 30
 
       - name: Upload desktop artifacts to release
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
@@ -194,32 +540,17 @@ jobs:
           release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
           node scripts/upload-release-assets.mjs "$release_lookup" "$release_dir" "${{ github.repository }}"
 
-      - name: Upload desktop artifacts to workflow
-        if: env.SHOULD_PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-macos-${{ matrix.electron_arch }}
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.dmg
-          retention-days: 7
-
-      - name: Upload manifest artifact
-        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-manifest-${{ matrix.electron_arch }}
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
-          retention-days: 1
-
   publish-linux:
-    needs: [create-release]
-    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v')))) }}
+    needs: [validate-recovery-request, create-release]
+    if: ${{ always() && needs.validate-recovery-request.result == 'success' && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v')))) }}
     permissions:
+      actions: read
       contents: write
       packages: read
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -229,7 +560,7 @@ jobs:
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: "npm"
@@ -238,11 +569,13 @@ jobs:
           scope: "@boudra"
 
       - name: Install JS dependencies
+        if: env.RECOVERY_MODE != 'publish-only'
         run: node scripts/npm-retry.mjs ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set desktop package version from tag
+        if: env.RECOVERY_MODE != 'publish-only'
         shell: bash
         run: |
           node <<'NODE'
@@ -257,11 +590,26 @@ jobs:
           packageJson.version = version;
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
+      - name: Prepare preserved desktop artifact
+        if: env.RECOVERY_MODE == 'publish-only'
+        shell: bash
+        run: rm -rf "${DESKTOP_PACKAGE_PATH}/release"
+
+      - name: Download preserved desktop artifact
+        if: env.RECOVERY_MODE == 'publish-only'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-linux-x64
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.RECOVERY_RUN_ID }}
 
       - name: Install Linux smoke display
+        if: env.RECOVERY_MODE != 'publish-only'
         run: sudo apt-get update && sudo apt-get install -y xvfb xauth rpm
 
       - name: Build desktop release
+        if: env.RECOVERY_MODE != 'publish-only'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -275,14 +623,85 @@ jobs:
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build:desktop "${build_args[@]}"
 
+      - name: Record and validate workflow artifact identity
+        shell: bash
+        env:
+          ARTIFACT_PLATFORM: linux
+          ARTIFACT_ARCHITECTURE: x64
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const releaseDir = path.join(process.env.DESKTOP_PACKAGE_PATH, 'release');
+          const names = fs.readdirSync(releaseDir);
+          for (const suffix of ['.AppImage', '.tar.gz', '.deb', '.rpm']) {
+            if (!names.some((name) => name.endsWith(suffix))) {
+              throw new Error(`Linux x64 output is missing its ${suffix} package`);
+            }
+          }
+          if (!names.includes(`${process.env.RELEASE_CHANNEL}-linux.yml`)) {
+            throw new Error('Linux x64 output is missing its updater manifest');
+          }
+
+          const identityPath = path.join(releaseDir, 'paseo-release-identity.json.yml');
+          let originWorkflowRunId = process.env.GITHUB_RUN_ID;
+          if (fs.existsSync(identityPath)) {
+            const prior = JSON.parse(fs.readFileSync(identityPath, 'utf8'));
+            originWorkflowRunId = prior.originWorkflowRunId ?? prior.workflowRunId;
+          }
+          fs.writeFileSync(
+            identityPath,
+            `${JSON.stringify(
+              {
+                schemaVersion: 1,
+                sourceTag: process.env.SOURCE_TAG,
+                releaseTag: process.env.RELEASE_TAG,
+                releaseVersion: process.env.RELEASE_VERSION,
+                releaseChannel: process.env.RELEASE_CHANNEL,
+                platform: process.env.ARTIFACT_PLATFORM,
+                architecture: process.env.ARTIFACT_ARCHITECTURE,
+                originWorkflowRunId: String(originWorkflowRunId),
+                workflowRunId: process.env.GITHUB_RUN_ID,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          NODE
+
+      - name: Preserve releasable desktop artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-release-linux-x64
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.AppImage
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.tar.gz
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.deb
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.rpm
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.blockmap
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-linux.yml
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/paseo-release-identity.json.yml
+          retention-days: 30
       - name: Upload packaged smoke diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && env.RECOVERY_MODE != 'publish-only' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktop-smoke-linux-x64
           path: ${{ runner.temp }}/desktop-smoke
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve manifest for finalization
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-manifest
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-linux.yml
+          retention-days: 30
 
       - name: Upload desktop artifacts to release
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
@@ -295,38 +714,17 @@ jobs:
           release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
           node scripts/upload-release-assets.mjs "$release_lookup" "$release_dir" "${{ github.repository }}"
 
-      - name: Upload desktop artifacts to workflow
-        if: env.SHOULD_PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-linux
-          compression-level: 0
-          path: |
-            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.AppImage
-            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.tar.gz
-            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.deb
-            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.rpm
-            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.yml
-          retention-days: 7
-
-      - name: Upload manifest artifact
-        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-manifest
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-linux.yml
-          retention-days: 1
-
   publish-windows:
-    needs: [create-release]
-    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v')))) }}
+    needs: [validate-recovery-request, create-release]
+    if: ${{ always() && needs.validate-recovery-request.result == 'success' && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v')))) }}
     permissions:
+      actions: read
       contents: write
       packages: read
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -336,7 +734,7 @@ jobs:
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: "npm"
@@ -345,11 +743,13 @@ jobs:
           scope: "@boudra"
 
       - name: Install JS dependencies
+        if: env.RECOVERY_MODE != 'publish-only'
         run: node scripts/npm-retry.mjs ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set desktop package version from tag
+        if: env.RECOVERY_MODE != 'publish-only'
         shell: bash
         run: |
           node <<'NODE'
@@ -364,8 +764,22 @@ jobs:
           packageJson.version = version;
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
+      - name: Prepare preserved desktop artifact
+        if: env.RECOVERY_MODE == 'publish-only'
+        shell: bash
+        run: rm -rf "${DESKTOP_PACKAGE_PATH}/release"
+
+      - name: Download preserved desktop artifact
+        if: env.RECOVERY_MODE == 'publish-only'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release-windows-x64-arm64
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.RECOVERY_RUN_ID }}
 
       - name: Build desktop release
+        if: env.RECOVERY_MODE != 'publish-only'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -379,14 +793,87 @@ jobs:
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build:desktop "${build_args[@]}"
 
+      - name: Record and validate workflow artifact identity
+        shell: bash
+        env:
+          ARTIFACT_PLATFORM: windows
+          ARTIFACT_ARCHITECTURE: x64+arm64
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const releaseDir = path.join(process.env.DESKTOP_PACKAGE_PATH, 'release');
+          const names = fs.readdirSync(releaseDir);
+          for (const architecture of ['x64', 'arm64']) {
+            if (
+              !names.some((name) => name.endsWith(`-${architecture}.exe`)) ||
+              !names.some((name) => name.endsWith(`-${architecture}.zip`))
+            ) {
+              throw new Error(`Windows output is missing ${architecture} installer or archive`);
+            }
+          }
+          if (!names.includes(`${process.env.RELEASE_CHANNEL}.yml`)) {
+            throw new Error('Windows output is missing its updater manifest');
+          }
+
+          const identityPath = path.join(releaseDir, 'paseo-release-identity.json.yml');
+          let originWorkflowRunId = process.env.GITHUB_RUN_ID;
+          if (fs.existsSync(identityPath)) {
+            const prior = JSON.parse(fs.readFileSync(identityPath, 'utf8'));
+            originWorkflowRunId = prior.originWorkflowRunId ?? prior.workflowRunId;
+          }
+          fs.writeFileSync(
+            identityPath,
+            `${JSON.stringify(
+              {
+                schemaVersion: 1,
+                sourceTag: process.env.SOURCE_TAG,
+                releaseTag: process.env.RELEASE_TAG,
+                releaseVersion: process.env.RELEASE_VERSION,
+                releaseChannel: process.env.RELEASE_CHANNEL,
+                platform: process.env.ARTIFACT_PLATFORM,
+                architecture: process.env.ARTIFACT_ARCHITECTURE,
+                originWorkflowRunId: String(originWorkflowRunId),
+                workflowRunId: process.env.GITHUB_RUN_ID,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          NODE
+
       - name: Upload packaged smoke diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: ${{ failure() && env.RECOVERY_MODE != 'publish-only' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktop-smoke-windows-x64
           path: ${{ runner.temp }}/desktop-smoke
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve releasable desktop artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-release-windows-x64-arm64
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.exe
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.zip
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.blockmap
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/paseo-release-identity.json.yml
+          retention-days: 30
+
+      - name: Preserve manifest for finalization
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-manifest
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
+          retention-days: 30
 
       - name: Upload desktop artifacts to release
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
@@ -399,26 +886,121 @@ jobs:
           release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
           node scripts/upload-release-assets.mjs "$release_lookup" "$release_dir" "${{ github.repository }}"
 
-      - name: Upload desktop artifacts to workflow
-        if: env.SHOULD_PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
+  reuse-macos-artifact:
+    needs: [validate-recovery-request, create-release]
+    if: ${{ always() && needs.validate-recovery-request.result == 'success' && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'build' && github.event.inputs.publish == 'true' && (github.event.inputs.platform == 'macos-arm64' || github.event.inputs.platform == 'macos-x64') }}
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      RECOVERY_MAC_ARCH: ${{ github.event.inputs.platform == 'macos-arm64' && 'x64' || 'arm64' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          name: desktop-windows
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*
-          retention-days: 7
+          sparse-checkout: scripts
+          ref: ${{ env.CHECKOUT_REF }}
 
-      - name: Upload manifest artifact
-        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
-        uses: actions/upload-artifact@v4
+      - name: Resolve release metadata
+        shell: bash
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+
+      - name: Download complementary macOS artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: windows-manifest
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
-          retention-days: 1
+          name: desktop-release-macos-${{ env.RECOVERY_MAC_ARCH }}
+          path: recovered-macos
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.RECOVERY_RUN_ID }}
+
+      - name: Revalidate and record complementary artifact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const releaseDir = 'recovered-macos';
+          const names = fs.readdirSync(releaseDir);
+          const arch = process.env.RECOVERY_MAC_ARCH;
+          if (
+            !names.some((name) => name.endsWith(`-${arch}.dmg`)) ||
+            !names.some((name) => name.endsWith(`-${arch}.zip`)) ||
+            !names.includes(`${process.env.RELEASE_CHANNEL}-mac.yml`)
+          ) {
+            throw new Error(`Complementary macOS ${arch} output is incomplete`);
+          }
+
+          const identityPath = path.join(releaseDir, 'paseo-release-identity.json.yml');
+          const identity = JSON.parse(fs.readFileSync(identityPath, 'utf8'));
+          const expected = {
+            schemaVersion: 1,
+            sourceTag: process.env.SOURCE_TAG,
+            releaseTag: process.env.RELEASE_TAG,
+            releaseVersion: process.env.RELEASE_VERSION,
+            releaseChannel: process.env.RELEASE_CHANNEL,
+            platform: 'macos',
+            architecture: arch,
+            workflowRunId: process.env.RECOVERY_RUN_ID,
+          };
+          for (const [field, value] of Object.entries(expected)) {
+            if (String(identity[field]) !== String(value)) {
+              throw new Error(
+                `Complementary macOS artifact identity mismatch for ${field}: expected ${value}, found ${identity[field]}`,
+              );
+            }
+          }
+          identity.originWorkflowRunId =
+            identity.originWorkflowRunId ?? identity.workflowRunId;
+          identity.workflowRunId = process.env.GITHUB_RUN_ID;
+          fs.writeFileSync(identityPath, `${JSON.stringify(identity, null, 2)}\n`);
+          NODE
+
+      - name: Preserve complementary macOS artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-release-macos-${{ env.RECOVERY_MAC_ARCH }}
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            recovered-macos/*.dmg
+            recovered-macos/*.zip
+            recovered-macos/*.blockmap
+            recovered-macos/${{ env.RELEASE_CHANNEL }}-mac.yml
+            recovered-macos/paseo-release-identity.json.yml
+          retention-days: 30
+
+      - name: Preserve complementary manifest for finalization
+        if: env.IS_SMOKE_TAG != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mac-manifest-${{ env.RECOVERY_MAC_ARCH }}
+          path: recovered-macos/${{ env.RELEASE_CHANNEL }}-mac.yml
+          retention-days: 30
+
+      - name: Upload complementary desktop artifacts to release
+        if: env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          node scripts/upload-release-assets.mjs "$release_lookup" recovered-macos "${{ github.repository }}"
 
   finalize-rollout:
-    needs: [publish-macos, publish-linux, publish-windows]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
+    needs:
+      [
+        validate-recovery-request,
+        publish-macos,
+        reuse-macos-artifact,
+        publish-linux,
+        publish-windows,
+      ]
+    if: ${{ always() && needs.validate-recovery-request.result == 'success' && (needs.reuse-macos-artifact.result == 'success' || needs.reuse-macos-artifact.result == 'skipped') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
+      actions: read
       contents: write
     runs-on: ubuntu-latest
     concurrency:
@@ -426,7 +1008,7 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             package.json
@@ -439,7 +1021,7 @@ jobs:
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: "npm"
@@ -454,21 +1036,21 @@ jobs:
 
       - name: Download mac manifest artifacts
         if: env.IS_SMOKE_TAG != 'true' && needs.publish-macos.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: mac-manifest-*
           path: release-manifests
 
       - name: Download Linux manifest artifact
         if: env.IS_SMOKE_TAG != 'true' && needs.publish-linux.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: linux-manifest
           path: release-manifests/linux-manifest
 
       - name: Download Windows manifest artifact
         if: env.IS_SMOKE_TAG != 'true' && needs.publish-windows.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-manifest
           path: release-manifests/windows-manifest

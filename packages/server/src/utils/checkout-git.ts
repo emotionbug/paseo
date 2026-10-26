@@ -1,8 +1,17 @@
 import { MAX_RELAY_WEBSOCKET_MESSAGE_BYTES } from "@getpaseo/protocol/websocket-message-limit";
-import { resolve, dirname, basename } from "path";
+import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "fs";
-import { open as openFile, readFile, stat as statFile, mkdtemp, copyFile, rm } from "fs/promises";
+import {
+  open as openFile,
+  readFile,
+  stat as statFile,
+  lstat as lstatFile,
+  mkdtemp,
+  copyFile,
+  rm,
+} from "fs/promises";
 import { tmpdir } from "node:os";
+import { basename, dirname, resolve } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { CheckoutCommit, CheckoutCommitFile } from "@getpaseo/protocol/messages";
@@ -2190,28 +2199,60 @@ function appendStructuredFile(
 }
 const UNTRACKED_BINARY_SNIFF_BYTES = 16 * 1024;
 
+interface UntrackedPatchFormat {
+  quoteNonAscii: boolean;
+  hashAlgorithm: "sha1" | "sha256";
+  abbreviatedHashLength: number;
+}
+
+interface InspectedUntrackedFile {
+  stat: Exclude<FileStat, null>;
+  truncated: boolean;
+  content: Buffer | null;
+  mode: number;
+}
+
+interface UntrackedDiffText {
+  text: string;
+  truncated: boolean;
+  stat: FileStat;
+  parsedFile?: ParsedDiffFile;
+  fileContent?: string;
+}
+
+const DEFAULT_UNTRACKED_PATCH_FORMAT: UntrackedPatchFormat = {
+  quoteNonAscii: true,
+  hashAlgorithm: "sha1",
+  abbreviatedHashLength: 7,
+};
+
+function isLikelyBinaryBuffer(buffer: Buffer): boolean {
+  const bytesToInspect = Math.min(buffer.length, UNTRACKED_BINARY_SNIFF_BYTES);
+  if (bytesToInspect === 0) {
+    return false;
+  }
+
+  let suspicious = 0;
+  for (let i = 0; i < bytesToInspect; i += 1) {
+    const byte = buffer[i];
+    if (byte === 0) {
+      return true;
+    }
+    // Treat control bytes as suspicious while allowing common whitespace.
+    if (byte < 7 || (byte > 14 && byte < 32) || byte === 127) {
+      suspicious += 1;
+    }
+  }
+
+  return suspicious / bytesToInspect > 0.3;
+}
+
 async function isLikelyBinaryFile(absolutePath: string): Promise<boolean> {
   const handle = await openFile(absolutePath, "r");
   try {
     const buffer = Buffer.allocUnsafe(UNTRACKED_BINARY_SNIFF_BYTES);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead === 0) {
-      return false;
-    }
-
-    let suspicious = 0;
-    for (let i = 0; i < bytesRead; i += 1) {
-      const byte = buffer[i];
-      if (byte === 0) {
-        return true;
-      }
-      // Treat control bytes as suspicious while allowing common whitespace.
-      if (byte < 7 || (byte > 14 && byte < 32) || byte === 127) {
-        suspicious += 1;
-      }
-    }
-
-    return suspicious / bytesRead > 0.3;
+    return isLikelyBinaryBuffer(buffer.subarray(0, bytesRead));
   } finally {
     await handle.close();
   }
@@ -2220,32 +2261,280 @@ async function isLikelyBinaryFile(absolutePath: string): Promise<boolean> {
 async function inspectUntrackedFile(
   cwd: string,
   relativePath: string,
-): Promise<{ stat: FileStat; truncated: boolean }> {
+): Promise<InspectedUntrackedFile | null> {
   const absolutePath = resolve(cwd, relativePath);
-  const metadata = await statFile(absolutePath);
+  const metadata = await lstatFile(absolutePath);
 
+  // Git represents symlinks by their target text rather than by opening the
+  // target. Keep uncommon non-regular entries on the canonical Git path.
   if (!metadata.isFile()) {
-    return { stat: null, truncated: false };
+    return null;
   }
 
-  if (await isLikelyBinaryFile(absolutePath)) {
+  const oversized = metadata.size > PER_FILE_DIFF_MAX_BYTES;
+  // Stable ordinary files allocate only their observed size plus an EOF/race byte.
+  // Oversized files need only the same prefix used by binary detection.
+  const capacity = oversized
+    ? UNTRACKED_BINARY_SNIFF_BYTES
+    : Math.max(1, Math.min(PER_FILE_DIFF_MAX_BYTES + 1, metadata.size + 1));
+  const buffer = Buffer.allocUnsafe(capacity);
+  const handle = await openFile(absolutePath, "r");
+  let bytesRead = 0;
+  try {
+    while (bytesRead < buffer.length) {
+      const read = await handle.read(buffer, bytesRead, buffer.length - bytesRead, bytesRead);
+      if (read.bytesRead === 0) break;
+      bytesRead += read.bytesRead;
+    }
+  } finally {
+    await handle.close();
+  }
+
+  const content = buffer.subarray(0, bytesRead);
+  if (isLikelyBinaryBuffer(content)) {
     return {
       stat: { additions: 0, deletions: 0, isBinary: true },
       truncated: false,
+      content: null,
+      mode: metadata.mode,
     };
   }
 
-  if (metadata.size > PER_FILE_DIFF_MAX_BYTES) {
+  if (oversized) {
     return {
       stat: { additions: 0, deletions: 0, isBinary: false },
       truncated: true,
+      content: null,
+      mode: metadata.mode,
     };
+  }
+
+  // The file grew after stat. Let Git handle this uncommon race rather than
+  // constructing a patch from a partial snapshot.
+  if (bytesRead === capacity) {
+    return null;
   }
 
   return {
     stat: { additions: 0, deletions: 0, isBinary: false },
     truncated: false,
+    content,
+    mode: metadata.mode,
   };
+}
+
+function parseGitBoolean(value: string): boolean | null {
+  switch (value.trim().toLowerCase()) {
+    case "true":
+    case "yes":
+    case "on":
+    case "1":
+      return true;
+    case "false":
+    case "no":
+    case "off":
+    case "0":
+      return false;
+    default:
+      return null;
+  }
+}
+
+async function resolveUntrackedPatchFormat(cwd: string): Promise<UntrackedPatchFormat> {
+  const { stdout } = await runGitCommand(
+    [
+      "config",
+      "-z",
+      "--get-regexp",
+      "^(core\\.quotepath|core\\.abbrev|extensions\\.objectformat)$",
+    ],
+    {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      acceptExitCodes: [0, 1],
+    },
+  );
+  const format = { ...DEFAULT_UNTRACKED_PATCH_FORMAT };
+  let useFullHash = false;
+  for (const record of stdout.split("\0")) {
+    if (!record) continue;
+    const separator = record.indexOf("\n");
+    if (separator < 0) continue;
+    const key = record.slice(0, separator).toLowerCase();
+    const value = record.slice(separator + 1);
+    if (key === "core.quotepath") {
+      format.quoteNonAscii = parseGitBoolean(value) ?? format.quoteNonAscii;
+    } else if (key === "extensions.objectformat" && value.trim() === "sha256") {
+      format.hashAlgorithm = "sha256";
+    } else if (key === "core.abbrev") {
+      if (value.trim().toLowerCase() === "no") {
+        useFullHash = true;
+      } else {
+        const length = Number.parseInt(value, 10);
+        if (Number.isInteger(length) && length >= 4 && length <= 64) {
+          format.abbreviatedHashLength = length;
+        }
+      }
+    }
+  }
+  if (useFullHash) {
+    format.abbreviatedHashLength = format.hashAlgorithm === "sha256" ? 64 : 40;
+  }
+  return format;
+}
+
+function quoteGitPatchPath(path: string, quoteNonAscii: boolean): string {
+  let quoted = false;
+  let encoded = "";
+  for (const character of path) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint > 127) {
+      if (!quoteNonAscii) {
+        encoded += character;
+        continue;
+      }
+      for (const byte of Buffer.from(character, "utf8")) {
+        encoded += `\\${byte.toString(8).padStart(3, "0")}`;
+      }
+      quoted = true;
+      continue;
+    }
+
+    let escape: string | null;
+    switch (codePoint) {
+      case 7:
+        escape = "\\a";
+        break;
+      case 8:
+        escape = "\\b";
+        break;
+      case 9:
+        escape = "\\t";
+        break;
+      case 10:
+        escape = "\\n";
+        break;
+      case 11:
+        escape = "\\v";
+        break;
+      case 12:
+        escape = "\\f";
+        break;
+      case 13:
+        escape = "\\r";
+        break;
+      case 34:
+        escape = '\\"';
+        break;
+      case 92:
+        escape = "\\\\";
+        break;
+      default:
+        escape =
+          codePoint < 32 || codePoint === 127
+            ? `\\${codePoint.toString(8).padStart(3, "0")}`
+            : null;
+    }
+    if (escape) {
+      quoted = true;
+      encoded += escape;
+    } else {
+      encoded += character;
+    }
+  }
+  return quoted ? `"${encoded}"` : encoded;
+}
+
+function buildAddedFileDiff(input: {
+  change: CheckoutFileChange;
+  content: Buffer;
+  mode: number;
+  format: UntrackedPatchFormat;
+}): {
+  text: string;
+  rawByteLength: number;
+  parsedFile: ParsedDiffFile;
+  fileContent: string;
+} {
+  const { change, content, mode, format } = input;
+  const fileContent = content.toString("utf8");
+  let addedLines: string[];
+  if (fileContent.length === 0) {
+    addedLines = [];
+  } else if (fileContent.endsWith("\n")) {
+    addedLines = fileContent.slice(0, -1).split("\n");
+  } else {
+    addedLines = fileContent.split("\n");
+  }
+  const hunkHeader =
+    addedLines.length === 1 ? "@@ -0,0 +1 @@" : `@@ -0,0 +1,${addedLines.length} @@`;
+  const parsedFile: ParsedDiffFile = {
+    path: change.path,
+    isNew: change.isNew,
+    isDeleted: change.isDeleted,
+    additions: addedLines.length,
+    deletions: 0,
+    hunks:
+      addedLines.length === 0
+        ? []
+        : [
+            {
+              oldStart: 0,
+              oldCount: 0,
+              newStart: 1,
+              newCount: addedLines.length,
+              lines: [
+                { type: "header", content: hunkHeader },
+                ...addedLines.map((line) => ({ type: "add" as const, content: line })),
+              ],
+            },
+          ],
+  };
+
+  const sourcePath = quoteGitPatchPath(`a/${change.path}`, format.quoteNonAscii);
+  const destinationPath = quoteGitPatchPath(`b/${change.path}`, format.quoteNonAscii);
+  const objectId = createHash(format.hashAlgorithm)
+    .update(`blob ${content.length}\0`)
+    .update(content)
+    .digest("hex");
+  const abbreviatedHashLength = Math.min(format.abbreviatedHashLength, objectId.length);
+  if (addedLines.length === 0) {
+    const text =
+      `diff --git ${sourcePath} ${destinationPath}\n` +
+      `new file mode ${(mode & 0o111) === 0 ? "100644" : "100755"}\n` +
+      `index ${"0".repeat(abbreviatedHashLength)}..${objectId.slice(0, abbreviatedHashLength)}\n`;
+    return {
+      text,
+      rawByteLength: Buffer.byteLength(text, "utf8"),
+      parsedFile,
+      fileContent,
+    };
+  }
+  const destinationHeaderSeparator =
+    !destinationPath.startsWith('"') && change.path.includes(" ") ? "\t" : "";
+  let body = "";
+  for (const line of addedLines) {
+    body += `+${line}\n`;
+  }
+  const noFinalNewline = !fileContent.endsWith("\n");
+  const noFinalNewlineMarker = "\\ No newline at end of file\n";
+  if (noFinalNewline) {
+    body += noFinalNewlineMarker;
+  }
+  const header =
+    `diff --git ${sourcePath} ${destinationPath}\n` +
+    `new file mode ${(mode & 0o111) === 0 ? "100644" : "100755"}\n` +
+    `index ${"0".repeat(abbreviatedHashLength)}..${objectId.slice(0, abbreviatedHashLength)}\n` +
+    `--- /dev/null\n` +
+    `+++ ${destinationPath}${destinationHeaderSeparator}\n` +
+    `${hunkHeader}\n`;
+  const text = header + body;
+  const rawByteLength =
+    Buffer.byteLength(header, "utf8") +
+    content.length +
+    addedLines.length +
+    (noFinalNewline ? 1 + Buffer.byteLength(noFinalNewlineMarker, "utf8") : 0);
+  return { text, rawByteLength, parsedFile, fileContent };
 }
 
 function buildPlaceholderParsedDiffFile(
@@ -2267,15 +2556,36 @@ function buildPlaceholderParsedDiffFile(
 async function getUntrackedDiffText(
   cwd: string,
   change: CheckoutFileChange,
+  format: UntrackedPatchFormat,
   ignoreWhitespace = false,
-): Promise<{ text: string; truncated: boolean; stat: FileStat }> {
+): Promise<UntrackedDiffText> {
+  let inspected: InspectedUntrackedFile | null = null;
   try {
-    const inspected = await inspectUntrackedFile(cwd, change.path);
-    if (inspected.stat?.isBinary || inspected.truncated) {
-      return { text: "", truncated: inspected.truncated, stat: inspected.stat };
-    }
+    inspected = await inspectUntrackedFile(cwd, change.path);
   } catch {
-    // Fall through to git diff path if metadata probing fails.
+    // Fall through to Git when bounded filesystem inspection cannot provide a
+    // stable regular-file snapshot.
+  }
+  if (inspected?.stat.isBinary || inspected?.truncated) {
+    return { text: "", truncated: inspected.truncated, stat: inspected.stat };
+  }
+  if (inspected?.content) {
+    const generated = buildAddedFileDiff({
+      change,
+      content: inspected.content,
+      mode: inspected.mode,
+      format,
+    });
+    if (generated.rawByteLength > PER_FILE_DIFF_MAX_BYTES) {
+      return { text: "", truncated: true, stat: inspected.stat };
+    }
+    return {
+      text: generated.text,
+      parsedFile: generated.parsedFile,
+      fileContent: generated.fileContent,
+      truncated: false,
+      stat: inspected.stat,
+    };
   }
 
   const result = await runGitCommand(
@@ -3303,6 +3613,7 @@ async function appendStructuredTrackedDiffs(
 interface ProcessUntrackedChangeInput {
   cwd: string;
   change: CheckoutFileChange;
+  patchFormat: UntrackedPatchFormat;
   ignoreWhitespace: boolean;
   includeStructured: boolean;
   structured: StructuredDiffAccumulator;
@@ -3310,8 +3621,10 @@ interface ProcessUntrackedChangeInput {
 }
 
 async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promise<boolean> {
-  const { cwd, change, ignoreWhitespace, includeStructured, structured, appendDiff } = input;
-  const { text, truncated, stat } = await getUntrackedDiffText(cwd, change, ignoreWhitespace);
+  const { cwd, change, patchFormat, ignoreWhitespace, includeStructured, structured, appendDiff } =
+    input;
+  const result = await getUntrackedDiffText(cwd, change, patchFormat, ignoreWhitespace);
+  const { text, truncated, stat } = result;
 
   if (!includeStructured) {
     if (stat?.isBinary) {
@@ -3351,17 +3664,20 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
   }
 
   appendDiff(text);
-  const parsed = await parseAndHighlightDiff(text, cwd);
-  const parsedFile =
-    parsed[0] ??
-    ({
-      path: change.path,
-      isNew: change.isNew,
-      isDeleted: change.isDeleted,
-      additions: stat?.additions ?? 0,
-      deletions: stat?.deletions ?? 0,
-      hunks: [],
-    } satisfies ParsedDiffFile);
+  const parsedFile = result.parsedFile
+    ? await highlightDiffWithFileContent(result.parsedFile, cwd, {
+        oldFileContent: null,
+        newFileContent: result.fileContent,
+      })
+    : ((await parseAndHighlightDiff(text, cwd))[0] ??
+      ({
+        path: change.path,
+        isNew: change.isNew,
+        isDeleted: change.isDeleted,
+        additions: stat?.additions ?? 0,
+        deletions: stat?.deletions ?? 0,
+        hunks: [],
+      } satisfies ParsedDiffFile));
 
   const file = {
     ...parsedFile,
@@ -3652,7 +3968,10 @@ async function readCheckoutDiff(
       }
     }
   }
-
+  const untrackedPatchFormat =
+    untrackedChanges.length > 0 && diffBytes < TOTAL_DIFF_MAX_BYTES
+      ? await resolveUntrackedPatchFormat(cwd)
+      : DEFAULT_UNTRACKED_PATCH_FORMAT;
   for (const change of untrackedChanges) {
     if (diffBytes >= TOTAL_DIFF_MAX_BYTES) {
       break;
@@ -3660,6 +3979,7 @@ async function readCheckoutDiff(
     const didAppendUntrackedDiff = await processUntrackedChange({
       cwd,
       change,
+      patchFormat: untrackedPatchFormat,
       ignoreWhitespace,
       includeStructured: compare.includeStructured === true,
       structured,

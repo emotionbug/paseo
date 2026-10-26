@@ -1001,14 +1001,21 @@ type SetDaemonConfigResponse = Extract<
   SessionOutboundMessage,
   { type: "set_daemon_config_response" }
 >;
+type CorrelatedPayloadMessage<Message> = Message extends {
+  payload?: infer Payload;
+}
+  ? NonNullable<Payload> extends { requestId: string }
+    ? Message
+    : never
+  : never;
 type CorrelatedResponseMessage =
-  | Extract<SessionOutboundMessage, { payload: { requestId: string } }>
+  | CorrelatedPayloadMessage<SessionOutboundMessage>
   | Extract<SessionOutboundMessage, { type: "terminals_changed" }>
   | GetDaemonConfigResponse
   | SetDaemonConfigResponse;
 type CorrelatedResponseType = CorrelatedResponseMessage["type"];
 type CorrelatedResponsePayloads = {
-  [Message in CorrelatedResponseMessage as Message["type"]]: Message["payload"];
+  [Message in CorrelatedResponseMessage as Message["type"]]: NonNullable<Message["payload"]>;
 };
 type CorrelatedResponsePayload<TType extends CorrelatedResponseType> =
   CorrelatedResponsePayloads[TType];
@@ -2226,6 +2233,9 @@ export class DaemonClient {
       select: (msg) => {
         const correlated = msg as CorrelatedResponseMessage;
         if (correlated.type !== params.responseType) {
+          return null;
+        }
+        if (correlated.payload === undefined) {
           return null;
         }
         const payload = correlated.payload as unknown as CorrelatedResponsePayload<TResponseType>;
@@ -5682,6 +5692,7 @@ export class DaemonClient {
       if (
         !active ||
         !("payload" in message) ||
+        message.payload === undefined ||
         !("requestId" in message.payload) ||
         message.payload.requestId !== requestId
       )

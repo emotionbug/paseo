@@ -94,4 +94,30 @@ describe("checkout git diff batching", () => {
     expect(result.diff).toContain("+after-19");
     expect(result.diff).not.toContain("x".repeat(1_000));
   });
+
+  it("does not launch a Git process for each small untracked file", async () => {
+    writeFileSync(join(repoDir, "untracked-0.txt"), "new-0\n");
+    startGitCommandMetrics();
+    await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    const oneFileMetrics = stopGitCommandMetrics();
+
+    for (let i = 1; i < 250; i += 1) {
+      writeFileSync(join(repoDir, `untracked-${i}.txt`), `new-${i}\n`);
+    }
+    startGitCommandMetrics();
+    const result = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    const manyFileMetrics = stopGitCommandMetrics();
+
+    expect(result.structured).toHaveLength(270);
+    expect(manyFileMetrics.commands.filter(({ args }) => args.includes("--no-index"))).toHaveLength(
+      0,
+    );
+    expect(manyFileMetrics.total).toBe(oneFileMetrics.total);
+  });
 });

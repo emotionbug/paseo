@@ -1,9 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { highlightCode, isLanguageSupported, type HighlightToken } from "@getpaseo/highlight";
+import {
+  highlightCode,
+  highlightCodeInSteps,
+  isLanguageSupported,
+  type HighlightToken,
+} from "@getpaseo/highlight";
 import { unquoteGitPath } from "../../utils/git-quoted-path.js";
 
 const MAX_DIFF_HIGHLIGHT_LINE_CHARS = 10_000;
+const MAX_DIFF_HIGHLIGHT_CONTENT_CHARS = 512 * 1024;
+const HIGHLIGHT_EVENT_LOOP_BUDGET_MS = 8;
+const MAX_HIGHLIGHT_UNITS_PER_TURN = 32;
 
 export interface DiffLine {
   type: "add" | "remove" | "context" | "header";
@@ -239,10 +247,13 @@ function hasOversizedLine(content: string): boolean {
   return false;
 }
 
-function hasOversizedDiffLine(file: ParsedDiffFile): boolean {
+function hasOversizedDiff(file: ParsedDiffFile): boolean {
+  let contentChars = 0;
   for (const hunk of file.hunks) {
     for (const line of hunk.lines) {
       if (line.content.length > MAX_DIFF_HIGHLIGHT_LINE_CHARS) return true;
+      contentChars += line.content.length;
+      if (contentChars > MAX_DIFF_HIGHLIGHT_CONTENT_CHARS) return true;
     }
   }
   return false;
@@ -269,14 +280,36 @@ function buildTokenLookup(
   return lookup;
 }
 
-function buildFullFileTokenLookup(
+async function highlightCodeCooperatively(
+  content: string,
+  path: string,
+): Promise<HighlightToken[][]> {
+  const steps = highlightCodeInSteps(content, path);
+  let deadline = Date.now() + HIGHLIGHT_EVENT_LOOP_BUDGET_MS;
+  let unitsThisTurn = 0;
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+    unitsThisTurn++;
+    if (unitsThisTurn < MAX_HIGHLIGHT_UNITS_PER_TURN && Date.now() < deadline) {
+      continue;
+    }
+    await new Promise<void>((resolveImmediate) => setImmediate(resolveImmediate));
+    deadline = Date.now() + HIGHLIGHT_EVENT_LOOP_BUDGET_MS;
+    unitsThisTurn = 0;
+  }
+}
+
+async function buildFullFileTokenLookup(
   fileContent: string,
   path: string,
-): Map<number, HighlightToken[]> | null {
-  if (hasOversizedLine(fileContent)) return null;
+): Promise<Map<number, HighlightToken[]> | null> {
+  if (fileContent.length > MAX_DIFF_HIGHLIGHT_CONTENT_CHARS || hasOversizedLine(fileContent)) {
+    return null;
+  }
 
   const lookup = new Map<number, HighlightToken[]>();
-  const highlighted = highlightCode(fileContent, path);
+  const highlighted = await highlightCodeCooperatively(fileContent, path);
 
   for (let i = 0; i < highlighted.length; i++) {
     lookup.set(i + 1, highlighted[i]);
@@ -307,7 +340,7 @@ function buildReconstructedTokenLookups(file: ParsedDiffFile): {
  * This is the fallback when actual file content is not available.
  */
 export function highlightDiffFromHunks(file: ParsedDiffFile): ParsedDiffFile {
-  if (!isLanguageSupported(file.path) || hasOversizedDiffLine(file)) {
+  if (!isLanguageSupported(file.path) || hasOversizedDiff(file)) {
     return file;
   }
 
@@ -328,21 +361,21 @@ export async function highlightDiffWithFileContent(
   cwd: string,
   options: HighlightDiffWithFileContentOptions = {},
 ): Promise<ParsedDiffFile> {
-  if (!isLanguageSupported(file.path) || hasOversizedDiffLine(file)) {
+  if (!isLanguageSupported(file.path) || hasOversizedDiff(file)) {
     return file;
   }
 
   let newTokensByLine: Map<number, HighlightToken[]> | null = null;
   const oldTokensByLine =
     typeof options.oldFileContent === "string"
-      ? buildFullFileTokenLookup(options.oldFileContent, file.path)
+      ? await buildFullFileTokenLookup(options.oldFileContent, file.path)
       : null;
   if (typeof options.newFileContent === "string") {
-    newTokensByLine = buildFullFileTokenLookup(options.newFileContent, file.path);
+    newTokensByLine = await buildFullFileTokenLookup(options.newFileContent, file.path);
   } else {
     try {
       const fileContent = await readFile(resolve(cwd, file.path), "utf-8");
-      newTokensByLine = buildFullFileTokenLookup(fileContent, file.path);
+      newTokensByLine = await buildFullFileTokenLookup(fileContent, file.path);
     } catch {
       // Deleted or unavailable files use reconstructed tokens below.
     }

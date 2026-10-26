@@ -575,4 +575,36 @@ describe("AgentStorage", () => {
     const after = await afterReload.list();
     expect(after.some((r) => r.id === agentId)).toBe(false);
   });
+
+  test("retains retryable state when durable record deletion fails", async () => {
+    const agentId = "agent-delete-retry";
+    await storage.applySnapshot(
+      createManagedAgent({
+        id: agentId,
+        cwd: "/tmp/delete-retry",
+        provider: "codex",
+      }),
+    );
+    const projectDir = (await fs.readdir(storagePath, { withFileTypes: true })).find((entry) =>
+      entry.isDirectory(),
+    );
+    expect(projectDir).toBeDefined();
+    const recordPath = path.join(storagePath, projectDir!.name, `${agentId}.json`);
+    const persistedRecord = await fs.readFile(recordPath, "utf8");
+    await fs.unlink(recordPath);
+    await fs.mkdir(recordPath);
+
+    await expect(storage.remove(agentId)).rejects.toThrow(
+      `Failed to remove durable records for agent ${agentId}`,
+    );
+    expect((await storage.get(agentId))?.id).toBe(agentId);
+
+    await fs.rm(recordPath, { recursive: true });
+    await fs.writeFile(recordPath, persistedRecord, "utf8");
+    await expect(storage.remove(agentId)).resolves.toBeUndefined();
+    expect(await storage.get(agentId)).toBeNull();
+    expect(
+      (await new AgentStorage(storagePath, logger).list()).some((item) => item.id === agentId),
+    ).toBe(false);
+  });
 });

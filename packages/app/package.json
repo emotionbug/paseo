@@ -139,7 +139,7 @@
     "turndown-plugin-gfm": "^1.0.2",
     "use-sync-external-store": "^1.6.0",
     "yaml": "^2.8.4",
-    "zod": "^4.4.3",
+    "zod": "^4.6.7",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
@@ -169,8 +169,8 @@
     "serve-sim": "^0.1.40",
     "typescript": "~5.9.2",
     "vitest": "^4.1.6",
-    "wrangler": "^4.105.0",
-    "ws": "^8.20.0"
+    "wrangler": "^4.152.0",
+    "ws": "^8.22.0"
   },
   "enriched-markdown": {
     "enableMath": false,

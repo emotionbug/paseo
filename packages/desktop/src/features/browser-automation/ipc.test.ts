@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { executeAutomationCommand, type BrowserRegistry, type TabImage } from "./service.js";
 import { adaptWebContents, HostSnapshotEngineRegistry } from "./ipc.js";
 import type { IsolatedKeyboardInputEvent } from "./trusted-input.js";
+import { PaseoBrowserWebviewRegistry } from "../browser-webviews/registry.js";
 
 class FakeImage implements TabImage {
   public toPNG(): Uint8Array {
@@ -242,6 +243,56 @@ describe("browser automation IPC adapter", () => {
 
     firstHost.destroy();
     expect(registry.get(new FakeHostWebContents(1))).not.toBe(firstEngine);
+  });
+
+  test("releases browser refs once for only the host whose guest is unregistered", () => {
+    const browserRegistry = new PaseoBrowserWebviewRegistry();
+    const snapshots = new HostSnapshotEngineRegistry(browserRegistry);
+    const firstEngine = snapshots.get(new FakeHostWebContents(1));
+    const secondEngine = snapshots.get(new FakeHostWebContents(2));
+    const clearFirst = vi.spyOn(firstEngine, "clearBrowser");
+    const clearSecond = vi.spyOn(secondEngine, "clearBrowser");
+    browserRegistry.registerWebContents({
+      webContentsId: 101,
+      browserId: "browser-a",
+      hostWebContentsId: 1,
+    });
+    browserRegistry.registerWebContents({
+      webContentsId: 202,
+      browserId: "browser-a",
+      hostWebContentsId: 2,
+    });
+
+    browserRegistry.unregisterWebContents(101);
+    browserRegistry.unregisterWebContents(101);
+
+    expect(clearFirst).toHaveBeenCalledOnce();
+    expect(clearFirst).toHaveBeenCalledWith("browser-a");
+    expect(clearSecond).not.toHaveBeenCalled();
+  });
+
+  test("keeps replacement guest refs when the replaced guest is later destroyed", () => {
+    const browserRegistry = new PaseoBrowserWebviewRegistry();
+    const snapshots = new HostSnapshotEngineRegistry(browserRegistry);
+    const engine = snapshots.get(new FakeHostWebContents(1));
+    const clearBrowser = vi.spyOn(engine, "clearBrowser");
+    browserRegistry.registerWebContents({
+      webContentsId: 101,
+      browserId: "browser-a",
+      hostWebContentsId: 1,
+    });
+    browserRegistry.registerWebContents({
+      webContentsId: 102,
+      browserId: "browser-a",
+      hostWebContentsId: 1,
+    });
+
+    browserRegistry.unregisterWebContents(101);
+
+    expect(clearBrowser).not.toHaveBeenCalled();
+    browserRegistry.unregisterWebContents(102);
+    expect(clearBrowser).toHaveBeenCalledOnce();
+    expect(clearBrowser).toHaveBeenCalledWith("browser-a");
   });
 
   test("sends contained keyboard input directly to the guest", () => {

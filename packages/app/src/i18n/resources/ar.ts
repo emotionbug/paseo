@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "تصفح المجلدات",
+      methodDescription: "تصفح المجلدات على {{host}}",
+      title: "تصفح المجلدات",
+      home: "الرئيسية",
+      manualPath: "البحث أو إدخال مسار",
+      select: "تحديد هذا المجلد",
+      loading: "جارٍ تحميل المجلدات...",
+      empty: "لا توجد مجلدات فرعية",
+      error: "تعذر فتح المجلد",
+      retry: "إعادة المحاولة",
+      hostUnavailable: "هذا المضيف غير متاح.",
+      disconnected: "المضيف غير متصل.",
+    },
+  },
   sessionNavigation: {
     sessions: "الجلسات",
     newSession: "جلسة جديدة",

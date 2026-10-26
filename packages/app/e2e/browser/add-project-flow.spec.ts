@@ -6,6 +6,9 @@ import { test, expect } from "../support/fixtures";
 import {
   addProjectFlow,
   addProjectFlowBack,
+  addProjectDirectory,
+  addProjectDirectoryManualPath,
+  addProjectDirectorySelect,
   addProjectFlowHost,
   addProjectFlowInput,
   addProjectFlowMethod,
@@ -79,6 +82,9 @@ test.describe("Add Project command-center flow", () => {
     await expect(addProjectFlowMethod(page, "directory-search")).toBeVisible();
     await expect(addProjectFlowMethod(page, "github")).toContainText("Clone from GitHub");
     await expect(addProjectFlowMethod(page, "new-directory")).toContainText("New directory");
+    await expect(addProjectFlowMethod(page, "directory-browser")).toContainText(
+      "Browse directories",
+    );
     await expect(addProjectFlowInput(page)).toHaveCount(0);
     await expect(addProjectFlow(page).getByRole("textbox")).toHaveCount(0);
     await expect(page.getByTestId("add-project-flow-page-host")).toHaveCount(0);
@@ -126,6 +132,29 @@ test.describe("Add Project command-center flow", () => {
 
       await expectAddProjectPage(page, "method");
       await expect(addProjectFlow(page)).toContainText(SECONDARY_HOST_LABEL);
+    });
+
+    test("directory browser stays scoped to the selected remote host", async ({ page }) => {
+      await gotoAppShell(page);
+      await addConnectedHostAndReload(page, {
+        serverId: secondaryHost.serverId,
+        label: SECONDARY_HOST_LABEL,
+        port: secondaryHost.port,
+      });
+      await waitForConnectedHost(page, {
+        serverId: SECONDARY_HOST_ID,
+        endpoint: `localhost:${secondaryHost.port}`,
+      });
+      await openAddProjectHostSelection(page);
+      await addProjectFlowHost(page, SECONDARY_HOST_ID).click();
+      await chooseAddProjectMethod(page, "directory-browser");
+
+      await expect(page.getByTestId("add-project-flow-directory-browser-path")).toHaveText("~");
+      await expect(addProjectFlow(page)).toContainText(SECONDARY_HOST_LABEL);
+      await expect(page.getByTestId("add-project-flow-directory-loading")).toHaveCount(0, {
+        timeout: 30_000,
+      });
+      await expect(addProjectDirectorySelect(page)).toBeEnabled();
     });
 
     test("Escape and Back restore searchable page input before closing at the root", async ({
@@ -278,8 +307,7 @@ test.describe("Add Project command-center flow", () => {
     await gotoAppShell(page);
     await openAddProjectFlow(page);
 
-    await page.keyboard.press("Enter");
-    await expectAddProjectPage(page, "directory-search");
+    await chooseAddProjectMethod(page, "directory-search");
     await expect(addProjectFlowInput(page)).toBeFocused();
     await page.keyboard.type(projectPickerFixture.fuzzyQuery);
     await expect(addProjectFlow(page)).toContainText(projectPickerFixture.projectName, {
@@ -296,6 +324,74 @@ test.describe("Add Project command-center flow", () => {
       projectPath: projectPickerFixture.projectPath,
     });
     await expectProjectHasNoWorkspaces(projectId);
+  });
+
+  test("directory browser navigates without adding, restores history, and explicitly selects an empty directory", async ({
+    page,
+  }) => {
+    const parentDirectory = await mkdtemp(path.join(homedir(), "paseo-e2e-browser-"));
+    const emptyDirectoryName = `empty-${randomUUID().slice(0, 8)}`;
+    const emptyDirectory = path.join(parentDirectory, emptyDirectoryName);
+    const displayedParentDirectory = `~/${path.basename(parentDirectory)}`;
+    const recoverDirectoryName = `recover-${randomUUID().slice(0, 8)}`;
+    const recoverDirectory = path.join(parentDirectory, recoverDirectoryName);
+    let projectId: string | null = null;
+    try {
+      await Promise.all([mkdir(emptyDirectory), mkdir(recoverDirectory)]);
+      await gotoAppShell(page);
+      await openAddProjectFlow(page);
+      await chooseAddProjectMethod(page, "directory-browser");
+      await expect(addProjectFlowInput(page)).toHaveCount(0);
+
+      await addProjectDirectory(page, path.basename(parentDirectory)).click();
+      await expect(addProjectFlow(page)).toBeVisible();
+      await rm(recoverDirectory, { recursive: true });
+      await addProjectDirectory(page, recoverDirectoryName).click();
+      await expect(page.getByTestId("add-project-flow-directory-error")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByTestId("add-project-flow-directory-empty")).toHaveCount(0);
+      await expect(addProjectDirectorySelect(page)).toBeDisabled();
+      await mkdir(recoverDirectory);
+      await page.getByTestId("add-project-flow-directory-retry").click();
+      await expect(page.getByTestId("add-project-flow-directory-empty")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(addProjectDirectorySelect(page)).toBeEnabled();
+      await addProjectFlowBack(page).click();
+      await expect(page.getByTestId("add-project-flow-directory-browser-path")).toHaveText(
+        displayedParentDirectory,
+      );
+      await addProjectDirectory(page, emptyDirectoryName).click();
+      await expect(page.getByTestId("add-project-flow-directory-empty")).toBeVisible();
+      await expect(addProjectDirectorySelect(page)).toBeEnabled();
+
+      await addProjectFlowBack(page).click();
+      await expectAddProjectPage(page, "directory-browser");
+      await expect(page.getByTestId("add-project-flow-directory-browser-path")).toHaveText(
+        displayedParentDirectory,
+      );
+      await addProjectDirectoryManualPath(page).click();
+      await expectAddProjectPage(page, "directory-search");
+      await expect(addProjectFlowInput(page)).toBeVisible();
+      await addProjectFlowBack(page).click();
+      await expect(page.getByTestId("add-project-flow-directory-browser-path")).toHaveText(
+        displayedParentDirectory,
+      );
+
+      await addProjectDirectory(page, emptyDirectoryName).click();
+      await addProjectDirectorySelect(page).click();
+      projectId = await expectOpenedProject(page, emptyDirectoryName);
+      await expectNewWorkspaceForAddedProject(page, {
+        serverId: getServerId(),
+        projectId,
+        projectName: emptyDirectoryName,
+        projectPath: emptyDirectory,
+      });
+    } finally {
+      if (projectId) await removeCreatedProject(emptyDirectory, projectId);
+      await rm(parentDirectory, { recursive: true, force: true });
+    }
   });
 
   test("keyboard navigation keeps the selected row inside the visible results", async ({

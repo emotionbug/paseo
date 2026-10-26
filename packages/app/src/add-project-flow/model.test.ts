@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   backAddProjectPage,
+  backDirectoryBrowser,
   chooseAddProjectHost,
   currentAddProjectPage,
   moveAddProjectActiveIndex,
   moveAddProjectSelection,
+  navigateDirectoryBrowser,
   openAddProjectFlow,
+  openDirectoryBrowserPage,
   openDirectorySearchPage,
   openGithubLocationPage,
   openNewDirectoryNamePage,
@@ -18,8 +21,12 @@ import {
 import {
   addProjectMethodEmptyText,
   buildAddProjectMethods,
+  canConfirmDirectoryBrowser,
   buildCloneLocationOptions,
+  directoryBrowserNames,
+  joinDirectoryPath,
   buildManualGithubRepositoryChoices,
+  ownsDirectoryBrowserListing,
 } from "./options";
 
 const HOST: AddProjectHost = {
@@ -108,6 +115,28 @@ describe("Add Project navigation", () => {
       activeIndex: 2,
     });
   });
+
+  it("unwinds directory browse history before leaving the page", () => {
+    let state = openAddProjectFlow({ hosts: [HOST] });
+    state = openDirectoryBrowserPage(state, HOST.serverId);
+    state = navigateDirectoryBrowser(state, "~/alpha");
+    state = navigateDirectoryBrowser(state, "~/alpha/beta");
+
+    state = backDirectoryBrowser(state)!;
+    expect(currentAddProjectPage(state)).toMatchObject({
+      kind: "directory-browser",
+      currentPath: "~/alpha",
+      history: ["~"],
+    });
+    state = backDirectoryBrowser(state)!;
+    expect(currentAddProjectPage(state)).toMatchObject({
+      kind: "directory-browser",
+      currentPath: "~",
+      history: [],
+    });
+    expect(backDirectoryBrowser(state)).toBeNull();
+    expect(backAddProjectPage(state)).not.toBeNull();
+  });
 });
 
 describe("Add Project options", () => {
@@ -129,6 +158,11 @@ describe("Add Project options", () => {
       }),
     ).toEqual([
       {
+        id: "directory-browser",
+        label: "Browse directories",
+        description: "Browse directories on Local",
+      },
+      {
         id: "directory-search",
         label: "Search for directory",
         description: "Find a directory on Local",
@@ -146,6 +180,56 @@ describe("Add Project options", () => {
         disabled: true,
       },
     ]);
+  });
+
+  it("filters and deterministically sorts browser directories", () => {
+    expect(
+      directoryBrowserNames([
+        { name: "zeta", kind: "directory" },
+        { name: "README", kind: "file" },
+        { name: "Alpha", kind: "directory" },
+        { name: "alpha", kind: "directory" },
+      ]),
+    ).toEqual(["Alpha", "alpha", "zeta"]);
+  });
+
+  it("joins child names with remote server path semantics", () => {
+    expect(joinDirectoryPath("/", "src")).toBe("/src");
+    expect(joinDirectoryPath("~", "src")).toBe("~/src");
+    expect(joinDirectoryPath("C:\\", "src")).toBe("C:\\src");
+    expect(joinDirectoryPath("C:\\Users", "src")).toBe("C:\\Users\\src");
+    expect(joinDirectoryPath("\\\\server\\share", "src")).toBe("\\\\server\\share\\src");
+  });
+
+  it("rejects stale browser responses and disconnected confirmation", () => {
+    const listing = { hostId: "host-1", path: "~/current", names: ["child"] };
+    expect(ownsDirectoryBrowserListing(listing, "host-1", "~/current")).toBe(true);
+    expect(ownsDirectoryBrowserListing(listing, "host-2", "~/current")).toBe(false);
+    expect(ownsDirectoryBrowserListing(listing, "host-1", "~/old")).toBe(false);
+    expect(
+      canConfirmDirectoryBrowser({
+        ownsListing: true,
+        connected: false,
+        failed: false,
+        submitting: false,
+      }),
+    ).toBe(false);
+    expect(
+      canConfirmDirectoryBrowser({
+        ownsListing: true,
+        connected: true,
+        failed: true,
+        submitting: false,
+      }),
+    ).toBe(false);
+    expect(
+      canConfirmDirectoryBrowser({
+        ownsListing: true,
+        connected: true,
+        failed: false,
+        submitting: false,
+      }),
+    ).toBe(true);
   });
 
   it("offers manual URL and protocol-specific owner/repo clone choices", () => {

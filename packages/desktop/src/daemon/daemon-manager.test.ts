@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
-import { createDaemonCommandHandlers } from "./daemon-manager";
+import { cancelPendingDesktopDaemonStart, createDaemonCommandHandlers } from "./daemon-manager";
 
 const mocks = vi.hoisted(() => ({
   paseoHome: "",
@@ -23,11 +23,18 @@ const mocks = vi.hoisted(() => ({
     env: {},
   })),
   spawnProcess: vi.fn(),
+  startDaemonInstance: vi.fn(),
   logInfo: vi.fn(),
   logError: vi.fn(),
   appLogPath: "",
   getElectronLogFile: vi.fn(),
 }));
+
+function waitForAbort({ signal }: { signal?: AbortSignal }): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}
 
 vi.mock("electron", () => ({
   app: {
@@ -55,6 +62,7 @@ vi.mock("@getpaseo/server/daemon-control", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   resolvePaseoHome: () => mocks.paseoHome,
   spawnProcess: mocks.spawnProcess,
+  startDaemonInstance: mocks.startDaemonInstance,
 }));
 
 vi.mock("../settings/desktop-settings-electron.js", () => ({
@@ -91,6 +99,7 @@ describe("daemon-manager commands", () => {
     mocks.createNodeEntrypointInvocation.mockReset();
     mocks.createNodeEntrypointInvocation.mockReturnValue({ command: "node", args: [], env: {} });
     mocks.spawnProcess.mockReset();
+    mocks.startDaemonInstance.mockReset();
     mocks.logInfo.mockReset();
     mocks.logError.mockReset();
     mocks.getElectronLogFile.mockReset();
@@ -143,6 +152,20 @@ describe("daemon-manager commands", () => {
 
     expect(status).toMatchObject({ serverId: "", status: "stopped", pid: null });
     expect(mocks.runExternalCliJsonCommand).not.toHaveBeenCalled();
+  });
+
+  it("aborts and drains a pending daemon start during quit", async () => {
+    const launch: { signal?: AbortSignal } = {};
+    mocks.startDaemonInstance.mockImplementation((input: { signal?: AbortSignal }) => {
+      launch.signal = input.signal;
+      return waitForAbort(input);
+    });
+    const starting = createDaemonCommandHandlers().start_desktop_daemon();
+    await vi.waitFor(() => expect(mocks.startDaemonInstance).toHaveBeenCalledOnce());
+
+    await expect(cancelPendingDesktopDaemonStart()).resolves.toBeUndefined();
+    await expect(starting).rejects.toThrow("cancelled during quit");
+    expect(launch.signal?.aborted).toBe(true);
   });
 
   it("reports an errored daemon when the local daemon state cannot be read", async () => {

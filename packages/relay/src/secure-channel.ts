@@ -584,6 +584,7 @@ class ProtectedChannel implements InnerChannel {
   readonly mode = "protected" as const;
   private state: "open" | "closed" = "open";
   private readonly onCloseCallbacks: Array<() => void> = [];
+  private retryReadySend: Promise<void> | null = null;
 
   constructor(
     private readonly transport: Transport,
@@ -636,7 +637,14 @@ class ProtectedChannel implements InnerChannel {
     if (handshake.kind === "ready") return; // client ignores duplicate ready after open
     if (!this.role.retry) return; // a client never answers hellos
     if (handshake.text === this.role.retry.helloText) {
-      await this.transport.send(this.role.retry.readyText);
+      if (!this.retryReadySend) {
+        this.retryReadySend = Promise.resolve(
+          this.transport.send(this.role.retry.readyText),
+        ).finally(() => {
+          this.retryReadySend = null;
+        });
+      }
+      await this.retryReadySend;
       return;
     }
     this.fail(REHANDSHAKE_REJECTION_CODE, REHANDSHAKE_MISMATCH_CLOSE_REASON);

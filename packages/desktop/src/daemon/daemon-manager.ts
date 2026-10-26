@@ -56,6 +56,10 @@ import { tailFile } from "../diagnostics/tail-file.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 let ownedLaunch: { home: string; instance: DaemonInstance } | null = null;
+let pendingStart: {
+  controller: AbortController;
+  promise: Promise<DesktopDaemonStatus>;
+} | null = null;
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 const DESKTOP_DAEMON_STOP_REASON_VALUES = [
@@ -276,8 +280,9 @@ function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
   }
 }
 
-async function startDaemon(): Promise<DesktopDaemonStatus> {
+async function startDaemonRun(signal: AbortSignal): Promise<DesktopDaemonStatus> {
   assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
+  signal.throwIfAborted();
 
   const current = await resolveDesktopDaemonStatus();
   logDesktopDaemonLifecycle("initial status check before start", {
@@ -299,6 +304,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
       return current;
     }
   }
+  signal.throwIfAborted();
 
   const home = getPaseoHome();
   const invocation = createNodeEntrypointInvocation({
@@ -315,6 +321,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
       env: { ...invocation.env, PASEO_CLI: getBundledCliShimPath() },
       mode: "managed",
       desktopManaged: true,
+      signal,
       onAcquired: (instance) => {
         ownedLaunch = { home, instance };
       },
@@ -323,6 +330,23 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     if (!(error instanceof DaemonInstanceError && error.code === "DAEMON_NOT_READY")) throw error;
   }
   return resolveDesktopDaemonStatus();
+}
+
+async function startDaemon(): Promise<DesktopDaemonStatus> {
+  if (pendingStart) return pendingStart.promise;
+  const controller = new AbortController();
+  const promise = startDaemonRun(controller.signal).finally(() => {
+    if (pendingStart?.promise === promise) pendingStart = null;
+  });
+  pendingStart = { controller, promise };
+  return promise;
+}
+
+export async function cancelPendingDesktopDaemonStart(): Promise<void> {
+  const pending = pendingStart;
+  if (!pending) return;
+  pending.controller.abort(new Error("Desktop daemon start cancelled during quit"));
+  await pending.promise.catch(() => undefined);
 }
 
 export async function stopDesktopDaemon(

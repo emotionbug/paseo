@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { open, readFile, stat, unlink, utimes } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { ensurePrivateDirectory } from "./private-files.js";
@@ -17,6 +18,7 @@ export const pidLockInfoSchema = z.object({
   desktopManaged: z.boolean().optional(),
   heartbeat: z.literal(true).optional(),
   bootId: z.string().optional(),
+  processStartIdentity: z.string().optional(),
 });
 
 export interface PidLockInfo extends z.infer<typeof pidLockInfoSchema> {}
@@ -51,6 +53,47 @@ function isPidRunning(pid: number): boolean {
   } catch (error) {
     return isErrnoException(error) && error.code === "EPERM";
   }
+}
+
+function readProcessStartIdentity(pid: number): string | null {
+  if (process.platform === "linux") {
+    try {
+      const processStat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const commandEnd = processStat.lastIndexOf(")");
+      if (commandEnd < 0) return null;
+      const fieldsFromState = processStat
+        .slice(commandEnd + 1)
+        .trim()
+        .split(/\s+/);
+      const startTicks = fieldsFromState[19];
+      return startTicks ? `linux:${startTicks}` : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (process.platform === "win32") {
+    const result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().Ticks`,
+      ],
+      { encoding: "utf8", timeout: 2_000, windowsHide: true },
+    );
+    const ticks = result.status === 0 ? result.stdout.trim() : "";
+    return ticks ? `win32:${ticks}` : null;
+  }
+
+  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8",
+    timeout: 2_000,
+    env: { ...process.env, LC_ALL: "C" },
+  });
+  const startedAt = result.status === 0 ? result.stdout.trim() : "";
+  return startedAt ? `${process.platform}:${startedAt}` : null;
 }
 
 // `uptime()` reports whole seconds on some platforms, so the derived boot instant carries
@@ -89,14 +132,20 @@ function writtenDuringThisBoot(lock: PidLockInfo): boolean {
 /**
  * Whether the process that wrote this lock is still running.
  *
- * A PID alone does not identify the supervisor: the operating system hands the number to
- * something else once the supervisor is gone, and a reboot reassigns it freely. A process
- * cannot predate the boot it runs under, so a lock written during another boot is abandoned
- * however alive its PID looks.
+ * New locks also retain the operating system's immutable process-start token.
+ * Legacy locks remain readable so an already-running older daemon can be
+ * reached over its lifecycle RPC, but callers must not signal them directly.
  */
 export function isPidLockOwnerRunning(lock: PidLockInfo): boolean {
-  if (!writtenDuringThisBoot(lock)) return false;
-  return isPidRunning(lock.pid);
+  if (!writtenDuringThisBoot(lock) || !isPidRunning(lock.pid)) return false;
+  return lock.processStartIdentity === undefined || isPidLockOwnerIdentityVerified(lock);
+}
+
+export function isPidLockOwnerIdentityVerified(lock: PidLockInfo): boolean {
+  return (
+    lock.processStartIdentity !== undefined &&
+    readProcessStartIdentity(lock.pid) === lock.processStartIdentity
+  );
 }
 
 function getPidFilePath(paseoHome: string): string {
@@ -239,6 +288,7 @@ export async function acquirePidLock(
 
   // Create new lock with exclusive flag
   const bootId = currentBootId();
+  const processStartIdentity = readProcessStartIdentity(lockOwnerPid);
   const lockInfo: PidLockInfo = {
     pid: lockOwnerPid,
     startedAt: new Date().toISOString(),
@@ -247,6 +297,7 @@ export async function acquirePidLock(
     listen,
     heartbeat: true,
     ...(bootId ? { bootId } : {}),
+    ...(processStartIdentity ? { processStartIdentity } : {}),
     ...(process.env.PASEO_DESKTOP_MANAGED === "1" ? { desktopManaged: true } : {}),
   };
 

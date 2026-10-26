@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import {
   appendFile,
   chmod,
@@ -55,6 +56,44 @@ describe("file explorer service", () => {
 
       expect(result.status).toBe("written");
       expect((await readExplorerFile({ root, relativePath: "notes.txt" })).content).toBe("after");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("allows only one concurrent write at the same revision to succeed", async () => {
+    const root = await createTempDir("paseo-file-competing-writes-");
+    try {
+      const filePath = path.join(root, "notes.txt");
+      await writeFile(filePath, "before", "utf8");
+      const current = await getExplorerFileVersion({ root, relativePath: "notes.txt" });
+      expect(current.status).toBe("ready");
+      if (current.status !== "ready") return;
+
+      const request = {
+        root,
+        relativePath: "notes.txt",
+        expectedModifiedAt: current.modifiedAt,
+        expectedRevision: current.revision,
+      };
+      const results = await Promise.all([
+        writeExplorerFile({ ...request, content: "first" }),
+        writeExplorerFile({ ...request, content: "second" }),
+      ]);
+
+      expect(results.map(({ status }) => status).sort()).toEqual(["conflict", "written"]);
+      const written = results.find((result) => result.status === "written");
+      const conflict = results.find((result) => result.status === "conflict");
+      expect(written?.status).toBe("written");
+      expect(conflict?.status).toBe("conflict");
+      if (written?.status !== "written" || conflict?.status !== "conflict") return;
+      expect(conflict.version).toMatchObject({
+        status: "ready",
+        revision: written.revision,
+      });
+      expect(["first", "second"]).toContain(
+        (await readExplorerFile({ root, relativePath: "notes.txt" })).content,
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -750,6 +789,48 @@ describe("file explorer service", () => {
       ).resolves.toEqual({ status: "ok", path: "loose.txt" });
       expect((await stat(path.join(root, "loose.txt"))).isFile()).toBe(true);
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not overwrite a destination created during an untracked rename", async () => {
+    const root = await createTempDir("paseo-entry-racing-rename-");
+    const sourcePath = path.join(root, "source.txt");
+    const targetPath = path.join(root, "destination.txt");
+    const actualLstat = fs.lstat.bind(fs);
+    let destinationInjected = false;
+    const lstatSpy = vi.spyOn(fs, "lstat").mockImplementation(async (entryPath) => {
+      try {
+        return await actualLstat(entryPath);
+      } catch (error) {
+        if (
+          !destinationInjected &&
+          String(entryPath) === targetPath &&
+          (error as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
+          destinationInjected = true;
+          await writeFile(targetPath, "destination", "utf8");
+        }
+        throw error;
+      }
+    });
+
+    try {
+      await writeFile(sourcePath, "source", "utf8");
+
+      await expect(
+        renameExplorerEntry({
+          root,
+          relativePath: "source.txt",
+          name: "destination.txt",
+        }),
+      ).resolves.toEqual({ status: "error", error: '"destination.txt" already exists' });
+
+      expect(destinationInjected).toBe(true);
+      expect(await readFile(sourcePath, "utf8")).toBe("source");
+      expect(await readFile(targetPath, "utf8")).toBe("destination");
+    } finally {
+      lstatSpy.mockRestore();
       await rm(root, { recursive: true, force: true });
     }
   });

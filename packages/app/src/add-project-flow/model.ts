@@ -30,6 +30,15 @@ export type AddProjectPage =
   | ({ kind: "host" } & SearchPageState)
   | ({ kind: "method"; hostId: string; isSubmitting: boolean } & PageState)
   | ({ kind: "directory-search"; hostId: string; isSubmitting: boolean } & SearchPageState)
+  | {
+      kind: "directory-browser";
+      hostId: string;
+      currentPath: string;
+      history: string[];
+      isSubmitting: boolean;
+      activeIndex: number;
+      error: string | null;
+    }
   | ({ kind: "github-search"; hostId: string } & SearchPageState)
   | ({
       kind: "github-location";
@@ -157,6 +166,55 @@ export function openDirectorySearchPage(
   });
 }
 
+export function openDirectoryBrowserPage(
+  state: AddProjectFlowState,
+  hostId: string,
+): AddProjectFlowState {
+  return pushAddProjectPage(state, {
+    kind: "directory-browser",
+    hostId,
+    currentPath: "~",
+    history: [],
+    isSubmitting: false,
+    activeIndex: 0,
+    error: null,
+  });
+}
+
+export function navigateDirectoryBrowser(
+  state: AddProjectFlowState,
+  path: string,
+): AddProjectFlowState {
+  return updateCurrentAddProjectPage(state, (page) => {
+    if (page.kind !== "directory-browser" || path === page.currentPath) return page;
+    return {
+      ...page,
+      currentPath: path,
+      history: [...page.history, page.currentPath],
+      activeIndex: 0,
+      error: null,
+    };
+  });
+}
+
+export function backDirectoryBrowser(state: AddProjectFlowState): AddProjectFlowState | null {
+  const page = currentAddProjectPage(state);
+  if (page.kind !== "directory-browser" || page.history.length === 0) return null;
+  const previousPath = page.history[page.history.length - 1];
+  if (!previousPath) return null;
+  return updateCurrentAddProjectPage(state, (current) =>
+    current.kind === "directory-browser"
+      ? {
+          ...current,
+          currentPath: previousPath,
+          history: current.history.slice(0, -1),
+          activeIndex: 0,
+          error: null,
+        }
+      : current,
+  );
+}
+
 export function openGithubSearchPage(
   state: AddProjectFlowState,
   hostId: string,
@@ -214,7 +272,7 @@ export function setAddProjectPageInput(
     if (current.kind === "new-directory-name") {
       return { ...current, name: value, activeIndex: 0, error: null };
     }
-    if (current.kind === "method") return current;
+    if (current.kind === "method" || current.kind === "directory-browser") return current;
     return { ...current, query: value, activeIndex: 0, error: null };
   });
   if (page.kind !== "github-location") return updated;

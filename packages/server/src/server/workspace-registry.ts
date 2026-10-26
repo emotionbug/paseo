@@ -300,6 +300,7 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
         this.logger.error({ err: error, filePath: this.filePath }, "Failed to load registry file");
+        throw error;
       }
     }
     this.loaded = true;

@@ -253,6 +253,31 @@ describe("relay-transport control lifecycle", () => {
     ]);
   });
 
+  test("bounds data sockets requested by an untrusted relay", () => {
+    const logger = createMockLogger();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.paseo.sh:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(
+      JSON.stringify({
+        type: "sync",
+        connectionIds: Array.from({ length: 200 }, (_, index) => `clt_${index}`),
+      }),
+    );
+
+    expect(relay.sockets).toHaveLength(129);
+    expect(hasLogMessage(logger, "warn", "relay_data_connection_limit_reached")).toBe(true);
+  });
+
   test("uses relayUseTls for control and data socket URLs", () => {
     const logger = createMockLogger();
     const controller = startRelayTransport({

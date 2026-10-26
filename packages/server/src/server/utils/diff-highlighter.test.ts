@@ -760,6 +760,61 @@ describe("highlightDiffWithFileContent", () => {
     expect(addedLine?.tokens).toContainEqual({ text: "3", style: "number" });
   });
 
+  it("falls back to hunk highlighting when unchanged file context exceeds the content budget", async () => {
+    const prefixLines = ["/*", ...Array.from({ length: 70_000 }, () => "comment")];
+    const changedStart = prefixLines.length + 1;
+    const oldFileContent = [
+      ...prefixLines,
+      "const foo = 1;",
+      "const bar = 2;",
+      "const baz = foo + bar;",
+    ].join("\n");
+    const newFileContent = [
+      ...prefixLines,
+      "const foo = 1;",
+      "const bar = 3;",
+      "const baz = foo + bar;",
+    ].join("\n");
+    const [file] = parseDiff(`diff --git a/example.ts b/example.ts
+index 1234567..abcdefg 100644
+--- a/example.ts
++++ b/example.ts
+@@ -${changedStart},3 +${changedStart},3 @@
+ const foo = 1;
+-const bar = 2;
++const bar = 3;
+ const baz = foo + bar;
+`);
+
+    const highlighted = await highlightDiffWithFileContent(file, ".", {
+      oldFileContent,
+      newFileContent,
+    });
+    const addedLine = highlighted.hunks[0].lines.find((line) => line.type === "add");
+
+    expect(addedLine?.tokens).toContainEqual({ text: "3", style: "number" });
+  });
+
+  it("yields the event loop while highlighting large files within the content budget", async () => {
+    const unchangedTail = Array.from(
+      { length: 15_000 },
+      (_value, index) => `const value${index} = ${index};`,
+    ).join("\n");
+    const oldFileContent = `const foo = 1;\nconst bar = 2;\nconst baz = foo + bar;\n\nexport { foo, bar, baz };\n${unchangedTail}`;
+    const newFileContent = `const foo = 1;\nconst bar = 3;\nconst baz = foo + bar;\n\nexport { foo, bar, baz };\n${unchangedTail}`;
+    let eventLoopYielded = false;
+    setImmediate(() => {
+      eventLoopYielded = true;
+    });
+
+    await highlightDiffWithFileContent(parseDiff(SIMPLE_DIFF)[0], ".", {
+      oldFileContent,
+      newFileContent,
+    });
+
+    expect(eventLoopYielded).toBe(true);
+  });
+
   it("uses the old file content to preserve syntax context for removed lines", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "diff-highlight-old-file-"));
 

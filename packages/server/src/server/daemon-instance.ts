@@ -4,6 +4,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   getPidLockInfo,
+  isPidLockOwnerIdentityVerified,
   isPidLockOwnerRunning,
   isSamePidLock,
   releasePidLock,
@@ -102,6 +103,23 @@ async function requestInstanceStop(
 ) {
   let forced = false;
   let usedLifecycleRpc = false;
+  const identityVerified = isPidLockOwnerIdentityVerified(instance);
+
+  // Legacy locks have no process-start token. They remain reachable during a
+  // rolling upgrade, but only the authenticated daemon RPC may stop them; a
+  // PID alone is never sufficient authority to signal a process.
+  if (!identityVerified) {
+    if (!instance.listen || !options.requestShutdown) {
+      throw new DaemonInstanceError(
+        "DAEMON_IDENTITY_UNVERIFIED",
+        `Cannot verify that PID ${instance.pid} still belongs to Paseo; use the daemon lifecycle channel or restart after checking the process manually.`,
+      );
+    }
+    await options.requestShutdown({ ...instance, listen: instance.listen });
+    usedLifecycleRpc = true;
+    return { forced, usedLifecycleRpc };
+  }
+
   if (process.platform === "win32") {
     if (instance.listen && options.requestShutdown) {
       try {
@@ -115,6 +133,12 @@ async function requestInstanceStop(
             "DAEMON_REPLACED",
             `Supervisor changed for ${home}; refusing forced cleanup.`,
           );
+        if (!isPidLockOwnerIdentityVerified(instance)) {
+          throw new DaemonInstanceError(
+            "DAEMON_IDENTITY_UNVERIFIED",
+            `Cannot verify that PID ${instance.pid} still belongs to Paseo; refusing forced cleanup.`,
+          );
+        }
         await killTree(instance.pid, "SIGKILL");
         forced = true;
       }
@@ -135,6 +159,45 @@ async function requestInstanceStop(
     }
   }
   return { forced, usedLifecycleRpc };
+}
+
+async function waitForDaemonExit(
+  home: string,
+  instance: PidLockInfo,
+  waitMs: number,
+): Promise<boolean> {
+  const exitDeadline = Date.now() + waitMs;
+  while (isPidLockOwnerRunning(instance)) {
+    const current = await getPidLockInfo(home);
+    if (current && !isSamePidLock(instance, current))
+      throw new DaemonInstanceError(
+        "DAEMON_REPLACED",
+        `Supervisor changed for ${home}; stop of PID ${instance.pid} was not confirmed.`,
+      );
+    if (Date.now() >= exitDeadline) return false;
+    await delay(100);
+  }
+  return true;
+}
+
+async function releaseInactiveDaemonLock(
+  home: string,
+  instance: PidLockInfo | null,
+): Promise<{
+  action: "not_running";
+  pid: number | null;
+  forced: false;
+  usedLifecycleRpc: false;
+}> {
+  if (instance) {
+    await releasePidLock(home, { ownerPid: instance.pid, startedAt: instance.startedAt });
+  }
+  return {
+    action: "not_running",
+    pid: instance?.pid ?? null,
+    forced: false,
+    usedLifecycleRpc: false,
+  };
 }
 
 export async function stopDaemonInstance(
@@ -162,37 +225,26 @@ export async function stopDaemonInstance(
     );
   }
   if (!instance || !isPidLockOwnerRunning(instance)) {
-    if (instance)
-      await releasePidLock(home, { ownerPid: instance.pid, startedAt: instance.startedAt });
-    return {
-      action: "not_running",
-      pid: instance?.pid ?? null,
-      forced: false,
-      usedLifecycleRpc: false,
-    };
+    return releaseInactiveDaemonLock(home, instance);
   }
   if (instance.pid <= 1 || instance.pid === process.pid)
     throw new Error("Refusing to stop invalid supervisor PID");
   let { forced, usedLifecycleRpc } = await requestInstanceStop(home, instance, options);
-  const waitForExit = async (waitMs: number) => {
-    const exitDeadline = Date.now() + waitMs;
-    while (isPidLockOwnerRunning(instance)) {
-      const current = await getPidLockInfo(home);
-      if (current && !isSamePidLock(instance, current))
-        throw new DaemonInstanceError(
-          "DAEMON_REPLACED",
-          `Supervisor changed for ${home}; stop of PID ${instance.pid} was not confirmed.`,
-        );
-      if (Date.now() >= exitDeadline) return false;
-      await delay(100);
-    }
-    return true;
-  };
-  let stopped = await waitForExit(forced ? killTimeoutMs : Math.max(0, deadline - Date.now()));
+  let stopped = await waitForDaemonExit(
+    home,
+    instance,
+    forced ? killTimeoutMs : Math.max(0, deadline - Date.now()),
+  );
   if (!stopped && options.force && !forced) {
+    if (!isPidLockOwnerIdentityVerified(instance)) {
+      throw new DaemonInstanceError(
+        "DAEMON_IDENTITY_UNVERIFIED",
+        `Cannot verify that PID ${instance.pid} still belongs to Paseo; refusing forced cleanup.`,
+      );
+    }
     await killTree(instance.pid, "SIGKILL");
     forced = true;
-    stopped = await waitForExit(killTimeoutMs);
+    stopped = await waitForDaemonExit(home, instance, killTimeoutMs);
   }
   if (!stopped)
     throw new DaemonInstanceError(

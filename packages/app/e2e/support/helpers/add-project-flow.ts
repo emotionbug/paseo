@@ -4,14 +4,21 @@ export type AddProjectFlowPage =
   | "host"
   | "method"
   | "directory-search"
+  | "directory-browser"
   | "github-search"
   | "github-location"
   | "new-directory-parent"
   | "new-directory-name";
 
-export type AddProjectMethod = "directory-search" | "browse" | "github" | "new-directory";
+export type AddProjectMethod =
+  | "directory-browser"
+  | "directory-search"
+  | "browse"
+  | "github"
+  | "new-directory";
 
 const METHOD_DESTINATIONS: Record<Exclude<AddProjectMethod, "browse">, AddProjectFlowPage> = {
+  "directory-browser": "directory-browser",
   "directory-search": "directory-search",
   github: "github-search",
   "new-directory": "new-directory-parent",
@@ -35,6 +42,18 @@ export function addProjectFlowHost(page: Page, serverId: string): Locator {
 
 export function addProjectFlowMethod(page: Page, method: AddProjectMethod): Locator {
   return page.getByTestId(`add-project-flow-method-${method}`);
+}
+
+export function addProjectDirectory(page: Page, name: string): Locator {
+  return page.getByTestId(`add-project-flow-directory-${encodeURIComponent(name)}`);
+}
+
+export function addProjectDirectorySelect(page: Page): Locator {
+  return page.getByTestId("add-project-flow-directory-select");
+}
+
+export function addProjectDirectoryManualPath(page: Page): Locator {
+  return page.getByTestId("add-project-flow-directory-browser-manual");
 }
 
 export async function expectAddProjectPage(page: Page, kind: AddProjectFlowPage): Promise<Locator> {

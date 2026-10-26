@@ -104,7 +104,7 @@ export class AgentStorage {
   private daemonExecutionKeysByAgentId: Map<string, string> = new Map();
   private loaded = false;
   private baseDir: string;
-  private loadPromise: Promise<StoredAgentRecord[]> | null = null;
+  private loadPromise: Promise<void> | null = null;
   private logger: Logger;
 
   constructor(baseDir: string, logger: Logger) {
@@ -215,21 +215,22 @@ export class AgentStorage {
     this.beginDelete(agentId);
     await (this.pendingWrites.get(agentId) ?? Promise.resolve());
     const paths = Array.from(this.pathsById.get(agentId) ?? []);
+    const failures: unknown[] = [];
     await Promise.all(
       paths.map(async (filePath) => {
         try {
           await fs.unlink(filePath);
         } catch (error) {
           const code = (error as NodeJS.ErrnoException).code;
-          if (code && code !== "ENOENT") {
-            this.logger.warn(
-              { err: error, agentId, filePath },
-              "Failed to remove agent record file",
-            );
-          }
+          if (code === "ENOENT") return;
+          failures.push(error);
+          this.logger.warn({ err: error, agentId, filePath }, "Failed to remove agent record file");
         }
       }),
     );
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `Failed to remove durable records for agent ${agentId}`);
+    }
 
     this.cache.delete(agentId);
     this.removeOwnerIndex(agentId);
@@ -279,19 +280,17 @@ export class AgentStorage {
     await Promise.allSettled(writes);
   }
 
-  private async load(): Promise<StoredAgentRecord[]> {
-    if (this.loaded) {
-      return Array.from(this.cache.values());
-    }
+  private async load(): Promise<void> {
+    if (this.loaded) return;
 
     if (!this.loadPromise) {
       this.loadPromise = this.doLoad();
     }
 
-    return this.loadPromise;
+    await this.loadPromise;
   }
 
-  private async doLoad(): Promise<StoredAgentRecord[]> {
+  private async doLoad(): Promise<void> {
     this.cache.clear();
     this.pathById.clear();
     this.pathsById.clear();
@@ -299,28 +298,25 @@ export class AgentStorage {
     this.daemonExecutionKeysByAgentId.clear();
 
     try {
-      const records = await this.scanDisk();
+      await this.scanDisk();
       this.loaded = true;
-      return records;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         this.loaded = true;
-        return [];
+        return;
       }
       this.logger.error({ err: error }, "Failed to load agents");
       this.loaded = true;
-      return [];
     }
   }
 
-  private async scanDisk(): Promise<StoredAgentRecord[]> {
-    const records: StoredAgentRecord[] = [];
+  private async scanDisk(): Promise<void> {
     let entries: Dirent[] = [];
     try {
       entries = await fs.readdir(this.baseDir, { withFileTypes: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return [];
+        return;
       }
       throw error;
     }
@@ -357,14 +353,11 @@ export class AgentStorage {
     for (const item of loaded) {
       if (!item) continue;
       const { record, filePath } = item;
-      records.push(record);
       this.cache.set(record.id, record);
       this.indexOwner(record);
       this.pathById.set(record.id, filePath);
       this.addIndexedPath(record.id, filePath);
     }
-
-    return records;
   }
 
   private async readRecordFile(filePath: string): Promise<StoredAgentRecord | null> {

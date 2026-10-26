@@ -1,4 +1,20 @@
 export const en = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "Browse directories",
+      methodDescription: "Browse directories on {{host}}",
+      title: "Browse directories",
+      home: "Home",
+      manualPath: "Search or enter path",
+      select: "Select this directory",
+      loading: "Loading directories...",
+      empty: "No subdirectories",
+      error: "Unable to open directory",
+      retry: "Retry",
+      hostUnavailable: "This host is unavailable.",
+      disconnected: "The host is disconnected.",
+    },
+  },
   sessionNavigation: {
     sessions: "Sessions",
     newSession: "New session",

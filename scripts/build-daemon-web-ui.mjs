@@ -12,6 +12,8 @@ const APP_DIR = path.join(REPO_ROOT, "packages", "app");
 const SOURCE_DIST = path.join(APP_DIR, "dist");
 const TARGET_DIST = path.join(REPO_ROOT, "packages", "server", "dist", "server", "web-ui");
 const COMPRESS_EXTENSIONS = new Set([".html", ".js", ".css", ".json", ".svg", ".map"]);
+const IS_WINDOWS = process.platform === "win32";
+const NPM_COMMAND = IS_WINDOWS ? "npm.cmd" : "npm";
 
 function fmtMiB(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MiB`;
@@ -37,8 +39,9 @@ function run(command, args, options) {
 
 async function exportBrowserWebApp() {
   console.log("Exporting browser web app...");
-  await run("npm", ["run", "build:web", "--workspace=@getpaseo/app"], {
+  await run(NPM_COMMAND, ["run", "build:web", "--workspace=@getpaseo/app"], {
     cwd: REPO_ROOT,
+    shell: IS_WINDOWS,
   });
 }
 

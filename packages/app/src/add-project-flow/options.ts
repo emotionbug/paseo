@@ -6,7 +6,12 @@ import {
 import { shortenPath } from "@/utils/shorten-path";
 import type { AddProjectHost, GithubRepositoryChoice } from "./model";
 
-export type AddProjectMethodId = "directory-search" | "browse" | "github" | "new-directory";
+export type AddProjectMethodId =
+  | "directory-browser"
+  | "directory-search"
+  | "browse"
+  | "github"
+  | "new-directory";
 
 export interface AddProjectMethodOption {
   id: AddProjectMethodId;
@@ -36,6 +41,11 @@ export function filterAddProjectHosts(hosts: AddProjectHost[], query: string): A
 export function buildAddProjectMethods(host: AddProjectHost): AddProjectMethodOption[] {
   if (!host.canAddProject) return [];
   const options: AddProjectMethodOption[] = [];
+  options.push({
+    id: "directory-browser",
+    label: "Browse directories",
+    description: `Browse directories on ${host.label}`,
+  });
   options.push({
     id: "directory-search",
     label: "Search for directory",
@@ -128,9 +138,50 @@ export function parentDirectory(path: string): string | null {
 }
 
 export function joinDirectoryPath(parent: string, name: string): string {
-  const trimmedParent = parent.replace(/[\\/]+$/, "");
-  const separator = trimmedParent.includes("\\") && !trimmedParent.includes("/") ? "\\" : "/";
-  return `${trimmedParent}${separator}${name}`;
+  const usesWindowsSeparators = parent.includes("\\") && !parent.includes("/");
+  const separator = usesWindowsSeparators ? "\\" : "/";
+  if (parent.endsWith("/") || parent.endsWith("\\")) return `${parent}${name}`;
+  return `${parent}${separator}${name}`;
+}
+
+export interface DirectoryBrowserEntry {
+  name: string;
+  kind: "file" | "directory";
+}
+
+function compareDirectoryNames(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+export function directoryBrowserNames(entries: readonly DirectoryBrowserEntry[]): string[] {
+  return entries
+    .flatMap((entry) => (entry.kind === "directory" ? [entry.name] : []))
+    .sort(compareDirectoryNames);
+}
+
+export interface DirectoryBrowserListing {
+  hostId: string;
+  path: string;
+  names: readonly string[];
+}
+
+export function ownsDirectoryBrowserListing(
+  listing: DirectoryBrowserListing | undefined,
+  hostId: string,
+  path: string,
+): listing is DirectoryBrowserListing {
+  return listing?.hostId === hostId && listing.path === path;
+}
+
+export function canConfirmDirectoryBrowser(input: {
+  ownsListing: boolean;
+  connected: boolean;
+  failed: boolean;
+  submitting: boolean;
+}): boolean {
+  return input.ownsListing && input.connected && !input.failed && !input.submitting;
 }
 
 export function buildSuggestedParentDirectories(projectPaths: string[]): string[] {

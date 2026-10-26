@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "浏览目录",
+      methodDescription: "浏览 {{host}} 上的目录",
+      title: "浏览目录",
+      home: "主目录",
+      manualPath: "搜索或输入路径",
+      select: "选择此目录",
+      loading: "正在加载目录...",
+      empty: "没有子目录",
+      error: "无法打开目录",
+      retry: "重试",
+      hostUnavailable: "此主机不可用。",
+      disconnected: "主机已断开连接。",
+    },
+  },
   sessionNavigation: {
     sessions: "会话",
     newSession: "新建会话",

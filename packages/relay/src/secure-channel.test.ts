@@ -316,6 +316,25 @@ describe("secure channel: protected mode", () => {
     expect(pair.clientReceived).toEqual(["both ways"]);
   });
 
+  it("coalesces identical hello retries while a ready send is pending", async () => {
+    const pair = await openProtectedPair();
+    const hello = pair.link.recordedToDaemon.find(
+      (frame) => typeof frame.data === "string" && frame.data.includes('"e2ee_hello"'),
+    );
+    expect(hello).toBeDefined();
+    const pending = deferred();
+    const send = pair.link.daemon.send as ReturnType<typeof vi.fn>;
+    send.mockClear();
+    send.mockImplementation(() => pending.promise);
+
+    pair.link.daemon.onmessage?.(hello!);
+    pair.link.daemon.onmessage?.(hello!);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    pending.resolve();
+    await pending.promise;
+  });
+
   it("closes when a different hello arrives on an open channel", async () => {
     const pair = await openProtectedPair();
     const hello = pair.link.recordedToDaemon.find(

@@ -1,9 +1,10 @@
 // POSIX-only: symlink fixtures
 /* eslint-disable max-nested-callbacks */
+import { promises as fs } from "node:fs";
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getDownloadableFileInfo, listDirectoryEntries, readExplorerFile } from "./service.js";
 import { isPlatform } from "../../test-utils/platform.js";
 
@@ -30,6 +31,70 @@ describe.skipIf(isPlatform("win32"))("service POSIX-only", () => {
       const names = result.entries.map((entry) => entry.name);
       expect(names).toContain("README.md");
       expect(names).not.toContain("AGENTS.md");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("classifies contained directory symlinks without exposing directory escapes", async () => {
+    const root = await createTempDir("paseo-file-explorer-");
+    const outsideRoot = await createTempDir("paseo-file-explorer-outside-");
+
+    try {
+      const directory = path.join(root, "notes");
+      await mkdir(directory);
+      await writeFile(path.join(directory, "today.txt"), "safe\n", "utf-8");
+      await mkdir(path.join(outsideRoot, "private"));
+      await symlink("notes", path.join(root, "notes-link"));
+      await symlink(path.join(outsideRoot, "private"), path.join(root, "escape-link"));
+
+      const result = await listDirectoryEntries({ root });
+      const directoryLink = result.entries.find((entry) => entry.name === "notes-link");
+
+      expect(directoryLink).toMatchObject({
+        name: "notes-link",
+        path: "notes-link",
+        kind: "directory",
+      });
+      expect(result.entries.map((entry) => entry.name)).not.toContain("escape-link");
+      await expect(
+        listDirectoryEntries({ root, relativePath: "notes-link" }),
+      ).resolves.toMatchObject({
+        path: "notes-link",
+        entries: [expect.objectContaining({ name: "today.txt", kind: "file" })],
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("omits an inaccessible child but still rejects an inaccessible parent", async () => {
+    const root = await createTempDir("paseo-file-explorer-");
+
+    try {
+      const deniedPath = path.join(root, "denied.txt");
+      await writeFile(deniedPath, "denied\n", "utf-8");
+      await writeFile(path.join(root, "visible.txt"), "visible\n", "utf-8");
+      const actualStat = fs.stat.bind(fs);
+      let denyRoot = false;
+      const statSpy = vi.spyOn(fs, "stat").mockImplementation(async (entryPath) => {
+        const requestedPath = String(entryPath);
+        if (requestedPath === deniedPath || (denyRoot && requestedPath === root)) {
+          throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+        }
+        return actualStat(entryPath);
+      });
+
+      try {
+        const result = await listDirectoryEntries({ root });
+
+        expect(result.entries.map((entry) => entry.name)).toEqual(["visible.txt"]);
+        denyRoot = true;
+        await expect(listDirectoryEntries({ root })).rejects.toMatchObject({ code: "EACCES" });
+      } finally {
+        statSpy.mockRestore();
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

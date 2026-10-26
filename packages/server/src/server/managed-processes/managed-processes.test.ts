@@ -206,6 +206,44 @@ describe("managed process registry", () => {
     expect(await restartedRegistry.list()).toHaveLength(1);
   });
 
+  test("keeps a helper record when termination times out", async () => {
+    tempHome = await mkdtemp(path.join(tmpdir(), "paseo-managed-processes-"));
+    const processTable = new FakeProcessTable([
+      {
+        pid: 4106,
+        commandLine: "opencode serve --port 4106",
+        startedAt: "process-start-token",
+      },
+    ]);
+    const terminator = new FakeProcessTerminator("kill-timeout");
+    const registry = createManagedProcessRegistry({
+      paseoHome: tempHome,
+      processTable,
+      terminateProcess: terminator.terminate,
+      logger: createTestLogger(),
+    });
+    await registry.record({
+      owner: { provider: "opencode", kind: "helper-server" },
+      pid: 4106,
+      command: "opencode",
+      args: ["serve", "--port", "4106"],
+      metadata: { port: 4106 },
+    });
+
+    const result = await registry.reapStale();
+
+    expect(result).toMatchObject({
+      checked: 1,
+      removed: 0,
+      terminated: 0,
+    });
+    expect(result.errors).toEqual([
+      { id: expect.any(String), message: "Timed out terminating managed helper PID 4106" },
+    ]);
+    expect(terminator.terminatedPids).toEqual([4106]);
+    expect(await registry.list()).toHaveLength(1);
+  });
+
   test("does not terminate a reused PID whose command line only mentions the tokens", async () => {
     tempHome = await mkdtemp(path.join(tmpdir(), "paseo-managed-processes-"));
     const terminator = new FakeProcessTerminator();
@@ -365,10 +403,11 @@ class FakeProcessTable implements ManagedProcessTable {
 
 class FakeProcessTerminator {
   readonly terminatedPids: number[] = [];
+  constructor(private readonly result: Awaited<ReturnType<ProcessTerminator>> = "terminated") {}
 
   readonly terminate: ProcessTerminator = async (target: TreeKillTarget) => {
     this.terminatedPids.push(target.pid ?? -1);
-    return "terminated";
+    return this.result;
   };
 }
 

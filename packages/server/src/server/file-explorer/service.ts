@@ -113,6 +113,35 @@ const READ_FILE_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
 const ACCESS_OUTSIDE_WORKSPACE_MESSAGE = "Access outside of workspace is not allowed";
 
+// This queue serializes writes issued by this daemon only; it is not a
+// filesystem lock and cannot exclude mutations made by external processes.
+const fileWriteQueueByCanonicalPath = new Map<string, Promise<void>>();
+
+async function withFileWriteLock<T>(
+  canonicalPath: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key =
+    process.platform === "win32" ? path.normalize(canonicalPath).toLowerCase() : canonicalPath;
+  const previous = fileWriteQueueByCanonicalPath.get(key) ?? Promise.resolve();
+  let releaseGate!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+  const tail = previous.then(() => gate);
+  fileWriteQueueByCanonicalPath.set(key, tail);
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    releaseGate();
+    if (fileWriteQueueByCanonicalPath.get(key) === tail) {
+      fileWriteQueueByCanonicalPath.delete(key);
+    }
+  }
+}
+
 function fileRevision(stats: BigIntStats): string {
   return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}`;
 }
@@ -150,7 +179,6 @@ interface EntryPayloadParams {
   root: string;
   targetPath: string;
   name: string;
-  kind: ExplorerEntryKind;
 }
 
 export async function listDirectoryEntries({
@@ -169,18 +197,20 @@ export async function listDirectoryEntries({
   const entriesWithNulls = await Promise.all(
     dirents.map(async (dirent) => {
       const targetPath = path.join(directoryPath.requestedPath, dirent.name);
-      const kind: ExplorerEntryKind = dirent.isDirectory() ? "directory" : "file";
       try {
         return await buildEntryPayload({
           root,
           targetPath,
           name: dirent.name,
-          kind,
         });
       } catch (error) {
-        // Directories can contain dangling links (e.g. AGENTS.md -> CLAUDE.md).
-        // Skip entries whose targets disappeared instead of failing the whole listing.
-        if (isMissingEntryError(error) || isOutsideWorkspaceError(error)) {
+        // Skip children that disappeared, became inaccessible, or resolve
+        // outside the workspace without hiding failures for the directory itself.
+        if (
+          isMissingEntryError(error) ||
+          isAccessDeniedError(error) ||
+          isOutsideWorkspaceError(error)
+        ) {
           return null;
         }
         throw error;
@@ -466,9 +496,40 @@ export async function writeExplorerFile({
   }
 
   let filePath: ScopedPath;
-  let currentMode = 0o600;
   try {
     filePath = await resolveScopedPath({ root, relativePath });
+  } catch (error) {
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+
+  return withFileWriteLock(filePath.resolvedPath, () =>
+    writeExplorerFileAtPath(
+      {
+        root,
+        relativePath,
+        contentEncoding,
+        expectedModifiedAt,
+        expectedRevision,
+      },
+      encoded,
+      filePath,
+    ),
+  );
+}
+
+async function writeExplorerFileAtPath(
+  {
+    root,
+    relativePath,
+    contentEncoding = "utf-8",
+    expectedModifiedAt,
+    expectedRevision,
+  }: Omit<WriteFileParams, "content">,
+  encoded: Buffer,
+  filePath: ScopedPath,
+): Promise<ExplorerFileWriteResult> {
+  let currentMode = 0o600;
+  try {
     const handle = await openFileForRead(filePath.resolvedPath);
     try {
       const stats = await handle.stat({ bigint: true });
@@ -725,10 +786,11 @@ export async function renameExplorerEntry({
       }
       throw error;
     });
-    if (targetStats) {
-      if (!(await isCaseOnlyRename(source, targetPath, sourceStats, targetStats))) {
-        return { status: "error", error: `"${trimmedName}" already exists` };
-      }
+    const caseOnlyRename =
+      targetStats !== null &&
+      (await isCaseOnlyRename(source, targetPath, sourceStats, targetStats));
+    if (targetStats && !caseOnlyRename) {
+      return { status: "error", error: `"${trimmedName}" already exists` };
     }
 
     const sourcePath = normalizeRelativePath({ root, targetPath: source.requestedPath });
@@ -750,8 +812,27 @@ export async function renameExplorerEntry({
         : null;
     if (tracked?.stdout) {
       await runGitCommand(["mv", "--", sourcePath, renamedPath], { cwd: realRoot });
-    } else {
+    } else if (caseOnlyRename) {
       await fs.rename(source.requestedPath, targetPath);
+    } else if (sourceStats.isFile()) {
+      // Creating the hard link is an atomic no-replace operation on the
+      // source filesystem. The source remains until the target exists.
+      await fs.link(source.requestedPath, targetPath);
+      await fs.unlink(source.requestedPath);
+    } else {
+      // cp creates the target exclusively for directories and links, unlike
+      // rename(2), which can replace a destination created after lstat.
+      await fs.cp(source.requestedPath, targetPath, {
+        recursive: sourceStats.isDirectory(),
+        errorOnExist: true,
+        force: false,
+        preserveTimestamps: true,
+        verbatimSymlinks: true,
+      });
+      await fs.rm(source.requestedPath, {
+        recursive: sourceStats.isDirectory(),
+        force: false,
+      });
     }
     return { status: "ok", path: renamedPath };
   } catch (error) {
@@ -795,12 +876,11 @@ export async function deleteExplorerEntry({
 }
 
 function isEntryExistsError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "EEXIST"
-  );
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "EEXIST" || code === "ERR_FS_CP_EEXIST";
 }
 
 async function isCaseOnlyRename(
@@ -855,7 +935,6 @@ async function buildEntryPayload({
   root,
   targetPath,
   name,
-  kind,
 }: EntryPayloadParams): Promise<FileExplorerEntry> {
   const entryPath = await resolveScopedPath({
     root,
@@ -865,7 +944,7 @@ async function buildEntryPayload({
   return {
     name,
     path: normalizeRelativePath({ root, targetPath }),
-    kind,
+    kind: stats.isDirectory() ? "directory" : "file",
     size: stats.size,
     modifiedAt: stats.mtime.toISOString(),
   };
@@ -874,6 +953,11 @@ async function buildEntryPayload({
 function isMissingEntryError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code;
   return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
+}
+
+function isAccessDeniedError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "EACCES" || code === "EPERM";
 }
 
 function isOutsideWorkspaceError(error: unknown): boolean {

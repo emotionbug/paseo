@@ -13,6 +13,7 @@ import type {
 import {
   resolvePaseoCliBinDir,
   resolvePaseoCliExecutablePath,
+  type TerminalExitInfo,
   type TerminalSession,
 } from "./terminal.js";
 import type { TerminalState } from "@getpaseo/protocol/messages";
@@ -112,6 +113,11 @@ class FakeTerminalWorker extends EventEmitter {
 
   emitWorkerMessage(message: TerminalWorkerToParentMessage): void {
     this.emit("message", message);
+  }
+
+  emitWorkerExit(code: number | null = 1, signal: NodeJS.Signals | null = null): void {
+    this.connected = false;
+    this.emit("exit", code, signal);
   }
 }
 
@@ -967,6 +973,10 @@ it("removes a killed worker terminal from terminalExit without duplicate snapsho
       workspaceId: "ws-test",
     },
   ]);
+
+  worker.emitWorkerExit(1);
+  expect(snapshots).toEqual([{ cwd: "/workspace", terminalIds: [] }]);
+  expect(contributions).toHaveLength(1);
 });
 
 it("does not resurrect a terminal that exited before its create response was handled", async () => {
@@ -1068,6 +1078,142 @@ it("replays the exit to a listener attached after a create that lost the race", 
   await new Promise((resolve) => setImmediate(resolve));
 
   expect(observedExits).toEqual([{ exitCode: 0 }]);
+});
+
+it("terminalizes every mirrored terminal and rejects pending RPCs when the worker exits", async () => {
+  const worker = new FakeTerminalWorker();
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 1000,
+    forkWorker: () => worker,
+  });
+  const workingActivity = { state: "working" as const, changedAt: 1000 };
+
+  const createdA = manager.createTerminal({
+    id: "terminal-a",
+    cwd: "/workspace",
+    workspaceId: "ws-test",
+  });
+  const createdB = manager.createTerminal({
+    id: "terminal-b",
+    cwd: "/workspace",
+    workspaceId: "ws-test",
+  });
+  const createRequests = worker.sentMessages.filter(
+    (message): message is Extract<TerminalWorkerRequest, { type: "createTerminal" }> =>
+      message.type === "createTerminal",
+  );
+  expect(createRequests).toHaveLength(2);
+  for (const request of createRequests) {
+    const terminalId = request.options.id;
+    if (!terminalId) {
+      throw new Error("createTerminal request has no terminal id");
+    }
+    worker.emitWorkerMessage({
+      type: "terminalCreated",
+      terminal: {
+        id: terminalId,
+        name: "Shell",
+        cwd: "/workspace",
+        workspaceId: "ws-test",
+        activity: workingActivity,
+      },
+      state: createTerminalState(),
+    });
+    worker.emitWorkerMessage({
+      type: "response",
+      requestId: request.requestId,
+      ok: true,
+    });
+  }
+  const [sessionA, sessionB] = await Promise.all([createdA, createdB]);
+  const tokenA = createRequests.find((request) => request.options.id === "terminal-a")?.options
+    .activityToken;
+  const tokenB = createRequests.find((request) => request.options.id === "terminal-b")?.options
+    .activityToken;
+  expect(tokenA).toEqual(expect.any(String));
+  expect(tokenB).toEqual(expect.any(String));
+
+  const exitsA: TerminalExitInfo[] = [];
+  const exitsB: TerminalExitInfo[] = [];
+  sessionA.onExit(() => {
+    throw new Error("listener failure");
+  });
+  sessionA.onExit((info) => exitsA.push(info));
+  sessionB.onExit((info) => exitsB.push(info));
+  const snapshots: Array<{ cwd: string; terminalIds: string[] }> = [];
+  manager.subscribeTerminalsChanged((event) => {
+    snapshots.push({
+      cwd: event.cwd,
+      terminalIds: event.terminals.map((terminal) => terminal.id),
+    });
+  });
+  const contributions: TerminalWorkspaceContributionChangedEvent[] = [];
+  manager.subscribeTerminalWorkspaceContributionChanged((event) => {
+    contributions.push(event);
+  });
+
+  const pendingState = manager.getTerminalState("terminal-a");
+  const pendingCreation = manager.createTerminal({
+    id: "terminal-pending",
+    cwd: "/workspace",
+    workspaceId: "ws-test",
+  });
+  const pendingCreateRequest = worker.sentMessages.find(
+    (message) => message.type === "createTerminal" && message.options.id === "terminal-pending",
+  );
+  if (!pendingCreateRequest || pendingCreateRequest.type !== "createTerminal") {
+    throw new Error("pending createTerminal request not sent");
+  }
+  const pendingToken = pendingCreateRequest.options.activityToken;
+  expect(manager.validateTerminalActivityToken("terminal-pending", pendingToken ?? "")).toBe(
+    "valid",
+  );
+  const pendingStateRejected = expect(pendingState).rejects.toThrow(
+    "Terminal worker exited (SIGKILL)",
+  );
+  const pendingCreationRejected = expect(pendingCreation).rejects.toThrow(
+    "Terminal worker exited (SIGKILL)",
+  );
+
+  worker.emitWorkerExit(null, "SIGKILL");
+
+  expect(manager.validateTerminalActivityToken("terminal-pending", pendingToken ?? "")).toBe(
+    "unknown",
+  );
+  await pendingStateRejected;
+  await pendingCreationRejected;
+  expect(manager.getTerminal("terminal-a")).toBeUndefined();
+  expect(manager.getTerminal("terminal-b")).toBeUndefined();
+  expect(await manager.getTerminals("/workspace")).toEqual([]);
+  expect(manager.listDirectories()).toEqual([]);
+  expect(manager.validateTerminalActivityToken("terminal-a", tokenA ?? "")).toBe("unknown");
+  expect(manager.validateTerminalActivityToken("terminal-b", tokenB ?? "")).toBe("unknown");
+
+  const abnormalExit = { exitCode: 1, signal: null, lastOutputLines: [] };
+  expect(exitsA).toEqual([abnormalExit]);
+  expect(exitsB).toEqual([abnormalExit]);
+  expect(sessionA.getExitInfo()).toEqual(abnormalExit);
+  expect(sessionB.getExitInfo()).toEqual(abnormalExit);
+  expect(snapshots).toEqual([
+    { cwd: "/workspace", terminalIds: ["terminal-b"] },
+    { cwd: "/workspace", terminalIds: [] },
+  ]);
+  expect(contributions).toEqual([
+    { terminalId: "terminal-a", cwd: "/workspace", workspaceId: "ws-test" },
+    { terminalId: "terminal-b", cwd: "/workspace", workspaceId: "ws-test" },
+  ]);
+
+  // A queued per-terminal exit or duplicate worker exit must not re-run cleanup.
+  worker.emitWorkerMessage({
+    type: "terminalExit",
+    terminalId: "terminal-a",
+    info: { exitCode: 0, signal: null, lastOutputLines: [] },
+  });
+  worker.emitWorkerExit(2);
+  expect(exitsA).toEqual([abnormalExit]);
+  expect(exitsB).toEqual([abnormalExit]);
+  expect(snapshots).toHaveLength(2);
+  expect(contributions).toHaveLength(2);
 });
 
 it("rejects createTerminal and registers nothing when the worker cannot start the command", async () => {

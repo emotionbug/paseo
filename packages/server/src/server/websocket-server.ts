@@ -450,6 +450,10 @@ export interface WebSocketLike {
   terminate?: () => void;
   on: (event: "message" | "close" | "error", listener: (...args: unknown[]) => void) => void;
   once: (event: "close" | "error", listener: (...args: unknown[]) => void) => void;
+  removeListener?: (
+    event: "message" | "close" | "error",
+    listener: (...args: unknown[]) => void,
+  ) => void;
 }
 
 interface SessionConnectionBase {
@@ -507,6 +511,7 @@ const WS_CLOSE_HELLO_TIMEOUT = 4001;
 const WS_CLOSE_INVALID_HELLO = 4002;
 const WS_CLOSE_INCOMPATIBLE_PROTOCOL = 4003;
 const WS_CLOSE_SERVER_SHUTDOWN = 1001;
+const WS_CLOSE_SHUTDOWN_GRACE_MS = 5_000;
 const WS_PROTOCOL_VERSION = 1;
 const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
 const OWNER_SESSION_ADMISSION: SessionAdmission = {
@@ -616,6 +621,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly hubRelationships: HubRelationshipManagement | null;
   private connectionLifecycle: "starting" | "accepting" | "stopping" = "accepting";
+  private closePromise: Promise<void> | null = null;
   private readonly advertiseDaemonStatusRpc: boolean;
   private readonly advertiseRelayConfig: boolean;
   private readonly directorySync = new DirectorySyncService();
@@ -1132,7 +1138,12 @@ export class VoiceAssistantWebSocketServer {
     }
   }
 
-  public async close(): Promise<void> {
+  public close(): Promise<void> {
+    this.closePromise ??= this.closeOnce();
+    return this.closePromise;
+  }
+
+  private async closeOnce(): Promise<void> {
     this.prepareForShutdown();
     await this.agentMessages.close();
     await this.connectedHosts.close();
@@ -1159,8 +1170,8 @@ export class VoiceAssistantWebSocketServer {
       ...this.sessions.values(),
       ...this.externalSessionsByKey.values(),
     ]);
+    const sockets = new Set<WebSocketLike>(this.pendingConnections.keys());
 
-    const pendingSockets = new Set<WebSocketLike>(this.pendingConnections.keys());
     for (const pending of this.pendingConnections.values()) {
       if (pending.helloTimeout) {
         clearTimeout(pending.helloTimeout);
@@ -1177,31 +1188,11 @@ export class VoiceAssistantWebSocketServer {
 
       cleanupPromises.push(Promise.resolve(connection.session.cleanup()));
       for (const ws of connection.sockets) {
-        cleanupPromises.push(
-          new Promise<void>((resolve) => {
-            // WebSocket.CLOSED = 3
-            if (ws.readyState === 3) {
-              resolve();
-              return;
-            }
-            ws.once("close", () => resolve());
-            ws.close();
-          }),
-        );
+        sockets.add(ws);
       }
     }
-
-    for (const ws of pendingSockets) {
-      cleanupPromises.push(
-        new Promise<void>((resolve) => {
-          if (ws.readyState === 3) {
-            resolve();
-            return;
-          }
-          ws.once("close", () => resolve());
-          ws.close();
-        }),
-      );
+    for (const ws of sockets) {
+      cleanupPromises.push(this.closeSocketForShutdown(ws));
     }
 
     await Promise.all(cleanupPromises);
@@ -1213,6 +1204,64 @@ export class VoiceAssistantWebSocketServer {
     this.socketIdentities.clear();
     this.externalSessionsByKey.clear();
     this.wss.close();
+  }
+
+  private closeSocketForShutdown(ws: WebSocketLike): Promise<void> {
+    // WebSocket.CLOSED = 3
+    if (ws.readyState === 3) {
+      return Promise.resolve();
+    }
+
+    let resolveClose!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    function onClose() {
+      finish();
+    }
+    function finish() {
+      if (settled) return;
+      settled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+      try {
+        ws.removeListener?.("close", onClose);
+      } finally {
+        resolveClose();
+      }
+    }
+
+    if (ws.removeListener) {
+      ws.on("close", onClose);
+    } else {
+      ws.once("close", onClose);
+    }
+    timeout = setTimeout(() => {
+      if (ws.readyState !== 3) {
+        try {
+          if (ws.terminate) {
+            ws.terminate();
+          } else {
+            ws.close();
+          }
+        } catch (err) {
+          this.logger.warn({ err }, "Failed to force-terminate WebSocket during shutdown");
+        }
+      }
+      finish();
+    }, WS_CLOSE_SHUTDOWN_GRACE_MS);
+    (timeout as unknown as { unref?: () => void }).unref?.();
+
+    try {
+      ws.close(WS_CLOSE_SERVER_SHUTDOWN, "Server shutting down");
+    } catch (err) {
+      this.logger.warn({ err }, "Failed to start WebSocket close handshake during shutdown");
+    }
+    return promise;
   }
 
   private sendToClient(ws: WebSocketLike, message: WSOutboundMessage): void {
@@ -2239,6 +2288,13 @@ export class VoiceAssistantWebSocketServer {
     this.socketIdentities.delete(ws);
 
     if (connection.sockets.size === 0) {
+      if (this.connectionLifecycle === "stopping") {
+        if (connection.lifecycle === "ephemeral-plugin") {
+          this.pluginSocketIds.delete(ws);
+        }
+        this.finishPluginSocketCleanup(ws);
+        return;
+      }
       if (connection.lifecycle === "ephemeral-plugin") {
         this.pluginSocketIds.delete(ws);
         await this.cleanupConnection(connection, "Plugin session disconnected");

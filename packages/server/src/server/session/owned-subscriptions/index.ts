@@ -258,6 +258,7 @@ export class SessionDelivery {
       if (
         "requestId" in owner.request &&
         "payload" in message &&
+        message.payload !== undefined &&
         "requestId" in message.payload &&
         message.payload.requestId === owner.request.requestId
       ) {

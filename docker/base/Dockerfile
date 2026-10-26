@@ -3,19 +3,37 @@
 ARG NODE_IMAGE=node:22-bookworm-slim
 FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS source-pack
 
-ARG PASEO_VERSION
-
 ENV ONNXRUNTIME_NODE_INSTALL=skip
 
 WORKDIR /tmp/paseo-src
+
+COPY package.json package-lock.json ./
+COPY plugins/package.json plugins/package.json
+COPY packages/expo-two-way-audio/package.json packages/expo-two-way-audio/package.json
+COPY packages/highlight/package.json packages/highlight/package.json
+COPY packages/plugin/package.json packages/plugin/package.json
+COPY packages/protocol/package.json packages/protocol/package.json
+COPY packages/client/package.json packages/client/package.json
+COPY packages/server/package.json packages/server/package.json
+COPY packages/app/package.json packages/app/package.json
+COPY packages/relay/package.json packages/relay/package.json
+COPY packages/website/package.json packages/website/package.json
+COPY packages/desktop/package.json packages/desktop/package.json
+COPY packages/cli/package.json packages/cli/package.json
+COPY patches/ patches/
+COPY scripts/postinstall-patches.mjs scripts/postinstall-patches.mjs
+
+RUN set -eux; \
+    node -e 'const fs=require("node:fs"); const pkg=JSON.parse(fs.readFileSync("package.json","utf8")); delete pkg.scripts.prepare; fs.writeFileSync("package.json", `${JSON.stringify(pkg)}\n`);'; \
+    npm ci
+
 COPY . .
 
+ARG PASEO_VERSION
 RUN set -eux; \
     if [ -n "${PASEO_VERSION:-}" ]; then \
       test "$(node -p "require('./package.json').version")" = "${PASEO_VERSION}"; \
-    fi; \
-    node -e 'const fs=require("node:fs"); const pkg=JSON.parse(fs.readFileSync("package.json","utf8")); delete pkg.scripts.prepare; fs.writeFileSync("package.json", `${JSON.stringify(pkg)}\n`);'; \
-    npm ci
+    fi
 
 RUN set -eux; \
     mkdir -p /tmp/paseo-packs; \

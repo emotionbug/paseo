@@ -8,11 +8,20 @@ export interface BrowserWebContentsRegistration {
   hostWebContentsId: number;
 }
 
+export interface BrowserWebContentsUnregisteredEvent extends BrowserWebContentsRegistration {
+  webContentsId: number;
+}
+
+export type BrowserWebContentsUnregisteredListener = (
+  event: BrowserWebContentsUnregisteredEvent,
+) => void;
+
 export class PaseoBrowserWebviewRegistry {
   private readonly registrationsByWebContentsId = new Map<number, BrowserWebContentsRegistration>();
   private readonly webContentsIdsByHostAndBrowserId = new Map<string, number>();
   private readonly workspaceIdsByBrowserId = new Map<string, string>();
   private readonly activeBrowserIdsByHostWindow = new Map<number, Map<string, string>>();
+  private readonly unregisteredListeners = new Set<BrowserWebContentsUnregisteredListener>();
 
   public registerWebContents(input: {
     webContentsId: number;
@@ -41,6 +50,13 @@ export class PaseoBrowserWebviewRegistry {
       hostWebContentsId: input.hostWebContentsId,
     });
     this.webContentsIdsByHostAndBrowserId.set(hostBrowserKey, input.webContentsId);
+  }
+
+  public onWebContentsUnregistered(listener: BrowserWebContentsUnregisteredListener): () => void {
+    this.unregisteredListeners.add(listener);
+    return () => {
+      this.unregisteredListeners.delete(listener);
+    };
   }
 
   public unregisterWebContents(webContentsId: number): void {
@@ -83,13 +99,13 @@ export class PaseoBrowserWebviewRegistry {
   }
 
   public unregisterBrowser(browserId: string): void {
-    for (const [webContentsId, registration] of this.registrationsByWebContentsId) {
-      if (registration.browserId === browserId) {
-        this.registrationsByWebContentsId.delete(webContentsId);
-        this.webContentsIdsByHostAndBrowserId.delete(
-          this.hostBrowserKey(registration.hostWebContentsId, browserId),
-        );
-      }
+    const webContentsIds = Array.from(
+      this.registrationsByWebContentsId.entries(),
+      ([webContentsId, registration]) =>
+        registration.browserId === browserId ? webContentsId : null,
+    ).filter((webContentsId): webContentsId is number => webContentsId !== null);
+    for (const webContentsId of webContentsIds) {
+      this.removeWebContents(webContentsId);
     }
     this.workspaceIdsByBrowserId.delete(browserId);
     this.deleteActiveBrowserReferences(browserId);
@@ -237,6 +253,12 @@ export class PaseoBrowserWebviewRegistry {
       !this.hasBrowserInHostWindow(browserId, hostWebContentsId)
     ) {
       this.deleteActiveBrowserReferencesInHostWindow(browserId, hostWebContentsId);
+    }
+    if (!options.preserveActiveBrowser) {
+      const event = { webContentsId, browserId, hostWebContentsId };
+      for (const listener of this.unregisteredListeners) {
+        listener(event);
+      }
     }
   }
 

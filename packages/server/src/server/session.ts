@@ -3318,6 +3318,7 @@ export class Session {
       await this.agentManager.deleteAgentState(agentId);
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
+      throw error;
     }
 
     this.emit({

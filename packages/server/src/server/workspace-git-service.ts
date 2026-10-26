@@ -789,7 +789,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     let mainRepoRoot = facts.mainRepoRoot;
     if (isPaseoOwnedWorktree) {
       mainRepoRoot ??= facts.worktreeRoot;
-    } else if (mainRepoRoot && resolve(mainRepoRoot) === resolve(facts.worktreeRoot)) {
+    } else if (mainRepoRoot && createRealpathAwarePathMatcher(mainRepoRoot)(facts.worktreeRoot)) {
       mainRepoRoot = null;
     }
     return checkoutLiteFromGitSnapshot(normalizedCwd, {

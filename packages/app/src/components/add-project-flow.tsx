@@ -12,6 +12,7 @@ import {
   Search,
   Server,
 } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import {
   createElement,
   useCallback,
@@ -35,15 +36,19 @@ import {
   type EditingTextInputHandle,
 } from "@/components/ui/text-input";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { Button } from "@/components/ui/button";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   applyAvailableAddProjectHosts,
   backAddProjectPage,
+  backDirectoryBrowser,
   chooseAddProjectHost,
   currentAddProjectPage,
   moveAddProjectSelection,
   openAddProjectFlow,
+  navigateDirectoryBrowser,
   openDirectorySearchPage,
+  openDirectoryBrowserPage,
   openGithubLocationPage,
   openGithubSearchPage,
   openNewDirectoryNamePage,
@@ -62,9 +67,12 @@ import {
   addProjectMethodEmptyText,
   buildCloneLocationOptions,
   buildManualGithubRepositoryChoices,
+  canConfirmDirectoryBrowser,
   buildSuggestedParentDirectories,
+  directoryBrowserNames,
   filterAddProjectHosts,
   joinDirectoryPath,
+  ownsDirectoryBrowserListing,
   pathBaseName,
   type AddProjectMethodId,
 } from "@/add-project-flow/options";
@@ -166,7 +174,7 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
 
 function methodIcon(method: AddProjectMethodId): FlowRowOption["icon"] {
   if (method === "github") return GitHubIcon;
-  if (method === "browse") return FolderOpen;
+  if (method === "browse" || method === "directory-browser") return FolderOpen;
   if (method === "new-directory") return FolderPlus;
   return Search;
 }
@@ -218,6 +226,8 @@ function pageTitle(page: AddProjectPage): string {
       return "Add project";
     case "directory-search":
       return "Search for directory";
+    case "directory-browser":
+      return "Browse directories";
     case "github-search":
       return "Clone from GitHub";
     case "github-location":
@@ -229,7 +239,7 @@ function pageTitle(page: AddProjectPage): string {
   }
 }
 
-type AddProjectInputPage = Exclude<AddProjectPage, { kind: "method" }>;
+type AddProjectInputPage = Exclude<AddProjectPage, { kind: "method" | "directory-browser" }>;
 
 function pagePlaceholder(page: AddProjectInputPage): string {
   switch (page.kind) {
@@ -331,6 +341,7 @@ function setPageStatus(
 // The product flow is intentionally one cohesive page-stack state machine.
 // eslint-disable-next-line complexity
 export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
+  const { t } = useTranslation();
   const hosts = useHosts();
   const hostIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
   const connectionStatuses = useHostRuntimeConnectionStatuses(hostIds);
@@ -383,6 +394,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const page = currentAddProjectPage(state);
   const hostId = pageHostId(page);
   const host = hostId ? state.hosts.find((candidate) => candidate.serverId === hostId) : null;
+  const knownHost = hostId ? hosts.find((candidate) => candidate.serverId === hostId) : null;
+  const hostConnected = hostId ? connectionStatuses.get(hostId) === "online" : false;
   const client = useHostRuntimeClient(hostId ?? "");
   const isLocalDaemon = useIsLocalDaemon(hostId ?? "");
   const recommendedPaths = useRecommendedProjectPaths(hostId);
@@ -402,9 +415,17 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const resultsRef = useRef<ScrollView>(null);
   const submissionInFlightRef = useRef(false);
   const browseInFlightRef = useRef(false);
-  const query = page.kind === "new-directory-name" || page.kind === "method" ? "" : page.query;
-  const pageInputValueRef = useRef(page.kind === "method" ? "" : pageInput(page));
-  pageInputValueRef.current = page.kind === "method" ? "" : pageInput(page);
+  const query =
+    page.kind === "new-directory-name" ||
+    page.kind === "method" ||
+    page.kind === "directory-browser"
+      ? ""
+      : page.query;
+  const pageInputValueRef = useRef(
+    page.kind === "method" || page.kind === "directory-browser" ? "" : pageInput(page),
+  );
+  pageInputValueRef.current =
+    page.kind === "method" || page.kind === "directory-browser" ? "" : pageInput(page);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
@@ -450,6 +471,25 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     retry: false,
     staleTimeMs: 15_000,
   });
+  const browserPath = page.kind === "directory-browser" ? page.currentPath : "";
+  const browserQuery = useFetchQuery({
+    queryKey: ["add-project-flow-directory-browser", hostId, browserPath],
+    queryFn: async () => {
+      if (!client || !hostId) throw new Error(t("addProject.directoryBrowser.hostUnavailable"));
+      const directory = await client.listDirectory(browserPath, ".");
+      return {
+        hostId,
+        path: browserPath,
+        names: directoryBrowserNames(directory.entries),
+      };
+    },
+    enabled: Boolean(
+      client && hostId && hostConnected && page.kind === "directory-browser" && browserPath,
+    ),
+    dataShape: "value",
+    retry: false,
+    staleTimeMs: 15_000,
+  });
   const githubQuery = useFetchQuery({
     queryKey: ["add-project-flow-github", hostId, debouncedQuery],
     queryFn: async () => {
@@ -465,6 +505,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
 
   const handleBack = useCallback(() => {
     setState((current) => {
+      const previousBrowserLocation = backDirectoryBrowser(current);
+      if (previousBrowserLocation) return previousBrowserLocation;
       const previous = backAddProjectPage(current);
       if (previous) return previous;
       onClose();
@@ -489,8 +531,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   );
 
   const openAddedProject = useCallback(
-    async (path: string, sourceKind: "directory-search" | "method") => {
-      if (!hostId || submissionInFlightRef.current) return;
+    async (path: string, sourceKind: "directory-browser" | "directory-search" | "method") => {
+      if (!hostId || !hostConnected || submissionInFlightRef.current) return;
       submissionInFlightRef.current = true;
       setState((current) =>
         setPageStatus(current, sourceKind, { isSubmitting: true, error: null }),
@@ -518,7 +560,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         submissionInFlightRef.current = false;
       }
     },
-    [hostId, openNewWorkspaceForProject, openProject],
+    [hostConnected, hostId, openNewWorkspaceForProject, openProject],
   );
 
   const browse = useCallback(async () => {
@@ -539,7 +581,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const selectMethod = useCallback(
     (method: AddProjectMethodId) => {
       if (!hostId) return;
-      if (method === "directory-search") {
+      if (method === "directory-browser") {
+        setState((current) => openDirectoryBrowserPage(current, hostId));
+      } else if (method === "directory-search") {
         setState((current) => openDirectorySearchPage(current, hostId));
       } else if (method === "browse") {
         void browse();
@@ -565,6 +609,12 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       }),
     [directoryPaths, query, recommendedPaths],
   );
+  const browserListing =
+    hostConnected &&
+    page.kind === "directory-browser" &&
+    ownsDirectoryBrowserListing(browserQuery.data, page.hostId, page.currentPath)
+      ? browserQuery.data
+      : null;
   const cloneRepository = useCallback(
     async (locationPage: GithubLocationPage, parentPath: string) => {
       if (submissionInFlightRef.current) return;
@@ -634,13 +684,33 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (!host) return [];
       return buildAddProjectMethods(host).map((method) => ({
         id: method.id,
-        title: method.label,
-        subtitle: method.description,
+        title:
+          method.id === "directory-browser"
+            ? t("addProject.directoryBrowser.methodLabel")
+            : method.label,
+        subtitle:
+          method.id === "directory-browser"
+            ? t("addProject.directoryBrowser.methodDescription", { host: host.label })
+            : method.description,
         icon: methodIcon(method.id),
         disabled: method.disabled,
         testID: `add-project-flow-method-${method.id}`,
         select: () => selectMethod(method.id),
       }));
+    }
+    if (page.kind === "directory-browser") {
+      if (!browserListing) return [];
+      return browserListing.names.map((name) => {
+        const childPath = joinDirectoryPath(page.currentPath, name);
+        return {
+          id: childPath,
+          title: name,
+          subtitle: childPath,
+          icon: Folder,
+          testID: `add-project-flow-directory-${encodeURIComponent(name)}`,
+          select: () => setState((current) => navigateDirectoryBrowser(current, childPath)),
+        };
+      });
     }
     if (page.kind === "directory-search") {
       return pathOptions.map((option) => {
@@ -719,6 +789,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     }
     return [];
   }, [
+    browserListing,
     cloneRepository,
     directoryPaths,
     githubQuery.data,
@@ -730,6 +801,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     recommendedPaths,
     selectMethod,
     state.hosts,
+    t,
   ]);
 
   const activeIndex = rows.length === 0 ? 0 : Math.min(page.activeIndex, rows.length - 1);
@@ -870,6 +942,55 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     page.kind === "new-directory-name" && page.name.trim()
       ? joinDirectoryPath(page.parentPath, page.name.trim())
       : null;
+  const isDirectoryBrowser = page.kind === "directory-browser";
+  const selectedBrowserPath = isDirectoryBrowser ? browserPath : null;
+  const handleDirectoryHome = useCallback(() => {
+    setState((current) => {
+      const currentPage = currentAddProjectPage(current);
+      return currentPage.kind === "directory-browser"
+        ? navigateDirectoryBrowser(current, "~")
+        : current;
+    });
+  }, []);
+  const handleDirectoryManualPath = useCallback(() => {
+    setState((current) => {
+      const currentPage = currentAddProjectPage(current);
+      return currentPage.kind === "directory-browser"
+        ? openDirectorySearchPage(current, currentPage.hostId)
+        : current;
+    });
+  }, []);
+  const refetchBrowserDirectory = browserQuery.refetch;
+  const handleDirectoryRetry = useCallback(() => {
+    void refetchBrowserDirectory();
+  }, [refetchBrowserDirectory]);
+  const handleDirectorySelect = useCallback(() => {
+    if (selectedBrowserPath !== null) {
+      void openAddedProject(selectedBrowserPath, "directory-browser");
+    }
+  }, [selectedBrowserPath, openAddedProject]);
+  const browserDisconnected = isDirectoryBrowser && Boolean(knownHost) && !hostConnected;
+  const browserHostUnavailable =
+    isDirectoryBrowser && !browserDisconnected && (!knownHost || !client);
+  const browserLoading =
+    isDirectoryBrowser &&
+    hostConnected &&
+    !browserListing &&
+    !browserQuery.isError &&
+    browserQuery.isFetching;
+  let browserError: string | null = null;
+  if (isDirectoryBrowser && hostConnected && browserQuery.isError) {
+    browserError =
+      browserQuery.error instanceof Error
+        ? browserQuery.error.message
+        : t("addProject.directoryBrowser.error");
+  }
+  const canSelectBrowserDirectory = canConfirmDirectoryBrowser({
+    ownsListing: isDirectoryBrowser && Boolean(browserListing),
+    connected: hostConnected && Boolean(client),
+    failed: browserQuery.isError,
+    submitting: Boolean(isSubmitting),
+  });
 
   const modal = (
     <Modal visible transparent animationType="fade" onRequestClose={isWeb ? undefined : handleBack}>
@@ -886,16 +1007,18 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
               {state.pages.length > 1 ? <FlowBackButton onPress={handleBack} /> : null}
               <View style={styles.titleGroup} testID="add-project-flow-title">
                 <Text style={styles.title} numberOfLines={1}>
-                  {pageTitle(page)}
+                  {page.kind === "directory-browser"
+                    ? t("addProject.directoryBrowser.title")
+                    : pageTitle(page)}
                 </Text>
-                {host ? (
+                {host || knownHost ? (
                   <Text style={styles.hostContext} numberOfLines={1}>
-                    {host.label}
+                    {(host ?? knownHost)?.label}
                   </Text>
                 ) : null}
               </View>
             </View>
-            {page.kind === "method" && isNative ? (
+            {(page.kind === "method" || page.kind === "directory-browser") && isNative ? (
               // Native hardware-keyboard events need a focused responder even without a visible field.
               <TextInput
                 ref={inputRef}
@@ -912,7 +1035,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
                 testID="add-project-flow-keyboard-capture"
               />
             ) : null}
-            {page.kind !== "method" ? (
+            {page.kind !== "method" && page.kind !== "directory-browser" ? (
               <ThemedTextInput
                 ref={inputRef}
                 initialValue={pageInput(page)}
@@ -929,6 +1052,37 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
               />
             ) : null}
           </View>
+          {page.kind === "directory-browser" ? (
+            <View style={styles.browserToolbar}>
+              <Text
+                style={styles.browserPath}
+                numberOfLines={1}
+                testID="add-project-flow-directory-browser-path"
+              >
+                {page.currentPath}
+              </Text>
+              <View style={styles.browserToolbarActions}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onPress={handleDirectoryHome}
+                  disabled={page.currentPath === "~" || isSubmitting}
+                  testID="add-project-flow-directory-browser-home"
+                >
+                  {t("addProject.directoryBrowser.home")}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onPress={handleDirectoryManualPath}
+                  disabled={isSubmitting}
+                  testID="add-project-flow-directory-browser-manual"
+                >
+                  {t("addProject.directoryBrowser.manualPath")}
+                </Button>
+              </View>
+            </View>
+          ) : null}
           <ScrollView
             ref={resultsRef}
             style={styles.results}
@@ -965,9 +1119,41 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
                   Loading...
                 </Text>
               ) : null}
+              {!isSubmitting && browserHostUnavailable ? (
+                <Text style={styles.errorText} testID="add-project-flow-host-unavailable">
+                  {t("addProject.directoryBrowser.hostUnavailable")}
+                </Text>
+              ) : null}
+              {!isSubmitting && browserDisconnected ? (
+                <Text style={styles.errorText} testID="add-project-flow-directory-disconnected">
+                  {t("addProject.directoryBrowser.disconnected")}
+                </Text>
+              ) : null}
+              {!isSubmitting && browserLoading ? (
+                <Text style={styles.stateText} testID="add-project-flow-directory-loading">
+                  {t("addProject.directoryBrowser.loading")}
+                </Text>
+              ) : null}
+              {!isSubmitting && browserError ? (
+                <View style={styles.browserError} testID="add-project-flow-directory-error">
+                  <Text style={styles.errorText}>
+                    {t("addProject.directoryBrowser.error")}: {browserError}
+                  </Text>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onPress={handleDirectoryRetry}
+                    testID="add-project-flow-directory-retry"
+                  >
+                    {t("addProject.directoryBrowser.retry")}
+                  </Button>
+                </View>
+              ) : null}
               {!isSubmitting &&
               (!loading || page.kind === "github-search") &&
-              (!queryError || page.kind === "github-search")
+              (!queryError || page.kind === "github-search") &&
+              (!isDirectoryBrowser ||
+                Boolean(browserListing && !browserError && !browserDisconnected))
                 ? rows.map((option, index) => (
                     <FlowRow
                       key={option.id}
@@ -981,19 +1167,43 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
               {!isSubmitting &&
               !loading &&
               !queryError &&
+              !isDirectoryBrowser &&
               rows.length === 0 &&
               page.kind !== "new-directory-name" ? (
                 <Text style={styles.stateText} testID="add-project-flow-empty">
                   {emptyText(page, host ?? null)}
                 </Text>
               ) : null}
+              {!isSubmitting && browserListing && !browserError && rows.length === 0 ? (
+                <Text style={styles.stateText} testID="add-project-flow-directory-empty">
+                  {t("addProject.directoryBrowser.empty")}
+                </Text>
+              ) : null}
             </View>
           </ScrollView>
-          <View style={styles.footer} testID="add-project-flow-footer">
-            <FlowHint keys={NAVIGATION_HINT_KEYS} action="Navigate" />
-            <FlowHint keys={SELECT_HINT_KEYS} action="Select" />
-            <FlowHint keys={ESCAPE_HINT_KEYS} action={state.pages.length > 1 ? "Back" : "Close"} />
-          </View>
+          {page.kind === "directory-browser" ? (
+            <View style={styles.browserFooter} testID="add-project-flow-footer">
+              <Button
+                style={styles.browserSelectButton}
+                variant="default"
+                onPress={handleDirectorySelect}
+                disabled={!canSelectBrowserDirectory}
+                loading={isSubmitting}
+                testID="add-project-flow-directory-select"
+              >
+                {t("addProject.directoryBrowser.select")}
+              </Button>
+            </View>
+          ) : (
+            <View style={styles.footer} testID="add-project-flow-footer">
+              <FlowHint keys={NAVIGATION_HINT_KEYS} action="Navigate" />
+              <FlowHint keys={SELECT_HINT_KEYS} action="Select" />
+              <FlowHint
+                keys={ESCAPE_HINT_KEYS}
+                action={state.pages.length > 1 ? "Back" : "Close"}
+              />
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -1079,6 +1289,27 @@ const styles = StyleSheet.create((theme) => ({
     height: 1,
     opacity: 0,
   },
+  browserToolbar: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  browserPath: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  browserToolbarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
   results: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
   resultsContent: { paddingVertical: theme.spacing[2] },
   row: {
@@ -1112,6 +1343,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
   },
+  browserError: {
+    alignItems: "flex-start",
+    paddingBottom: theme.spacing[3],
+  },
   footer: {
     flexShrink: 0,
     flexDirection: "row",
@@ -1122,6 +1357,16 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  browserFooter: {
+    flexShrink: 0,
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  browserSelectButton: {
+    width: "100%",
   },
   footerHint: {
     flexDirection: "row",

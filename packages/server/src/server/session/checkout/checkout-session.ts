@@ -1461,7 +1461,7 @@ type PullRequestTimelinePayload = Extract<
   SessionOutboundMessage,
   { type: "pull_request_timeline_response" }
 >["payload"];
-type PullRequestTimelinePayloadItem = PullRequestTimelinePayload["items"][number];
+type PullRequestTimelinePayloadItem = NonNullable<PullRequestTimelinePayload>["items"][number];
 
 function isValidPullRequestTimelineIdentity(options: {
   prNumber: number;

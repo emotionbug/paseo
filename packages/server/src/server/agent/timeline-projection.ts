@@ -299,6 +299,10 @@ export type ProjectedTimelineRow = AgentTimelineRow & TimelineProjectionEntry;
 export class TimelineProjection {
   private readonly rows: ProjectedTimelineRow[] = [];
   private readonly identities = new Map<string, number>();
+  private readonly submittedUserMessages = new Map<string, number>();
+  private latestSeq = Number.NEGATIVE_INFINITY;
+  private latestRowIndex: number | null = null;
+  private lastAssistantRowIndex: number | null = null;
 
   append(row: AgentTimelineRow): void {
     const entry = makeCanonicalEntries([row])[0];
@@ -307,7 +311,9 @@ export class TimelineProjection {
     const existing = index === undefined ? undefined : this.rows[index];
     const merged = existing ? mergeIdentityEntries(existing, entry) : null;
     if (merged && index !== undefined) {
-      this.rows[index] = { ...merged, seq: merged.seqEnd };
+      const projected = { ...merged, seq: merged.seqEnd };
+      this.rows[index] = projected;
+      this.recordLatestRow(index, projected);
       return;
     }
     const previous = this.rows.at(-1);
@@ -316,11 +322,67 @@ export class TimelineProjection {
       : [entry];
     if (previous && adjacent.length === 1) {
       const mergedText = adjacent[0];
-      this.rows[this.rows.length - 1] = { ...mergedText, seq: mergedText.seqEnd };
+      const mergedIndex = this.rows.length - 1;
+      const projected = { ...mergedText, seq: mergedText.seqEnd };
+      this.rows[mergedIndex] = projected;
+      this.recordLatestRow(mergedIndex, projected);
+      if (projected.item.type === "assistant_message") {
+        this.lastAssistantRowIndex = mergedIndex;
+      }
       return;
     }
     if (identity !== null) this.identities.set(identity, this.rows.length);
-    this.rows.push({ ...entry, seq: entry.seqEnd });
+    const projected = { ...entry, seq: entry.seqEnd };
+    const projectedIndex = this.rows.length;
+    this.rows.push(projected);
+    this.recordLatestRow(projectedIndex, projected);
+    if (projected.item.type === "assistant_message") {
+      this.lastAssistantRowIndex = projectedIndex;
+    }
+    if (
+      projected.item.type === "user_message" &&
+      projected.item.clientMessageId &&
+      !this.submittedUserMessages.has(projected.item.clientMessageId)
+    ) {
+      this.submittedUserMessages.set(projected.item.clientMessageId, projectedIndex);
+    }
+  }
+
+  getItems(): AgentTimelineItem[] {
+    return this.rows.map((row) => row.item);
+  }
+
+  getMinSeq(): number | null {
+    return this.rows[0]?.seqStart ?? null;
+  }
+
+  getSubmittedUserMessage(clientMessageId: string): ProjectedTimelineRow | null {
+    const index = this.submittedUserMessages.get(clientMessageId);
+    const row = index === undefined ? undefined : this.rows[index];
+    return row ? { ...row } : null;
+  }
+
+  getRowEndingAt(seq: number): ProjectedTimelineRow | null {
+    const latest =
+      seq === this.latestSeq && this.latestRowIndex !== null
+        ? this.rows[this.latestRowIndex]
+        : this.rows.find((candidate) => candidate.seqEnd === seq);
+    return latest ? { ...latest } : null;
+  }
+
+  getLastAssistantMessage(): string | null {
+    const row =
+      this.lastAssistantRowIndex === null ? undefined : this.rows[this.lastAssistantRowIndex];
+    return row?.item.type === "assistant_message" ? row.item.text : null;
+  }
+
+  selectPage(input: {
+    bounds: { minSeq: number; maxSeq: number };
+    direction: TimelineLimitDirection;
+    cursorSeq?: number;
+    limit?: number;
+  }): ProjectedTimelinePageSelection {
+    return selectProjectedTimelinePageFromEntries({ ...input, entries: this.rows });
   }
 
   getRows(): ProjectedTimelineRow[] {
@@ -331,12 +393,16 @@ export class TimelineProjection {
     clientMessageId: string,
     providerMessageId: string,
   ): ProjectedTimelineRow | null {
-    const index = this.rows.findIndex(
-      (row) => row.item.type === "user_message" && row.item.clientMessageId === clientMessageId,
-    );
-    if (index < 0) return null;
+    const index = this.submittedUserMessages.get(clientMessageId);
+    if (index === undefined || !this.rows[index]) return null;
     this.rows[index] = { ...this.rows[index], providerMessageId };
     return { ...this.rows[index] };
+  }
+
+  private recordLatestRow(index: number, row: ProjectedTimelineRow): void {
+    if (row.seqEnd < this.latestSeq) return;
+    this.latestSeq = row.seqEnd;
+    this.latestRowIndex = index;
   }
 }
 
@@ -537,7 +603,7 @@ function selectProjectedEntriesBefore(input: {
 }
 
 function selectProjectedEntriesTail(
-  projectedAll: TimelineProjectionEntry[],
+  projectedAll: readonly TimelineProjectionEntry[],
   limit: number,
   bounds: { minSeq: number; maxSeq: number },
 ): ProjectedTimelinePageSelection {
@@ -564,9 +630,25 @@ export function selectProjectedTimelinePage(input: {
   cursorSeq?: number;
   limit?: number;
 }): ProjectedTimelinePageSelection {
+  return selectProjectedTimelinePageFromEntries({
+    entries: projectTimelineRows({ rows: input.rows, mode: "projected" }),
+    bounds: input.bounds ?? getTimelineBounds(input.rows),
+    direction: input.direction,
+    cursorSeq: input.cursorSeq,
+    limit: input.limit,
+  });
+}
+
+function selectProjectedTimelinePageFromEntries(input: {
+  entries: readonly TimelineProjectionEntry[];
+  bounds: { minSeq: number; maxSeq: number } | null;
+  direction: TimelineLimitDirection;
+  cursorSeq?: number;
+  limit?: number;
+}): ProjectedTimelinePageSelection {
   const limit = input.limit === undefined ? 0 : Math.max(0, Math.floor(input.limit));
-  const bounds = input.bounds ?? getTimelineBounds(input.rows);
-  const projectedAll = projectTimelineRows({ rows: input.rows, mode: "projected" });
+  const bounds = input.bounds;
+  const projectedAll = input.entries;
   if (!bounds) {
     return {
       entries: [],

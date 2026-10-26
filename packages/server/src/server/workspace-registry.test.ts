@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
@@ -80,6 +80,38 @@ describe("workspace registries", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("preserves an unreadable registry and rejects mutations", async () => {
+    const filePath = path.join(tmpDir, "projects", "projects.json");
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    const contents = JSON.stringify([
+      createPersistedProjectRecord({
+        projectId: "valid-project",
+        rootPath: "/tmp/valid",
+        kind: "git",
+        displayName: "valid",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+      { projectId: "invalid-project", kind: "unsupported" },
+    ]);
+    writeFileSync(filePath, contents);
+
+    await expect(projectRegistry.initialize()).rejects.toThrow();
+    await expect(
+      projectRegistry.upsert(
+        createPersistedProjectRecord({
+          projectId: "new-project",
+          rootPath: "/tmp/new",
+          kind: "git",
+          displayName: "new",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        }),
+      ),
+    ).rejects.toThrow();
+    expect(readFileSync(filePath, "utf8")).toBe(contents);
   });
 
   test("creates, updates, archives, deletes, and lists project records", async () => {

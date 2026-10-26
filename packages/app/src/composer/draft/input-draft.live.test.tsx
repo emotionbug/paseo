@@ -136,7 +136,7 @@ beforeAll(async () => {
   });
 
   ({ useAgentInputDraft } = await import("./input-draft"));
-});
+}, 30_000);
 
 describe("useAgentInputDraft live contract", () => {
   beforeEach(() => {

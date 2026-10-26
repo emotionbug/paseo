@@ -425,7 +425,33 @@ The GitHub Release body is populated automatically by the `Release Notes Sync` w
 
 **NEVER bump the version to fix a build problem.** New versions are reserved for meaningful product changes (features, fixes, improvements). Build/CI failures are fixed on the current version.
 
-**Do not rely on `workflow_dispatch` for tagged code fixes.** The `workflow_dispatch` trigger runs the workflow file from the default branch but checks out the code at the tag ref (`ref: ${{ inputs.tag }}`). That means fixes committed to `main` won't change the tagged source tree being built. `workflow_dispatch` only helps when the fix lives in the workflow file itself.
+`workflow_dispatch` checks out `tag` by default. If a tagged-code fix exists on a
+different commit, pass its exact branch, tag, or SHA as `checkout_ref`; `tag`
+still controls release metadata and artifact identity. `--ref` selects the
+workflow definition and does not replace `checkout_ref`.
+
+If npm publication fails after the version commit, do not rerun
+`release:patch`, `release:minor`, `release:promote`, or the corresponding beta
+command. Resume the existing version, then push it:
+
+```bash
+# Stable (npm's default latest dist-tag)
+npm run release:publish
+
+# Or beta (the explicit beta dist-tag)
+npm run release:publish:beta
+
+npm run release:push
+```
+
+The publisher queries each exact package name and version in dependency order.
+It skips a version only when the registry confirms that version exists. An exact
+`E404` is treated as missing only after a second registry query confirms that
+the package and its version list are readable. Authentication, network, and
+other registry errors stop the release rather than being mistaken for an
+unpublished version. Rerun the same publish command after fixing the error; it
+skips the packages completed by the first attempt and resumes with the first
+confirmed missing version.
 
 For Docker-only retries, **do not push or force-push a `v*` release tag**.
 `v*` tag pushes rebuild desktop assets, the Android APK, Docker, release notes,
@@ -443,23 +469,75 @@ desktop, APK, or EAS release builders. The Docker exception is safe because the
 dispatch runs from `--ref main` and uses the explicit `paseo_version`; it does
 not check out or move the `v*` release tag.
 
-To retry a failed non-Docker release workflow, push a retry tag on the commit
-you want to build. Reusing the same tag name is expected: move it with
-`git tag -f ...` and push it with `--force` so the workflow rebuilds the commit
-you actually want.
+Every successful desktop packaging job preserves its complete releasable
+outputs and updater manifest as a workflow artifact for 30 days before it
+contacts GitHub Releases. The artifact names are
+`desktop-release-macos-arm64`, `desktop-release-macos-x64`,
+`desktop-release-linux-x64`, and `desktop-release-windows-x64-arm64`. A release
+asset upload failure therefore does not discard a signed or notarized build.
 
-A failed desktop build leaves the GitHub Release as a draft. `finalize-rollout`
-uploads manifests from successful platforms before it fails. A later
-single-platform retry reuses those manifests, stamps the complete set with one
-release date, and publishes the draft. Use `desktop-vX.Y.Z` when more than one
-platform failed. A `workflow_dispatch` rebuild with publishing enabled follows
-the same path against the existing draft.
+### Publish preserved desktop artifacts
 
-Prefer a tag push over `workflow_dispatch` when rebuilding desktop or APK
-release assets. Prefer Docker workflow dispatch when rebuilding only the Docker
-image.
+Use publication-only recovery when every package build succeeded and a later
+GitHub Release upload or finalization step failed:
 
-The retry tag patterns below still work and remain the supported way to rebuild specific release targets:
+```bash
+gh workflow run desktop-release.yml \
+  --ref main \
+  -f tag=v0.1.28 \
+  -f mode=publish-only \
+  -f recovery_run_id=123456789 \
+  -f platform=all \
+  -f publish=true \
+  -f rollout_hours=36
+```
+
+`recovery_run_id` is the numeric ID of the exact prior `Desktop Release` run;
+select it deliberately rather than querying the latest run. `tag` must equal
+that run's source tag, including a `desktop-*` or beta prefix when one was used.
+Publication-only recovery requires `platform=all` and `publish=true`. It does
+not execute `build:desktop`.
+
+Before creating or changing a release, the workflow requires exactly one
+unexpired artifact of each name in that run. It verifies the workflow path,
+source tag, release tag and version, channel, platform, architecture, updater
+manifest, and expected installer formats. Missing, duplicate, expired, or
+mismatched artifacts stop the run before publication. The recovered artifacts
+are preserved again for 30 days before they are uploaded.
+
+Add `-f checkout_ref=refs/heads/release-repair` only when the recovery needs
+release scripts from a different ref. Omit it to check out `tag`.
+
+### Rebuild one macOS architecture
+
+If only one macOS architecture failed to build, rebuild that architecture and
+reuse the complementary successful artifact from an explicit prior run:
+
+```bash
+# Rebuild x64; reuse arm64 from run 123456789.
+gh workflow run desktop-release.yml \
+  --ref main \
+  -f tag=v0.1.28 \
+  -f mode=build \
+  -f platform=macos-x64 \
+  -f recovery_run_id=123456789 \
+  -f publish=true
+```
+
+Use `platform=macos-arm64` to rebuild arm64 and reuse x64. The workflow checks
+the reused artifact's identity before starting either publication path, builds
+only the requested architecture, preserves both architectures in the new run,
+merges their updater manifests, and finalizes the draft. A publishing
+single-architecture rebuild requires `recovery_run_id`; the workflow never
+chooses a prior run implicitly.
+
+A failed desktop build leaves the GitHub Release as a draft. Use
+`desktop-vX.Y.Z` when more than one platform must be rebuilt. Use a
+single-platform retry tag for Linux or Windows build failures. Use
+publication-only recovery instead of rebuilding after a release-upload
+failure.
+
+The retry tag patterns below remain supported for rebuilding release targets:
 
 ```bash
 # Desktop (all platforms)
@@ -506,8 +584,6 @@ intentionally unavailable to desktop updater clients.
 - The npm `version` lifecycle regenerates F-Droid changelog files from `CHANGELOG.md` for stable releases only (`npm run fdroid:changelogs`) and stages them, so the release tag carries them. Betas are a no-op. A stable run **aborts the release** if `CHANGELOG.md` has no entry for the version being cut — commit the changelog entry first. See [docs/android.md](android.md) for why these files are generated per ABI.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
 - `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
-- If `release:publish` partially fails, re-run it — npm skips already-published versions
-- If `release:publish:beta` partially fails, re-run it — npm skips already-published versions and keeps prereleases off `latest` because every publish uses `--tag beta`
 - The website uses GitHub's latest published release API for download links, so published beta prereleases do not replace the stable download target.
 
 ## Changelog format

@@ -17,6 +17,7 @@ import {
   type Transport as RelayTransport,
 } from "@getpaseo/relay/e2ee";
 import { createEncryptedRelaySocket, type EncryptedRelaySocket } from "./encrypted-relay-socket.js";
+import { sendBoundedPhysicalFrameAndWait } from "./physical-socket.js";
 
 const HANDSHAKE_TIMEOUT_MS = 15_000;
 
@@ -124,23 +125,23 @@ function createRelayTransportAdapter(
   logger: pino.Logger,
 ): RelayTransport {
   const relayTransport: RelayTransport = {
-    send: (data) =>
-      new Promise<void>((resolve, reject) => {
-        try {
-          socket.send(data, (error) => {
-            if (!error) {
-              resolve();
-              return;
-            }
-            logger.warn({ err: error }, "relay_socket_send_failed");
-            reject(error);
-          });
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          logger.warn({ err }, "relay_socket_send_failed");
-          reject(err);
-        }
-      }),
+    send: async (data) => {
+      try {
+        const sent = await sendBoundedPhysicalFrameAndWait({
+          socket,
+          frame: data,
+          onHighWater: () => {
+            logger.warn("relay_socket_outbound_high_water_terminating");
+            socket.terminate();
+          },
+        });
+        if (!sent) throw new Error(`Relay socket is not open (readyState=${socket.readyState})`);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.warn({ err }, "relay_socket_send_failed");
+        throw err;
+      }
+    },
     close: (code?: number, reason?: string) => socket.close(code, reason),
     onmessage: null,
     onclose: null,

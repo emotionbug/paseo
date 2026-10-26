@@ -8,6 +8,11 @@ const repoRoot = new URL("../", import.meta.url);
 const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
 const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
 const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
+const desktopReleaseWorkflowPath = new URL(".github/workflows/desktop-release.yml", repoRoot);
+const npmLauncherScriptPaths = [
+  new URL("scripts/build-daemon-web-ui.mjs", repoRoot),
+  new URL("scripts/set-release-version.mjs", repoRoot),
+];
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
@@ -278,6 +283,136 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
   assert.doesNotMatch(source, /dorny\/paths-filter/);
   for (const action of ["actions/checkout", "actions/setup-node", "actions/upload-artifact"]) {
     assert.match(source, new RegExp(`${action}@[0-9a-f]{40} # v\\d+\\.\\d+\\.\\d+`));
+  }
+});
+
+test("manual desktop releases checkout the requested tag unless explicitly overridden", () => {
+  const source = readFileSync(desktopReleaseWorkflowPath, "utf8");
+  const checkoutRef = /^  CHECKOUT_REF: \$\{\{ (.+) \}\}$/m.exec(source);
+  assert.ok(checkoutRef, "desktop release workflow must define CHECKOUT_REF");
+
+  function resolveCheckoutRef(eventName, inputs, refName = "dispatch-branch") {
+    return runInNewContext(checkoutRef[1], {
+      github: {
+        event_name: eventName,
+        event: { inputs },
+        ref_name: refName,
+      },
+    });
+  }
+
+  assert.equal(
+    resolveCheckoutRef("workflow_dispatch", { tag: "v1.2.3", checkout_ref: "" }),
+    "v1.2.3",
+  );
+  assert.equal(
+    resolveCheckoutRef("workflow_dispatch", {
+      tag: "v1.2.3",
+      checkout_ref: "refs/heads/release-repair",
+    }),
+    "refs/heads/release-repair",
+  );
+  assert.equal(resolveCheckoutRef("push", {}, "v1.2.3"), "v1.2.3");
+});
+
+test("desktop publication recovery is explicit and gates every publishing job", () => {
+  const source = readFileSync(desktopReleaseWorkflowPath, "utf8");
+  const trigger = source.split("\njobs:\n", 1)[0];
+  const jobs = jobBlocks(source);
+  const validation = jobs.get("validate-recovery-request")?.join("\n");
+
+  assert.match(trigger, /^\s+mode:\s*$/m);
+  assert.match(trigger, /^\s+- publish-only\s*$/m);
+  assert.match(trigger, /^\s+recovery_run_id:\s*$/m);
+  assert.match(trigger, /^\s+- macos-arm64\s*$/m);
+  assert.match(trigger, /^\s+- macos-x64\s*$/m);
+  assert.match(validation, /publish-only requires platform=all and publish=true/);
+  assert.match(validation, /publish-only requires recovery_run_id/);
+  assert.match(validation, /actions\/runs\/\$INPUT_RECOVERY_RUN_ID/);
+  assert.match(validation, /Expected exactly one unexpired \$\{name\} artifact/);
+  assert.match(validation, /identity mismatch for \$\{field\}/);
+
+  for (const jobId of [
+    "create-release",
+    "publish-macos",
+    "publish-linux",
+    "publish-windows",
+    "reuse-macos-artifact",
+    "finalize-rollout",
+  ]) {
+    const job = jobs.get(jobId)?.join("\n");
+    assert.ok(job, `missing desktop release job ${jobId}`);
+    assert.match(job, /validate-recovery-request/);
+  }
+
+  for (const jobId of ["publish-macos", "publish-linux", "publish-windows"]) {
+    const job = jobs.get(jobId).join("\n");
+    assert.match(
+      job,
+      /- name: Build desktop release\n        if: env\.RECOVERY_MODE != 'publish-only'/,
+    );
+    assert.match(job, /run-id: \$\{\{ env\.RECOVERY_RUN_ID \}\}/);
+  }
+});
+
+test("desktop macOS dispatches build only the selected failed architecture", () => {
+  const source = readFileSync(desktopReleaseWorkflowPath, "utf8");
+  const expression = /^\s+electron_arch: \$\{\{ (.+) \}\}$/m.exec(source);
+  assert.ok(expression, "desktop release workflow must select the macOS architecture matrix");
+
+  function selectedArchitectures(eventName, inputs) {
+    return [
+      ...runInNewContext(expression[1], {
+        fromJSON: JSON.parse,
+        github: { event_name: eventName, event: { inputs } },
+      }),
+    ];
+  }
+
+  assert.deepEqual(selectedArchitectures("push", {}), ["arm64", "x64"]);
+  assert.deepEqual(selectedArchitectures("workflow_dispatch", { platform: "all" }), [
+    "arm64",
+    "x64",
+  ]);
+  assert.deepEqual(selectedArchitectures("workflow_dispatch", { platform: "macos-arm64" }), [
+    "arm64",
+  ]);
+  assert.deepEqual(selectedArchitectures("workflow_dispatch", { platform: "macos-x64" }), ["x64"]);
+
+  const reuseJob = jobBlocks(source).get("reuse-macos-artifact").join("\n");
+  assert.match(reuseJob, /run-id: \$\{\{ env\.RECOVERY_RUN_ID \}\}/);
+  assert.match(reuseJob, /desktop-release-macos-\$\{\{ env\.RECOVERY_MAC_ARCH \}\}/);
+  assert.match(reuseJob, /workflowRunId: process\.env\.RECOVERY_RUN_ID/);
+});
+
+test("desktop release outputs are retained before GitHub Release upload", () => {
+  const source = readFileSync(desktopReleaseWorkflowPath, "utf8");
+  const jobs = jobBlocks(source);
+
+  assert.doesNotMatch(source, /retention-days: 1(?:\s|$)/);
+  for (const jobId of ["publish-macos", "publish-linux", "publish-windows"]) {
+    const job = jobs.get(jobId).join("\n");
+    const preserveAt = job.indexOf("- name: Preserve releasable desktop artifact");
+    const publishAt = job.indexOf("- name: Upload desktop artifacts to release");
+    assert.ok(preserveAt >= 0, `${jobId} must preserve complete release outputs`);
+    assert.ok(publishAt > preserveAt, `${jobId} must preserve outputs before publishing them`);
+
+    const preservation = job.slice(preserveAt, publishAt);
+    assert.match(preservation, /paseo-release-identity\.json\.yml/);
+    assert.match(preservation, /retention-days: 30/);
+    assert.match(preservation, /if-no-files-found: error/);
+    assert.match(preservation, /RELEASE_CHANNEL/);
+  }
+});
+
+test("Node scripts launch npm through the Windows-safe executable", () => {
+  for (const scriptPath of npmLauncherScriptPaths) {
+    const source = readFileSync(scriptPath, "utf8");
+    assert.match(source, /const IS_WINDOWS = process\.platform === "win32";/);
+    assert.match(source, /const NPM_COMMAND = IS_WINDOWS \? "npm\.cmd" : "npm";/);
+    assert.match(source, /(?:run|execFileSync)\(\s*NPM_COMMAND,/);
+    assert.match(source, /shell: IS_WINDOWS/);
+    assert.doesNotMatch(source, /(?:run|execFileSync)\(\s*"npm",/);
   }
 });
 

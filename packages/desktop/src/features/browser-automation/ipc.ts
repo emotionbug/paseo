@@ -22,8 +22,10 @@ import {
   listRegisteredPaseoBrowserIdsForWorkspace,
   getPaseoBrowserWebContentsForHostWindow,
   getWorkspaceActivePaseoBrowserIdForHostWindow,
+  getPaseoBrowserWebviewRegistry,
   getPaseoBrowserWorkspaceId,
 } from "../browser-webviews/index.js";
+import type { PaseoBrowserWebviewRegistry } from "../browser-webviews/registry.js";
 
 const MAX_CONSOLE_MESSAGES_PER_TAB = 200;
 const consoleMessagesByContentsId = new Map<number, BrowserAutomationConsoleLogEntry[]>();
@@ -45,6 +47,16 @@ export class HostSnapshotEngineRegistry {
     number,
     { hostContents: HostWebContents; snapshotEngine: BrowserSnapshotEngine }
   >();
+  public constructor(
+    browserRegistry: Pick<
+      PaseoBrowserWebviewRegistry,
+      "onWebContentsUnregistered"
+    > = getPaseoBrowserWebviewRegistry(),
+  ) {
+    browserRegistry.onWebContentsUnregistered(({ browserId, hostWebContentsId }) => {
+      this.entries.get(hostWebContentsId)?.snapshotEngine.clearBrowser(browserId);
+    });
+  }
 
   public get(hostContents: HostWebContents): BrowserSnapshotEngine {
     const existing = this.entries.get(hostContents.id);

@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const es: TranslationResources = {
+  addProject: {
+    directoryBrowser: {
+      methodLabel: "Explorar directorios",
+      methodDescription: "Explorar directorios en {{host}}",
+      title: "Explorar directorios",
+      home: "Inicio",
+      manualPath: "Buscar o introducir ruta",
+      select: "Seleccionar este directorio",
+      loading: "Cargando directorios...",
+      empty: "No hay subdirectorios",
+      error: "No se pudo abrir el directorio",
+      retry: "Reintentar",
+      hostUnavailable: "Este host no está disponible.",
+      disconnected: "El host está desconectado.",
+    },
+  },
   sessionNavigation: {
     sessions: "Sesiones",
     newSession: "Nueva sesión",
