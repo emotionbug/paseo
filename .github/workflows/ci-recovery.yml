@@ -36,6 +36,11 @@ on:
 jobs:
   recover:
     name: Recover
+    # A reusable workflow cannot elevate the caller's token permissions.
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
     uses: ./.github/workflows/ci.yml
     with:
       recovery_job: ${{ inputs.job }}

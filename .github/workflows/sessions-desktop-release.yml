@@ -65,7 +65,8 @@ jobs:
           path: |
             packages/desktop/release/*.dmg
             packages/desktop/release/*.zip
-            packages/desktop/release/*.exe
+            packages/desktop/release/*-x64.exe
+            packages/desktop/release/*-arm64.exe
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
