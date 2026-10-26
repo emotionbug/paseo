@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { diffInteractionWindowTop, resolveVisibleFileSections } from "./header-layout";
+import {
+  diffInteractionWindowTop,
+  retainDiffMaterializationWindowTop,
+  resolveVisibleFileSections,
+} from "./header-layout";
 import type { DiffFileSection } from "./types";
 
 describe("diff header viewport", () => {
@@ -36,12 +40,20 @@ describe("diff header viewport", () => {
     const files = [expandedFile(0, 100), collapsedFile(1, 130)];
 
     expect(
-      resolveVisibleFileSections({ files, scrollTop: 129, viewportHeight: 100, overscan: 0 }).sticky
-        ?.y,
+      resolveVisibleFileSections({
+        files,
+        scrollTop: 129,
+        viewportHeight: 100,
+        overscan: 0,
+      }).sticky?.y,
     ).toBe(-29);
     expect(
-      resolveVisibleFileSections({ files, scrollTop: 130, viewportHeight: 100, overscan: 0 }).sticky
-        ?.y,
+      resolveVisibleFileSections({
+        files,
+        scrollTop: 130,
+        viewportHeight: 100,
+        overscan: 0,
+      }).sticky?.y,
     ).toBe(0);
   });
 });
@@ -51,6 +63,33 @@ describe("diff interaction window", () => {
     expect(diffInteractionWindowTop(0, 500)).toBe(0);
     expect(diffInteractionWindowTop(999, 500)).toBe(0);
     expect(diffInteractionWindowTop(1_000, 500)).toBe(1_000);
+  });
+
+  it("retains a materialization window while it covers the viewport", () => {
+    expect(
+      retainDiffMaterializationWindowTop({
+        currentTop: 0,
+        nextTop: 1_200,
+        scrollTop: 1_400,
+        viewportHeight: 600,
+      }),
+    ).toBe(0);
+    expect(
+      retainDiffMaterializationWindowTop({
+        currentTop: 0,
+        nextTop: 4_800,
+        scrollTop: 5_000,
+        viewportHeight: 600,
+      }),
+    ).toBe(4_800);
+    expect(
+      retainDiffMaterializationWindowTop({
+        currentTop: 4_800,
+        nextTop: 1_200,
+        scrollTop: 2_200,
+        viewportHeight: 600,
+      }),
+    ).toBe(1_200);
   });
 });
 

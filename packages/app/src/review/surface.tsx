@@ -63,8 +63,12 @@ function getWebTextInputElement(input: EditingTextInputHandle | null): HTMLEleme
 }
 
 export const SMALL_ACTION_HIT_SLOP = 8;
-const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const destructiveIconColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+const foregroundMutedIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const destructiveIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.destructive,
+});
 const accentForegroundIconColorMapping = (theme: Theme) => ({
   color: theme.colors.accentForeground,
 });
@@ -95,6 +99,7 @@ export function InlineReviewAddButton({
       hitSlop={SMALL_ACTION_HIT_SLOP}
       onPress={onPress}
       style={[styles.gutterActionVisual, style]}
+      testID="inline-review-add"
     >
       <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
     </Pressable>

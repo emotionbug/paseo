@@ -27,6 +27,7 @@ import {
   diffInteractionWindowTop,
   diffMaterializationWindow,
   resolveVisibleFileSections,
+  retainDiffMaterializationWindowTop,
 } from "./header-layout";
 import { hitTestDiffBodyPoint } from "./native-hit-testing";
 import { retainDiffViewport } from "./viewport";
@@ -80,6 +81,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const { t } = useTranslation();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [fileWindowTop, setFileWindowTop] = useState(0);
+  const fileWindowTopRef = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const previousModelRef = useRef<ReturnType<typeof buildDiffDocumentModel> | null>(null);
   const reusableModelRef = useRef<{
@@ -104,7 +106,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
     [family, props.displayPreferences.codeFontSize],
   );
   const measurement = useMemo<TextMeasurer>(
-    () => createNativeTextMeasurer({ configuredFamily: family, fontSize: typography.size }),
+    () =>
+      createNativeTextMeasurer({
+        configuredFamily: family,
+        fontSize: typography.size,
+      }),
     [family, typography.size],
   );
   const reviewActions = props.mode.kind === "working" ? props.mode.reviewActions : undefined;
@@ -190,14 +196,27 @@ export function DiffSurface(props: DiffSurfaceProps) {
       }),
     [props.headerTypography, props.palette],
   );
-  const updateFileWindow = useCallback((nextTop: number) => {
-    setFileWindowTop((current) => (current === nextTop ? current : nextTop));
-  }, []);
+  const updateFileWindow = useCallback(
+    (nextTop: number, currentScrollTop: number) => {
+      const currentWindowTop = fileWindowTopRef.current;
+      const nextWindowTop = retainDiffMaterializationWindowTop({
+        currentTop: currentWindowTop,
+        nextTop,
+        scrollTop: currentScrollTop,
+        viewportHeight: viewport.height,
+      });
+      if (nextWindowTop !== currentWindowTop) {
+        fileWindowTopRef.current = nextWindowTop;
+        setFileWindowTop(nextWindowTop);
+      }
+    },
+    [viewport.height],
+  );
   useAnimatedReaction(
     () => diffInteractionWindowTop(scrollTop.value, viewport.height),
     (windowTop, previous) => {
       if (windowTop !== previous) {
-        scheduleOnRN(updateFileWindow, windowTop);
+        scheduleOnRN(updateFileWindow, windowTop, scrollTop.value);
       }
     },
     [updateFileWindow, viewport.height],
@@ -208,7 +227,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
         files: model.files,
         scrollTop: fileWindowTop,
         viewportHeight: viewport.height,
-        overscan: viewport.height * 2,
+        overscan: viewport.height,
       }).files,
     [fileWindowTop, model.files, viewport.height],
   );
@@ -398,7 +417,9 @@ function NativeCanvasFileHeader({
   const stickyStyle = useAnimatedStyle(() => {
     const pinOffset = Math.max(0, scrollTop.value - top);
     const maximumPinOffset = Math.max(0, bottom - headerHeight - top);
-    return { transform: [{ translateY: Math.min(pinOffset, maximumPinOffset) }] };
+    return {
+      transform: [{ translateY: Math.min(pinOffset, maximumPinOffset) }],
+    };
   }, [bottom, headerHeight, top, scrollTop]);
   const style = useMemo<ViewStyle>(
     () => ({
@@ -442,7 +463,12 @@ function NativeFileBody({
   mode: DiffSurfaceProps["mode"];
   horizontalOffsets: SharedValue<DiffHorizontalOffsets>;
 }) {
-  const touchRef = useRef<{ x: number; y: number; startedAt: number; moved: boolean } | null>(null);
+  const touchRef = useRef<{
+    x: number;
+    y: number;
+    startedAt: number;
+    moved: boolean;
+  } | null>(null);
   const reviewActions = mode.kind === "working" ? mode.reviewActions : undefined;
   const touchStart = useCallback((event: GestureResponderEvent) => {
     touchRef.current = {

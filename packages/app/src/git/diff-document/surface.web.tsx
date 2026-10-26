@@ -19,6 +19,7 @@ import {
   diffInteractionWindowTop,
   diffMaterializationWindow,
   resolveVisibleFileSections,
+  retainDiffMaterializationWindowTop,
 } from "./header-layout";
 import {
   hitTestDiffDocument,
@@ -104,10 +105,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const forcePaintRef = useRef(true);
   const canvasWindowRef = useRef({ top: 0, height: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  const [fileWindowTop, setFileWindowTop] = useState(0);
+  const fileWindowTopRef = useRef(0);
   const [interactionFiles, setInteractionFiles] = useState<
     ReturnType<typeof buildDiffDocumentModel>["files"]
   >([]);
+  const interactionFilesRef = useRef<typeof interactionFiles>([]);
   const [hasSelection, setHasSelection] = useState(false);
   const [contextHit, setContextHit] = useState<Extract<DiffHit, { kind: "cell" }> | null>(null);
   const [hoveredAffordance, setHoveredAffordance] = useState<{
@@ -118,8 +120,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const hasHoveredAffordanceRef = useRef(false);
   const family = props.displayPreferences.monoFontFamily.trim() || DEFAULT_MONO_STACK;
   useLayoutEffect(() => {
-    const stats = (window as typeof window & { __PASEO_DIFF_REACT_STATS__?: { commits: number } })
-      .__PASEO_DIFF_REACT_STATS__;
+    const stats = (
+      window as typeof window & {
+        __PASEO_DIFF_REACT_STATS__?: { commits: number };
+      }
+    ).__PASEO_DIFF_REACT_STATS__;
     if (stats) stats.commits += 1;
   });
   const desiredTypography = useMemo<DiffTypography>(
@@ -159,49 +164,50 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const measurement =
     readyTypographyResource === typographyResource ? typographyResource.measureText : null;
   const reviewActions = props.mode.kind === "working" ? props.mode.reviewActions : undefined;
-  const model = useMemo(() => {
-    if (!loadedTypography || !measurement) {
-      return emptyDiffDocumentModel({
+  const buildModelAt = useCallback(
+    (windowTop: number) => {
+      if (!loadedTypography || !measurement) {
+        return emptyDiffDocumentModel({
+          layout: props.displayPreferences.layout,
+          wrapLines: props.displayPreferences.wrapLines,
+          viewportWidth: viewport.width,
+          lineHeight: desiredTypography.lineHeight,
+        });
+      }
+      return workspaceCache.buildModel({
+        files: props.files,
+        collapsedFilePaths: props.collapsedFilePaths,
         layout: props.displayPreferences.layout,
         wrapLines: props.displayPreferences.wrapLines,
         viewportWidth: viewport.width,
-        lineHeight: desiredTypography.lineHeight,
+        typography: loadedTypography,
+        measureText: measurement,
+        palette: props.palette,
+        reviewActions,
+        labels: {
+          binary: t("workspace.git.diff.binaryFile"),
+          tooLarge: t("workspace.git.diff.tooLarge"),
+        },
+        materializationWindow: diffMaterializationWindow(windowTop, viewport.height),
       });
-    }
-    const next = workspaceCache.buildModel({
-      files: props.files,
-      collapsedFilePaths: props.collapsedFilePaths,
-      layout: props.displayPreferences.layout,
-      wrapLines: props.displayPreferences.wrapLines,
-      viewportWidth: viewport.width,
-      typography: loadedTypography,
-      measureText: measurement,
-      palette: props.palette,
+    },
+    [
+      desiredTypography.lineHeight,
+      loadedTypography,
+      measurement,
+      props.collapsedFilePaths,
+      props.displayPreferences.layout,
+      props.displayPreferences.wrapLines,
+      props.files,
+      props.palette,
       reviewActions,
-      labels: {
-        binary: t("workspace.git.diff.binaryFile"),
-        tooLarge: t("workspace.git.diff.tooLarge"),
-      },
-      materializationWindow: diffMaterializationWindow(fileWindowTop, viewport.height),
-    });
-    return next;
-  }, [
-    fileWindowTop,
-    measurement,
-    props.collapsedFilePaths,
-    props.displayPreferences.layout,
-    props.displayPreferences.wrapLines,
-    props.files,
-    props.palette,
-    reviewActions,
-    t,
-    desiredTypography.lineHeight,
-    loadedTypography,
-    viewport.width,
-    viewport.height,
-    workspaceCache,
-  ]);
-  modelRef.current = model;
+      t,
+      viewport.height,
+      viewport.width,
+      workspaceCache,
+    ],
+  );
+  const model = useMemo(() => buildModelAt(fileWindowTopRef.current), [buildModelAt]);
 
   const paintStickyHeaderPool = useCallback(
     (currentModel: ReturnType<typeof buildDiffDocumentModel>, scrollTop: number) => {
@@ -223,15 +229,13 @@ export function DiffSurface(props: DiffSurfaceProps) {
         const { section, canvas } = slot;
         if (!section || !canvas) continue;
         if (!file) {
-          section.style.display = "none";
-          slot.file = null;
+          if (slot.file !== null) {
+            section.style.display = "none";
+            slot.file = null;
+          }
           continue;
         }
 
-        section.style.display = "block";
-        section.style.top = `${file.top}px`;
-        section.style.height = `${file.bottom - file.top}px`;
-        section.dataset.diffStickyHeaderPath = file.path;
         const active = activeHeaderPathRef.current === file.path;
         const canReusePaint =
           slot.file === file &&
@@ -241,6 +245,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
           slot.palette === props.palette &&
           slot.typography === props.headerTypography;
         if (canReusePaint) continue;
+
+        section.style.display = "block";
+        section.style.top = `${file.top}px`;
+        section.style.height = `${file.bottom - file.top}px`;
+        section.dataset.diffStickyHeaderPath = file.path;
 
         const pixelWidth = Math.ceil(viewport.width * ratio);
         const pixelHeight = Math.ceil(FILE_HEADER_HEIGHT * ratio);
@@ -378,7 +387,10 @@ export function DiffSurface(props: DiffSurfaceProps) {
     };
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
-      const nextViewport = { width: entry.contentRect.width, height: entry.contentRect.height };
+      const nextViewport = {
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      };
       pendingViewportRef.current = nextViewport;
       if (resizePointerActiveRef.current) return;
       setViewport((currentViewport) =>
@@ -393,17 +405,27 @@ export function DiffSurface(props: DiffSurfaceProps) {
       }, RESIZE_SETTLE_DELAY_MS);
     });
     observer.observe(root);
-    window.addEventListener("pointerdown", handlePointerDown, { capture: true });
+    window.addEventListener("pointerdown", handlePointerDown, {
+      capture: true,
+    });
     window.addEventListener("pointerup", handlePointerEnd, { capture: true });
-    window.addEventListener("pointercancel", handlePointerEnd, { capture: true });
+    window.addEventListener("pointercancel", handlePointerEnd, {
+      capture: true,
+    });
     return () => {
       observer.disconnect();
       clearResizeSettleTimer();
       if (resizeReleaseFrameRef.current !== null)
         cancelAnimationFrame(resizeReleaseFrameRef.current);
-      window.removeEventListener("pointerdown", handlePointerDown, { capture: true });
-      window.removeEventListener("pointerup", handlePointerEnd, { capture: true });
-      window.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
+      window.removeEventListener("pointerdown", handlePointerDown, {
+        capture: true,
+      });
+      window.removeEventListener("pointerup", handlePointerEnd, {
+        capture: true,
+      });
+      window.removeEventListener("pointercancel", handlePointerEnd, {
+        capture: true,
+      });
     };
   }, []);
   useEffect(() => {
@@ -422,6 +444,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     };
   }, [typographyResource]);
   useLayoutEffect(() => {
+    modelRef.current = model;
     const previous = previousModelRef.current;
     const scroll = scrollRef.current;
     if (previous && scroll && previous !== model) {
@@ -440,20 +463,34 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const updateInteractionFiles = useCallback(
     (scrollTop: number) => {
       const windowTop = diffInteractionWindowTop(scrollTop, viewport.height);
-      setFileWindowTop((current) => (current === windowTop ? current : windowTop));
+      const currentWindowTop = fileWindowTopRef.current;
+      const nextWindowTop = retainDiffMaterializationWindowTop({
+        currentTop: currentWindowTop,
+        nextTop: windowTop,
+        scrollTop,
+        viewportHeight: viewport.height,
+      });
+      let currentModel = modelRef.current;
+      if (nextWindowTop !== currentWindowTop) {
+        fileWindowTopRef.current = nextWindowTop;
+        currentModel = buildModelAt(nextWindowTop);
+        modelRef.current = currentModel;
+        schedulePaint();
+      }
+      if (!currentModel) return;
       const next = resolveVisibleFileSections({
-        files: model.files,
+        files: currentModel.files,
         scrollTop: windowTop,
         viewportHeight: viewport.height,
-        overscan: viewport.height * 2,
+        overscan: viewport.height / 2,
       }).files;
-      setInteractionFiles((current) =>
-        current.length === next.length && current[0] === next[0] && current.at(-1) === next.at(-1)
-          ? current
-          : next,
-      );
+      const currentFiles = interactionFilesRef.current;
+      if (!sameVisibleFileSections(currentFiles, next)) {
+        interactionFilesRef.current = next;
+        setInteractionFiles(next);
+      }
     },
-    [model.files, viewport.height],
+    [buildModelAt, schedulePaint, viewport.height],
   );
   useLayoutEffect(() => {
     schedulePaint();
@@ -940,6 +977,28 @@ function StickyHeaderCanvasSlotView({
   );
 }
 
+function sameVisibleFileSections(
+  current: readonly DiffFileSection[],
+  next: readonly DiffFileSection[],
+): boolean {
+  return (
+    current.length === next.length &&
+    sameFileSectionBounds(current[0], next[0]) &&
+    sameFileSectionBounds(current.at(-1), next.at(-1))
+  );
+}
+
+function sameFileSectionBounds(
+  current: DiffFileSection | undefined,
+  next: DiffFileSection | undefined,
+): boolean {
+  return (
+    current?.fileIndex === next?.fileIndex &&
+    current?.top === next?.top &&
+    current?.bottom === next?.bottom
+  );
+}
+
 function shiftCanvasPixels(input: {
   canvas: HTMLCanvasElement;
   scratch: HTMLCanvasElement;
@@ -978,7 +1037,10 @@ function shiftCanvasPixels(input: {
       input.pixelWidth,
       overlapPixels,
     );
-    return { paintTop: input.canvasHeight - Math.abs(delta), paintHeight: Math.abs(delta) };
+    return {
+      paintTop: input.canvasHeight - Math.abs(delta),
+      paintHeight: Math.abs(delta),
+    };
   }
   input.context.drawImage(
     input.scratch,
@@ -1002,7 +1064,11 @@ function WebFileHeaderSection({
   children: React.ReactNode;
 }) {
   const style = useMemo<React.CSSProperties>(
-    () => ({ ...FILE_SECTION_STYLE, top: file.top, height: file.bottom - file.top }),
+    () => ({
+      ...FILE_SECTION_STYLE,
+      top: file.top,
+      height: file.bottom - file.top,
+    }),
     [file.bottom, file.top],
   );
   return (
@@ -1125,7 +1191,11 @@ const BODY_MARKER_STYLE: React.CSSProperties = {
   right: 0,
   pointerEvents: "none",
 };
-const REVIEW_STYLE: React.CSSProperties = { position: "absolute", zIndex: 4, userSelect: "text" };
+const REVIEW_STYLE: React.CSSProperties = {
+  position: "absolute",
+  zIndex: 4,
+  userSelect: "text",
+};
 const CANVAS_STYLE: React.CSSProperties = {
   position: "absolute",
   top: 0,
@@ -1166,5 +1236,8 @@ function createWebTextMeasurer(typography: DiffTypography): TextMeasurer {
   };
   // Canvas exposes no glyph coverage, so `requiresShaping` alone decides which
   // runs a shaper has to see -- there is no `glyphIds` to fall back on.
-  return { measure, measureAdvances: createMeasuredAdvances((text) => measure(text)) };
+  return {
+    measure,
+    measureAdvances: createMeasuredAdvances((text) => measure(text)),
+  };
 }

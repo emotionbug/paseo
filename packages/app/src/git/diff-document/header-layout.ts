@@ -16,9 +16,29 @@ export function diffMaterializationWindow(
   viewportHeight: number,
 ): { top: number; height: number } {
   return {
-    top: Math.max(0, windowTop - viewportHeight * 2),
-    height: viewportHeight * 5,
+    top: Math.max(0, windowTop - viewportHeight * 4),
+    height: viewportHeight * 9,
   };
+}
+
+export function retainDiffMaterializationWindowTop(input: {
+  currentTop: number;
+  nextTop: number;
+  scrollTop: number;
+  viewportHeight: number;
+}): number {
+  if (input.currentTop === input.nextTop || input.viewportHeight <= 0) {
+    return input.currentTop;
+  }
+  const currentWindow = diffMaterializationWindow(input.currentTop, input.viewportHeight);
+  const currentWindowBottom = currentWindow.top + currentWindow.height;
+  if (
+    input.scrollTop >= currentWindow.top &&
+    input.scrollTop + input.viewportHeight <= currentWindowBottom
+  ) {
+    return input.currentTop;
+  }
+  return input.nextTop;
 }
 
 export function resolveVisibleFileSections(input: {
