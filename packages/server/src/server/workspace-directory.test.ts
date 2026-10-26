@@ -10,7 +10,10 @@ import type { AgentSnapshotPayload, WorkspaceDescriptorPayload } from "./message
 import { WorkspaceDirectory } from "./workspace-directory.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
-import type { ProviderSubagentWorkspaceActivity } from "./workspace-directory.js";
+import type {
+  ProviderSubagentWorkspaceActivity,
+  WorkspaceDirectoryDeps,
+} from "./workspace-directory.js";
 
 const NOW = "2026-03-01T12:00:00.000Z";
 
@@ -564,6 +567,231 @@ describe("WorkspaceDirectory", () => {
     expect(descriptor.status).toBe("running");
     // terminal timestamp (2027) is newer than agent updatedAt (NOW = 2026-03-01)
     expect(descriptor.statusEnteredAt).toBe("2027-01-01T00:00:00.000Z");
+  });
+});
+
+describe("WorkspaceDirectory selected projections", () => {
+  function fixture() {
+    const projects: PersistedProjectRecord[] = ["active", "archived"].map((projectId) => ({
+      projectId,
+      rootPath: "/workspace/shared",
+      kind: "git",
+      displayName: projectId,
+      customName: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+      archivedAt: projectId === "archived" ? NOW : null,
+    }));
+    const workspaces: PersistedWorkspaceRecord[] = [
+      "target",
+      "parent",
+      "terminal",
+      "sibling",
+      "archived-workspace",
+      "archived-project",
+      "missing-project",
+    ].map((workspaceId) => {
+      let projectId = "active";
+      if (workspaceId === "archived-project") projectId = "archived";
+      else if (workspaceId === "missing-project") projectId = "missing";
+      return {
+        workspaceId,
+        projectId,
+        cwd: "/workspace/shared",
+        kind: "local_checkout",
+        displayName: workspaceId,
+        createdAt: NOW,
+        updatedAt: NOW,
+        archivedAt: workspaceId === "archived-workspace" ? NOW : null,
+      };
+    });
+    const agents: AgentSnapshotPayload[] = [];
+    const providerSubagents: ProviderSubagentWorkspaceActivity[] = [];
+    const terminals: Array<{
+      cwd: string;
+      workspaceId?: string;
+      activity: TerminalActivity | null;
+    }> = [];
+    const lastUserMessageTimes = new Map<string, string>();
+    const hiddenProviders = new Set<string>();
+    const deps: WorkspaceDirectoryDeps = {
+      logger: createTestLogger(),
+      projectRegistry: { list: async () => projects },
+      workspaceRegistry: { list: async () => workspaces },
+      listAgentPayloads: async () => agents,
+      workspaceLastUserMessageTimes: async () => lastUserMessageTimes,
+      listProviderSubagentActivity: async () => providerSubagents,
+      listTerminalActivityContributions: async () => terminals,
+      isProviderVisibleToClient: (provider) => !hiddenProviders.has(provider),
+      buildWorkspaceDescriptor: async ({ workspace, projectRecord, includeGitData }) => ({
+        id: workspace.workspaceId,
+        projectId: workspace.projectId,
+        projectDisplayName: projectRecord?.displayName ?? "missing",
+        projectCustomName: projectRecord?.customName ?? null,
+        projectRootPath: projectRecord?.rootPath ?? workspace.cwd,
+        workspaceDirectory: workspace.cwd,
+        projectKind: "git",
+        workspaceKind: workspace.kind,
+        name: workspace.displayName,
+        archivingAt: null,
+        status: "done",
+        activityAt: null,
+        diffStat: null,
+        scripts: [
+          {
+            scriptName: workspace.workspaceId,
+            type: "service",
+            hostname: "localhost",
+            port: null,
+            proxyUrl: null,
+            lifecycle: "running",
+            health: null,
+            exitCode: null,
+            terminalId: `${workspace.workspaceId}-terminal`,
+          },
+        ],
+        gitRuntime: includeGitData ? { currentBranch: workspace.displayName } : null,
+        githubRuntime: null,
+      }),
+    };
+    const addAgent = (
+      id: string,
+      workspaceId: string,
+      overrides: Partial<AgentSnapshotPayload> = {},
+    ) => {
+      const agent = {
+        ...createAgent({ id, workspaceId, cwd: "/workspace/shared", status: "idle" }),
+        ...overrides,
+      };
+      agents.push(agent);
+      return agent;
+    };
+    return {
+      deps,
+      projects,
+      workspaces,
+      providerSubagents,
+      terminals,
+      lastUserMessageTimes,
+      hiddenProviders,
+      addAgent,
+    };
+  }
+
+  test.each(["visible", "hidden", "archived", "missing"] as const)(
+    "keeps cross-workspace ancestry and provider children equivalent with a %s parent",
+    async (parentState) => {
+      const state = fixture();
+      if (parentState !== "missing") {
+        state.addAgent("outside", "parent", {
+          provider: "claude",
+          archivedAt: parentState === "archived" ? NOW : null,
+        });
+      }
+      if (parentState === "hidden") state.hiddenProviders.add("claude");
+      state.addAgent("child", "target", {
+        labels: { [PARENT_AGENT_ID_LABEL]: "outside" },
+      });
+      state.addAgent("grandchild", "target", {
+        labels: { [PARENT_AGENT_ID_LABEL]: "child" },
+      });
+      state.providerSubagents.push({
+        parentAgentId: "grandchild",
+        status: "running",
+        updatedAt: "2026-03-01T12:01:00.000Z",
+      });
+      const full = await new WorkspaceDirectory(state.deps).buildDescriptorMap({
+        includeGitData: true,
+      });
+      const narrow = await new WorkspaceDirectory(state.deps).buildDescriptorMap({
+        includeGitData: true,
+        workspaceIds: ["target"],
+      });
+      expect([...narrow.values()]).toEqual([full.get("target")]);
+      expect(narrow.get("target")?.status).toBe(parentState === "visible" ? "running" : "done");
+      if (parentState === "visible") {
+        expect(narrow.get("target")?.statusEnteredAt).toBe("2026-03-01T12:01:00.000Z");
+      }
+    },
+  );
+
+  test("selects IDs without losing terminal ownership, scripts, archival or orphan records", async () => {
+    const state = fixture();
+    state.addAgent("running", "target", { status: "running" });
+    state.addAgent("archived-agent", "sibling", { status: "running", archivedAt: NOW });
+    state.addAgent("hidden-agent", "sibling", { status: "running", provider: "claude" });
+    state.hiddenProviders.add("claude");
+    state.terminals.push(
+      {
+        cwd: "/workspace/shared/subdir",
+        workspaceId: "terminal",
+        activity: { state: "idle", attentionReason: "finished", changedAt: Date.parse(NOW) },
+      },
+      { cwd: "/workspace/shared", activity: { state: "working", changedAt: Date.parse(NOW) } },
+    );
+    state.lastUserMessageTimes.set("target", "2026-03-02T12:00:00.000Z");
+    const directory = new WorkspaceDirectory(state.deps);
+    directory.markArchiving(["target"], NOW);
+    const full = await directory.buildDescriptorMap({ includeGitData: true });
+    expect([...full.keys()]).toEqual([
+      "target",
+      "parent",
+      "terminal",
+      "sibling",
+      "missing-project",
+    ]);
+    expect(full.get("terminal")?.status).toBe("attention");
+    expect(full.get("sibling")?.status).toBe("done");
+    for (const id of [
+      ...state.workspaces.map((workspace) => workspace.workspaceId),
+      "unknown",
+      "",
+    ]) {
+      const narrow = await directory.buildDescriptorMap({
+        includeGitData: true,
+        workspaceIds: (function* () {
+          yield id;
+          yield id;
+        })(),
+      });
+      expect([...narrow.values()]).toEqual(full.has(id) ? [full.get(id)] : []);
+    }
+    expect(await directory.buildDescriptorMap({ includeGitData: true, workspaceIds: [] })).toEqual(
+      new Map(),
+    );
+    expect(full.get("target")).toMatchObject({
+      archivingAt: NOW,
+      lastUserMessageAt: "2026-03-02T12:00:00.000Z",
+      scripts: [{ scriptName: "target", terminalId: "target-terminal" }],
+    });
+  });
+
+  test("reads provider visibility, metadata, activity and archival again for every selected call", async () => {
+    const state = fixture();
+    const agent = state.addAgent("root", "target", { provider: "claude" });
+    const directory = new WorkspaceDirectory(state.deps);
+    const project = () =>
+      directory.buildDescriptorMap({ includeGitData: false, workspaceIds: ["target"] });
+    expect((await project()).get("target")).toMatchObject({ status: "done", gitRuntime: null });
+    agent.status = "running";
+    state.workspaces[0].displayName = "renamed";
+    state.projects[0].customName = "custom";
+    state.lastUserMessageTimes.set("target", "2026-03-03T12:00:00.000Z");
+    expect((await project()).get("target")).toMatchObject({
+      status: "running",
+      name: "renamed",
+      projectCustomName: "custom",
+      lastUserMessageAt: "2026-03-03T12:00:00.000Z",
+    });
+    state.hiddenProviders.add("claude");
+    expect((await project()).get("target")?.status).toBe("done");
+    state.hiddenProviders.clear();
+    expect((await project()).get("target")?.status).toBe("running");
+    state.projects[0].archivedAt = NOW;
+    expect(await project()).toEqual(new Map());
+    state.projects[0].archivedAt = null;
+    state.workspaces[0].archivedAt = NOW;
+    expect(await project()).toEqual(new Map());
   });
 });
 

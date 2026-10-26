@@ -344,6 +344,34 @@ function resolveStructuralWorkspaceIdentity(input: {
   };
 }
 
+interface SidebarWorkspaceEntryInputs {
+  workspace: WorkspaceDescriptor;
+  activity: WorkspaceAgentActivity | undefined;
+  pendingCreateAttempts: Record<string, PendingCreateAttempt> | undefined;
+}
+
+// Directory descriptors, activity records and pending-create collections are
+// replaced by their stores, not mutated. Keep only the latest inputs for a live
+// row: weak keys neither retain removed rows nor chain previous snapshots.
+const workspaceEntryInputs = new WeakMap<SidebarWorkspaceEntry, SidebarWorkspaceEntryInputs>();
+
+function canReuseSidebarWorkspaceEntry(
+  entry: SidebarWorkspaceEntry,
+  workspace: WorkspaceDescriptor,
+  activity: WorkspaceAgentActivity | undefined,
+  pendingCreateAttempts: Record<string, PendingCreateAttempt> | undefined,
+  placement: SidebarWorkspacePlacement,
+): boolean {
+  const previousInputs = workspaceEntryInputs.get(entry);
+  return (
+    previousInputs?.workspace === workspace &&
+    previousInputs.activity === activity &&
+    previousInputs.pendingCreateAttempts === pendingCreateAttempts &&
+    entry.serverId === placement.serverId &&
+    entry.projectViewKey === placement.projectViewKey
+  );
+}
+
 export function buildSidebarWorkspaceEntries(input: {
   placements: readonly SidebarWorkspacePlacement[];
   sessions: SidebarWorkspaceSession[];
@@ -369,18 +397,38 @@ export function buildSidebarWorkspaceEntries(input: {
     const workspace = workspaceKey ? session.workspaces.get(workspaceKey) : null;
     if (!workspace) continue;
 
-    const entry = createSidebarWorkspaceEntry({
-      serverId: placement.serverId,
-      workspace,
-      projectViewKey: placement.projectViewKey,
-      pendingCreateAttempts: input.pendingCreateAttempts,
-      workspaceAgentActivity: session.workspaceAgentActivity,
-    });
     const previousEntry = input.previousEntries?.get(placement.workspaceKey);
-    const nextEntry =
-      previousEntry && areSidebarWorkspaceEntriesEqual(previousEntry, entry)
-        ? previousEntry
-        : entry;
+    const activity = session.workspaceAgentActivity.get(workspace.id);
+    let nextEntry: SidebarWorkspaceEntry;
+    if (
+      previousEntry &&
+      canReuseSidebarWorkspaceEntry(
+        previousEntry,
+        workspace,
+        activity,
+        input.pendingCreateAttempts,
+        placement,
+      )
+    ) {
+      nextEntry = previousEntry;
+    } else {
+      const entry = createSidebarWorkspaceEntry({
+        serverId: placement.serverId,
+        workspace,
+        projectViewKey: placement.projectViewKey,
+        pendingCreateAttempts: input.pendingCreateAttempts,
+        workspaceAgentActivity: session.workspaceAgentActivity,
+      });
+      nextEntry =
+        previousEntry && areSidebarWorkspaceEntriesEqual(previousEntry, entry)
+          ? previousEntry
+          : entry;
+      workspaceEntryInputs.set(nextEntry, {
+        workspace,
+        activity,
+        pendingCreateAttempts: input.pendingCreateAttempts,
+      });
+    }
     entries.set(placement.workspaceKey, nextEntry);
     unchanged =
       previousKeys?.next().value === placement.workspaceKey &&
@@ -412,6 +460,7 @@ function areSidebarWorkspaceEntriesEqual(
         leftHint.url === rightHint.url &&
         leftHint.number === rightHint.number &&
         leftHint.state === rightHint.state &&
+        leftHint.forge === rightHint.forge &&
         leftHint.checks === rightHint.checks &&
         leftHint.checksStatus === rightHint.checksStatus &&
         leftHint.reviewDecision === rightHint.reviewDecision)

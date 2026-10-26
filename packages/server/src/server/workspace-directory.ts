@@ -238,15 +238,13 @@ export class WorkspaceDirectory {
         .filter((project) => !project.archivedAt)
         .map((project) => [project.projectId, project] as const),
     );
-    const activeRecords = activeWorkspaceRecords(persistedWorkspaces, persistedProjects);
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
     const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
-    const activeWorkspaceIds = new Set(activeRecords.map((workspace) => workspace.workspaceId));
-    const includedWorkspaces = activeRecords.filter(
-      (workspace) => !workspaceIds || workspaceIds.has(workspace.workspaceId),
-    );
-    const activeRecordsByWorkspaceId = new Map(
-      activeRecords.map((workspace) => [workspace.workspaceId, workspace] as const),
+    const includedWorkspaces = activeWorkspaceRecords(
+      workspaceIds
+        ? persistedWorkspaces.filter((workspace) => workspaceIds.has(workspace.workspaceId))
+        : persistedWorkspaces,
+      persistedProjects,
     );
     const workspaceDescriptors = await Promise.all(
       includedWorkspaces.map((workspace) =>
@@ -270,8 +268,16 @@ export class WorkspaceDirectory {
     const activeAgents = agents.filter(
       (agent) => !agent.archivedAt && this.deps.isProviderVisibleToClient(agent.provider),
     );
+    // Keep parents outside the selected workspaces in the lookup: a visible
+    // cross-workspace parent makes its child a root in the child's workspace,
+    // while a missing or hidden parent does not.
+    const activeAgentsById = new Map<string, AgentSnapshotPayload>();
+    for (const agent of activeAgents) {
+      activeAgentsById.set(agent.id, agent);
+    }
     this.applyAgentBucketContributions({
       activeAgents,
+      activeAgentsById,
       descriptorsByWorkspaceId,
     });
 
@@ -281,7 +287,7 @@ export class WorkspaceDirectory {
       descriptorsByWorkspaceId,
     );
     this.applyProviderSubagentContributions({
-      activeAgents,
+      activeAgentsById,
       providerSubagentActivity,
       descriptorsByWorkspaceId,
       activityEntriesByWorkspaceId,
@@ -289,7 +295,7 @@ export class WorkspaceDirectory {
 
     const contributingAgentsByWorkspaceId = groupAgentsByWorkspaceId(
       activeAgents,
-      activeWorkspaceIds,
+      descriptorsByWorkspaceId,
     );
 
     // Resolve the workspace-level `statusEnteredAt` (see aggregate semantics
@@ -304,7 +310,7 @@ export class WorkspaceDirectory {
         contributingAgents,
         activityEntries,
         previous: this.bucketHistoryByWorkspaceId.get(workspaceId) ?? null,
-        workspaceCreatedAt: activeRecordsByWorkspaceId.get(workspaceId)?.createdAt ?? null,
+        workspaceCreatedAt: descriptor.createdAt ?? null,
         nowIso,
       });
       descriptor.statusEnteredAt = result.statusEnteredAt;
@@ -319,25 +325,24 @@ export class WorkspaceDirectory {
   }
 
   private applyProviderSubagentContributions(params: {
-    activeAgents: AgentSnapshotPayload[];
+    activeAgentsById: ReadonlyMap<string, AgentSnapshotPayload>;
     providerSubagentActivity: ProviderSubagentWorkspaceActivity[];
     descriptorsByWorkspaceId: Map<string, WorkspaceDescriptorPayload>;
     activityEntriesByWorkspaceId: Map<string, WorkspaceBucketTimestampEntry[]>;
   }): void {
     const {
-      activeAgents,
+      activeAgentsById,
       providerSubagentActivity,
       descriptorsByWorkspaceId,
       activityEntriesByWorkspaceId,
     } = params;
-    const activeAgentsById = new Map(activeAgents.map((agent) => [agent.id, agent] as const));
 
     for (const subagent of providerSubagentActivity) {
       if (subagent.status !== "running") {
         continue;
       }
       const parent = activeAgentsById.get(subagent.parentAgentId);
-      if (!parent) {
+      if (!parent?.workspaceId || !descriptorsByWorkspaceId.has(parent.workspaceId)) {
         continue;
       }
       const workspaceAgent = resolveWorkspaceRootAgent(parent, activeAgentsById);
@@ -368,12 +373,15 @@ export class WorkspaceDirectory {
   // running activity to the nearest ancestor in that workspace.
   private applyAgentBucketContributions(params: {
     activeAgents: AgentSnapshotPayload[];
+    activeAgentsById: ReadonlyMap<string, AgentSnapshotPayload>;
     descriptorsByWorkspaceId: Map<string, WorkspaceDescriptorPayload>;
   }): void {
-    const { activeAgents, descriptorsByWorkspaceId } = params;
-    const activeAgentsById = new Map(activeAgents.map((agent) => [agent.id, agent] as const));
+    const { activeAgents, activeAgentsById, descriptorsByWorkspaceId } = params;
 
     for (const agent of activeAgents) {
+      if (!agent.workspaceId || !descriptorsByWorkspaceId.has(agent.workspaceId)) {
+        continue;
+      }
       const workspaceAgent = resolveWorkspaceRootAgent(agent, activeAgentsById);
       if (!workspaceAgent) {
         continue;
@@ -424,12 +432,12 @@ export class WorkspaceDirectory {
       if (!activity || !workspaceId) {
         continue;
       }
-      const bucket = deriveTerminalActivityStatusBucket(activity);
-      if (!bucket) continue;
       const existing = descriptorsByWorkspaceId.get(workspaceId);
       if (!existing) {
         continue;
       }
+      const bucket = deriveTerminalActivityStatusBucket(activity);
+      if (!bucket) continue;
       if (
         getWorkspaceStateBucketPriority(bucket) < getWorkspaceStateBucketPriority(existing.status)
       ) {
@@ -719,12 +727,12 @@ export class WorkspaceDirectory {
 
 function groupAgentsByWorkspaceId(
   agents: AgentSnapshotPayload[],
-  activeWorkspaceIds: ReadonlySet<string>,
+  workspaces: ReadonlyMap<string, WorkspaceDescriptorPayload>,
 ): Map<string, AgentSnapshotPayload[]> {
   const byWorkspaceId = new Map<string, AgentSnapshotPayload[]>();
   for (const agent of agents) {
     const workspaceId = agent.workspaceId;
-    if (!workspaceId || !activeWorkspaceIds.has(workspaceId)) {
+    if (!workspaceId || !workspaces.has(workspaceId)) {
       continue;
     }
     const entries = byWorkspaceId.get(workspaceId) ?? [];

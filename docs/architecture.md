@@ -149,10 +149,20 @@ checkpoint share one storage transaction. See
 for the storage shape and [timeline-sync.md](timeline-sync.md#client-replica-lifetime) for timeline
 resume behavior.
 
+Sidebar row derivation reuses rows only while their immutable workspace descriptor, per-workspace
+activity, pending-create collection, host, and project placement still match. Weak row-keyed input
+metadata does not retain removed rows. Changed inputs are derived again; this does not defer
+directory reconciliation or alter host → directory → session grouping.
+
 The three directory entity types have independent monotonic sequences and share one daemon
 generation. The daemon retains only the latest projection per entity and bounded tombstones, not an
 event log. A missing, expired, or previous-generation cursor receives a full snapshot. Projects are
 independent records; a project with no workspaces does not need a workspace placeholder.
+
+Workspace descriptor projection reads fresh dependencies for each source-scoped delivery. Narrow
+requests skip unrelated status aggregation but retain visible parents outside the selected
+workspaces so ancestry and ownership stay correct. Do not share descriptor snapshots between
+queued subscriptions: their source permissions and delivery ordering remain independent.
 
 Workspace label definitions use a separate, explicitly subscribed sequence. The list request both
 fetches and grants live updates for that session. A current cursor receives an empty correlated

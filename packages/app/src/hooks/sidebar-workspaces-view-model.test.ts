@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Agent, WorkspaceDescriptor } from "@/stores/session-store";
+import type { PendingCreateAttempt } from "@/stores/create-flow-store";
 import type { WorkspaceStructureProject } from "@/projects/workspace-structure";
 import { buildWorkspaceAgentActivityIndex } from "@/utils/workspace-agent-activity";
 import {
@@ -505,6 +506,168 @@ describe("shared sidebar workspace model", () => {
 
     expect(nextEntries.get("srv:one")).toBe(previousEntries.get("srv:one"));
     expect(nextEntries.get("srv:two")).not.toBe(previousEntries.get("srv:two"));
+  });
+
+  it("refreshes activity independently of descriptor identity and preserves old snapshots", () => {
+    const placements = [
+      workspacePlacement({ workspaceId: "one" }),
+      workspacePlacement({ workspaceId: "two" }),
+    ];
+    const session = {
+      serverId: "srv",
+      ...sessionWith({
+        workspaces: [projectWorkspace("one", "done"), projectWorkspace("two", "done")],
+      }),
+    };
+    const initial = buildSidebarWorkspaceEntries({ placements, sessions: [session] });
+    const enteredAt = new Date(2_000);
+    const activeSession = {
+      ...session,
+      workspaceAgentActivity: new Map([
+        ["one", { agentId: "agent", status: "running" as const, enteredAt }],
+      ]),
+    };
+    const active = buildSidebarWorkspaceEntries({
+      placements,
+      sessions: [activeSession],
+      previousEntries: initial,
+    });
+    expect(active.get("srv:one")).toMatchObject({
+      statusBucket: "running",
+      statusEnteredAt: enteredAt,
+    });
+    expect(active.get("srv:two")).toBe(initial.get("srv:two"));
+    expect(initial.get("srv:one")?.statusBucket).toBe("done");
+    const laterEnteredAt = new Date(3_000);
+    const later = buildSidebarWorkspaceEntries({
+      placements,
+      sessions: [
+        {
+          ...session,
+          workspaceAgentActivity: new Map([
+            ["one", { agentId: "agent", status: "running" as const, enteredAt: laterEnteredAt }],
+          ]),
+        },
+      ],
+      previousEntries: active,
+    });
+    expect(later.get("srv:one")?.statusEnteredAt).toBe(laterEnteredAt);
+    expect(active.get("srv:one")?.statusEnteredAt).toBe(enteredAt);
+    const removed = buildSidebarWorkspaceEntries({
+      placements,
+      sessions: [session],
+      previousEntries: later,
+    });
+    expect(removed.get("srv:one")?.statusBucket).toBe("done");
+    expect(
+      buildSidebarWorkspaceEntries({ placements, sessions: [session], previousEntries: initial }),
+    ).toBe(initial);
+  });
+
+  it("isolates pending creates by colon-containing host identity and handles abandonment and removal", () => {
+    const descriptor = projectWorkspace("shared", "done");
+    const placements = ["host:local", "host:remote"].map((serverId) =>
+      workspacePlacement({ serverId, workspaceId: descriptor.id }),
+    );
+    const sessions = placements.map(({ serverId }) => ({
+      serverId,
+      ...sessionWith({ workspaces: [descriptor] }),
+    }));
+    const initial = buildSidebarWorkspaceEntries({ placements, sessions });
+    const pending: PendingCreateAttempt = {
+      draftId: "draft",
+      serverId: "host:local",
+      workspaceId: descriptor.id,
+      agentId: null,
+      clientMessageId: "message",
+      text: "hello",
+      timestamp: 2_000,
+      lifecycle: "active",
+    };
+    const pendingCreateAttempts = { draft: pending };
+    const active = buildSidebarWorkspaceEntries({
+      placements,
+      sessions,
+      pendingCreateAttempts,
+      previousEntries: initial,
+    });
+    expect(active.get("host:local:shared")).toMatchObject({
+      statusBucket: "running",
+      statusEnteredAt: new Date(2_000),
+    });
+    expect(active.get("host:remote:shared")).toBe(initial.get("host:remote:shared"));
+    expect(
+      buildSidebarWorkspaceEntries({
+        placements,
+        sessions,
+        pendingCreateAttempts,
+        previousEntries: active,
+      }),
+    ).toBe(active);
+    const abandoned = buildSidebarWorkspaceEntries({
+      placements,
+      sessions,
+      pendingCreateAttempts: { draft: { ...pending, lifecycle: "abandoned" } },
+      previousEntries: active,
+    });
+    expect(abandoned.get("host:local:shared")?.statusBucket).toBe("done");
+    const removed = buildSidebarWorkspaceEntries({ placements, sessions, previousEntries: active });
+    expect(removed.get("host:local:shared")?.statusBucket).toBe("done");
+    expect(active.get("host:local:shared")?.statusBucket).toBe("running");
+    expect(initial.get("host:local:shared")?.statusBucket).toBe("done");
+  });
+
+  it("updates project placement and descriptor identity behind a noncanonical map key", () => {
+    const descriptor = projectWorkspace("one", "done");
+    const placements = [workspacePlacement({ workspaceId: descriptor.id })];
+    const session = {
+      serverId: "srv",
+      workspaceAgentActivity: new Map(),
+      workspaces: new Map([["legacy-key", descriptor]]),
+    };
+    const initial = buildSidebarWorkspaceEntries({ placements, sessions: [session] });
+    const movedPlacements = [{ ...placements[0]!, projectViewKey: "host:srv:project:other" }];
+    const moved = buildSidebarWorkspaceEntries({
+      placements: movedPlacements,
+      sessions: [session],
+      previousEntries: initial,
+    });
+    expect(moved.get("srv:one")?.projectViewKey).toBe("host:srv:project:other");
+    expect(initial.get("srv:one")?.projectViewKey).toBe("project-a");
+    const renamed = buildSidebarWorkspaceEntries({
+      placements: movedPlacements,
+      sessions: [
+        { ...session, workspaces: new Map([["legacy-key", { ...descriptor, name: "renamed" }]]) },
+      ],
+      previousEntries: moved,
+    });
+    expect(renamed.get("srv:one")?.name).toBe("renamed");
+    expect(moved.get("srv:one")?.name).toBe("one");
+    const removed = buildSidebarWorkspaceEntries({
+      placements: movedPlacements,
+      sessions: [{ ...session, workspaces: new Map() }],
+      previousEntries: renamed,
+    });
+    expect(removed.size).toBe(0);
+    expect(renamed.size).toBe(1);
+  });
+
+  it("does not reuse a PR hint when only the descriptor forge changes", () => {
+    const descriptor = workspaceWithForge("github", "https://example.com/acme/repo/pull/42");
+    const placements = [workspacePlacement({ workspaceId: descriptor.id })];
+    const initial = buildSidebarWorkspaceEntries({
+      placements,
+      sessions: [{ serverId: "srv", ...sessionWith({ workspaces: [descriptor] }) }],
+    });
+    const updated = buildSidebarWorkspaceEntries({
+      placements,
+      sessions: [
+        { serverId: "srv", ...sessionWith({ workspaces: [{ ...descriptor, forge: "gitlab" }] }) },
+      ],
+      previousEntries: initial,
+    });
+    expect(updated.get("srv:ws-1")?.prHint?.forge).toBe("gitlab");
+    expect(initial.get("srv:ws-1")?.prHint?.forge).toBe("github");
   });
 
   it("keeps a structurally disambiguated project key in status entries", () => {
