@@ -2166,6 +2166,9 @@ export async function getCheckoutSnapshotFacts(
 
 const PER_FILE_DIFF_MAX_BYTES = 1024 * 1024; // 1MB
 const TOTAL_DIFF_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+// Highlight enough files for the initial viewport; leave the rest uncolored rather than
+// blocking the first diff payload on work the user cannot see yet.
+const STRUCTURED_DIFF_HIGHLIGHT_FILE_LIMIT = 16;
 const CHECKOUT_DIFF_FRAME_HEADROOM_BYTES = 1024 * 1024;
 // Temporary until diffs load lazily per file. The Paseo relay's 32 MiB frame limit is
 // binding: string frames are encrypted and base64-encoded. Reserve 1 MiB plaintext for
@@ -2177,6 +2180,10 @@ export const CHECKOUT_DIFF_MAX_STRUCTURED_BYTES =
 interface StructuredDiffAccumulator {
   files: ParsedDiffFile[];
   serializedBytes: number;
+}
+
+interface StructuredDiffHighlightBudget {
+  remainingFiles: number;
 }
 
 function createStructuredDiffAccumulator(): StructuredDiffAccumulator {
@@ -3456,40 +3463,45 @@ interface AppendStructuredTrackedDiffsInput {
   refsForDiff: CheckoutDiffRefs;
   ignoreWhitespace: boolean;
   structured: StructuredDiffAccumulator;
+  highlightBudget: StructuredDiffHighlightBudget;
   appendTrackedPlaceholderComment: (
     change: CheckoutFileChange,
     status: "binary" | "too_large",
   ) => void;
 }
 
-async function buildHighlightedTrackedDiffFile(input: {
+async function buildStructuredTrackedDiffFile(input: {
   cwd: string;
   change: CheckoutFileChange;
   parsedFile: ParsedDiffFile;
   refsForDiff: CheckoutDiffRefs;
+  highlight: boolean;
   contents?: Map<string, string | null>;
 }): Promise<ParsedDiffFile> {
   const { cwd, change, parsedFile, refsForDiff } = input;
-  const refPath = change.oldPath ?? change.path;
-  const [oldFileContent, newFileContent] = input.contents
-    ? [
-        change.isNew ? null : input.contents.get(`${refsForDiff.baseRef}:${refPath}`),
-        refsForDiff.targetRef
-          ? input.contents.get(`${refsForDiff.targetRef}:${change.path}`)
-          : null,
-      ]
-    : await Promise.all([
-        change.isNew ? null : readGitFileContentAtRef(cwd, refsForDiff.baseRef, refPath),
-        refsForDiff.targetRef
-          ? readGitFileContentAtRef(cwd, refsForDiff.targetRef, change.path)
-          : null,
-      ]);
-  const highlightedFile = await highlightDiffWithFileContent(parsedFile, cwd, {
-    oldFileContent,
-    newFileContent,
-  });
+  let renderedFile = parsedFile;
+  if (input.highlight) {
+    const refPath = change.oldPath ?? change.path;
+    const [oldFileContent, newFileContent] = input.contents
+      ? [
+          change.isNew ? null : input.contents.get(`${refsForDiff.baseRef}:${refPath}`),
+          refsForDiff.targetRef
+            ? input.contents.get(`${refsForDiff.targetRef}:${change.path}`)
+            : null,
+        ]
+      : await Promise.all([
+          change.isNew ? null : readGitFileContentAtRef(cwd, refsForDiff.baseRef, refPath),
+          refsForDiff.targetRef
+            ? readGitFileContentAtRef(cwd, refsForDiff.targetRef, change.path)
+            : null,
+        ]);
+    renderedFile = await highlightDiffWithFileContent(parsedFile, cwd, {
+      oldFileContent,
+      newFileContent,
+    });
+  }
   return {
-    ...highlightedFile,
+    ...renderedFile,
     path: change.path,
     ...(change.oldPath ? { oldPath: change.oldPath } : {}),
     isNew: change.isNew,
@@ -3536,6 +3548,7 @@ async function appendStructuredTrackedDiffs(
     refsForDiff,
     ignoreWhitespace,
     structured,
+    highlightBudget,
     appendTrackedPlaceholderComment,
   } = input;
 
@@ -3544,14 +3557,18 @@ async function appendStructuredTrackedDiffs(
 
   for (let start = 0; start < trackedChanges.length; start += TRACKED_DIFF_BATCH_SIZE) {
     const changes = trackedChanges.slice(start, start + TRACKED_DIFF_BATCH_SIZE);
-    const contents = await readTrackedDiffContents(
-      cwd,
-      changes.filter(
+    const highlightChanges = changes
+      .filter(
         (change) =>
           !trackedPlaceholderByPath.has(change.path) && parsedTrackedByPath.has(change.path),
-      ),
-      refsForDiff,
-    );
+      )
+      .slice(0, highlightBudget.remainingFiles);
+    highlightBudget.remainingFiles -= highlightChanges.length;
+    const highlightedPaths = new Set(highlightChanges.map((change) => change.path));
+    const contents =
+      highlightChanges.length > 0
+        ? await readTrackedDiffContents(cwd, highlightChanges, refsForDiff)
+        : null;
     for (const change of changes) {
       const placeholder = trackedPlaceholderByPath.get(change.path);
       if (placeholder) {
@@ -3569,18 +3586,17 @@ async function appendStructuredTrackedDiffs(
       const stat = trackedNumstatByPath.get(change.path) ?? null;
       const parsedFile = parsedTrackedByPath.get(change.path);
       if (parsedFile) {
-        const file = await buildHighlightedTrackedDiffFile({
+        const file = await buildStructuredTrackedDiffFile({
           cwd,
           change,
           parsedFile,
           refsForDiff,
+          highlight: highlightedPaths.has(change.path),
           contents: contents ?? undefined,
         });
         if (!appendStructuredFile(structured, file)) {
           return false;
         }
-        // Batched blobs remove the per-file I/O pause; keep serving other daemon work.
-        await setImmediate();
         continue;
       }
 
@@ -3605,6 +3621,9 @@ async function appendStructuredTrackedDiffs(
         return false;
       }
     }
+    if (start + TRACKED_DIFF_BATCH_SIZE < trackedChanges.length) {
+      await setImmediate();
+    }
   }
 
   return true;
@@ -3617,12 +3636,21 @@ interface ProcessUntrackedChangeInput {
   ignoreWhitespace: boolean;
   includeStructured: boolean;
   structured: StructuredDiffAccumulator;
+  highlightBudget: StructuredDiffHighlightBudget;
   appendDiff: (text: string) => void;
 }
 
 async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promise<boolean> {
-  const { cwd, change, patchFormat, ignoreWhitespace, includeStructured, structured, appendDiff } =
-    input;
+  const {
+    cwd,
+    change,
+    patchFormat,
+    ignoreWhitespace,
+    includeStructured,
+    structured,
+    highlightBudget,
+    appendDiff,
+  } = input;
   const result = await getUntrackedDiffText(cwd, change, patchFormat, ignoreWhitespace);
   const { text, truncated, stat } = result;
 
@@ -3664,20 +3692,28 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
   }
 
   appendDiff(text);
-  const parsedFile = result.parsedFile
-    ? await highlightDiffWithFileContent(result.parsedFile, cwd, {
-        oldFileContent: null,
-        newFileContent: result.fileContent,
-      })
-    : ((await parseAndHighlightDiff(text, cwd))[0] ??
-      ({
-        path: change.path,
-        isNew: change.isNew,
-        isDeleted: change.isDeleted,
-        additions: stat?.additions ?? 0,
-        deletions: stat?.deletions ?? 0,
-        hunks: [],
-      } satisfies ParsedDiffFile));
+  const highlight = highlightBudget.remainingFiles > 0;
+  if (highlight) highlightBudget.remainingFiles--;
+  let parsedFile: ParsedDiffFile | undefined;
+  if (result.parsedFile) {
+    parsedFile = highlight
+      ? await highlightDiffWithFileContent(result.parsedFile, cwd, {
+          oldFileContent: null,
+          newFileContent: result.fileContent,
+        })
+      : result.parsedFile;
+  } else {
+    const parsedFiles = highlight ? await parseAndHighlightDiff(text, cwd) : parseDiff(text);
+    parsedFile = parsedFiles[0];
+  }
+  parsedFile ??= {
+    path: change.path,
+    isNew: change.isNew,
+    isDeleted: change.isDeleted,
+    additions: stat?.additions ?? 0,
+    deletions: stat?.deletions ?? 0,
+    hunks: [],
+  };
 
   const file = {
     ...parsedFile,
@@ -3906,6 +3942,9 @@ async function readCheckoutDiff(
   });
 
   const structured = createStructuredDiffAccumulator();
+  const highlightBudget: StructuredDiffHighlightBudget = {
+    remainingFiles: STRUCTURED_DIFF_HIGHLIGHT_FILE_LIMIT,
+  };
   let diffText = "";
   let diffBytes = 0;
   const appendDiff = (text: string) => {
@@ -3955,6 +3994,7 @@ async function readCheckoutDiff(
       refsForDiff: effectiveRefsForDiff,
       ignoreWhitespace,
       structured,
+      highlightBudget,
       appendTrackedPlaceholderComment,
     });
     if (!didAppendTrackedDiffs) {
@@ -3983,6 +4023,7 @@ async function readCheckoutDiff(
       ignoreWhitespace,
       includeStructured: compare.includeStructured === true,
       structured,
+      highlightBudget,
       appendDiff,
     });
     if (!didAppendUntrackedDiff) {

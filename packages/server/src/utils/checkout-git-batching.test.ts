@@ -3,11 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, realpathSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { startGitCommandMetrics, stopGitCommandMetrics } from "@server/utils/run-git-command.js";
 
 import { getCheckoutDiff } from "./checkout-git.js";
 
-function initRepoWithTrackedChanges(fileCount: number): { tempDir: string; repoDir: string } {
+function initRepoWithTrackedChanges(
+  fileCount: number,
+  extension = "txt",
+): { tempDir: string; repoDir: string } {
   const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "checkout-git-batch-test-")));
   const repoDir = join(tempDir, "repo");
 
@@ -17,7 +21,8 @@ function initRepoWithTrackedChanges(fileCount: number): { tempDir: string; repoD
   execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
 
   for (let i = 0; i < fileCount; i += 1) {
-    writeFileSync(join(repoDir, `file-${i}.txt`), `before-${i}\n`);
+    const content = extension === "ts" ? `export const value_${i} = 0;\n` : `before-${i}\n`;
+    writeFileSync(join(repoDir, `file-${i}.${extension}`), content);
   }
   execFileSync("git", ["add", "."], { cwd: repoDir });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], {
@@ -25,10 +30,20 @@ function initRepoWithTrackedChanges(fileCount: number): { tempDir: string; repoD
   });
 
   for (let i = 0; i < fileCount; i += 1) {
-    writeFileSync(join(repoDir, `file-${i}.txt`), `after-${i}\n`);
+    const content = extension === "ts" ? `export const value_${i} = 1;\n` : `after-${i}\n`;
+    writeFileSync(join(repoDir, `file-${i}.${extension}`), content);
   }
 
   return { tempDir, repoDir };
+}
+
+function hasHighlightTokens(file: ParsedDiffFile): boolean {
+  for (const hunk of file.hunks) {
+    for (const line of hunk.lines) {
+      if ((line.tokens?.length ?? 0) > 0) return true;
+    }
+  }
+  return false;
 }
 
 describe("checkout git diff batching", () => {
@@ -77,6 +92,22 @@ describe("checkout git diff batching", () => {
     );
     expect(metrics.commands.filter(({ args }) => args[0] === "show")).toHaveLength(0);
     expect(metrics.commands.filter(({ args }) => args[0] === "cat-file")).toHaveLength(1);
+  });
+
+  it("bounds initial syntax highlighting to the visible file batch", async () => {
+    rmSync(tempDir, { recursive: true, force: true });
+    const setup = initRepoWithTrackedChanges(20, "ts");
+    tempDir = setup.tempDir;
+    repoDir = setup.repoDir;
+
+    const result = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    const highlighted = result.structured?.filter(hasHighlightTokens);
+
+    expect(result.structured).toHaveLength(20);
+    expect(highlighted).toHaveLength(16);
   });
 
   it("keeps small neighbors when a patch exceeds the entire batch budget", async () => {

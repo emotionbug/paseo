@@ -11,7 +11,7 @@
 - Bounded relay connection fan-out, protected-handshake retries, WebSocket buffering, and supervisor log backpressure.
 - Reduced persisted-agent lookup allocation and isolated terminal latency benchmarks from speech and relay startup.
 - Updated TanStack Start, Electron Updater, Express, Vite, WebSocket, Zod, MCP SDK, YAML, and critical transitive security dependencies.
-- Reduced Changes-pane startup latency by bounding cooperative syntax highlighting and removing per-file Git processes for untracked text files.
+- Reduced Changes-pane startup latency by highlighting only the initial visible file batch, batching tracked-file work, and removing per-file Git processes for untracked text files.
 - Kept large Changes views responsive by updating web canvas materialization outside React, reducing interactive header overscan, and reusing stable sticky-header paints.
 - Made timeline pagination and browser snapshot cleanup scale with returned/live state instead of retained history.
 - Preserved complete desktop release artifacts before publication for 30-day, publication-only and single-architecture recovery, and made partial npm publication resumable.

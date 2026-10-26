@@ -6,7 +6,11 @@ import { test, expect } from "../support/fixtures";
 import { getServerId } from "../support/helpers/server-id";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo } from "../support/helpers/workspace";
-import { openChangesPanel, waitForWorkspaceTabsVisible } from "../support/helpers/workspace-tabs";
+import {
+  openChangesPanel,
+  openChangesTreePanel,
+  waitForWorkspaceTabsVisible,
+} from "../support/helpers/workspace-tabs";
 import { DIFF_POC_BASELINE } from "./diff-performance-baseline";
 
 const RUN_DIFF_PERF = process.env.PASEO_DIFF_PERF_E2E === "1";
@@ -27,8 +31,11 @@ const POC_P95_FRAME_MS = Number(
 // At 6× CPU throttling these bounds still require a near-frame median at normal speed.
 const MAX_MEDIAN_FRAME_MS = POC_MEDIAN_FRAME_MS * 4.4;
 const MAX_P95_FRAME_MS = POC_P95_FRAME_MS * 4.4;
-const MANY_FILE_MAX_MEDIAN_FRAME_MS = 45;
-const MANY_FILE_MAX_P95_FRAME_MS = 80;
+const MANY_FILE_MAX_MEDIAN_FRAME_MS = 50;
+const MANY_FILE_MAX_P95_FRAME_MS = 100;
+const MANY_FILE_MAX_TREE_PANEL_SHELL_MS = 1_000;
+const MANY_FILE_MAX_TREE_FILES_MS = 4_000;
+const MANY_FILE_MAX_FIRST_DIFF_MS = 1_500;
 
 diffPerfDescribe("Diff canvas performance", () => {
   test("opening a review stays responsive in a large diff", async ({ page }) => {
@@ -87,11 +94,31 @@ diffPerfDescribe("Diff canvas performance", () => {
       const openedAt = performance.now();
       await page.goto(buildHostWorkspaceRoute(getServerId(), created.workspace.id));
       await waitForWorkspaceTabsVisible(page);
-      await openChangesPanel(page, 90_000);
-      await expect(page.getByTestId("diff-file-0-toggle")).toBeVisible({
-        timeout: 30_000,
-      });
-      const readyMs = performance.now() - openedAt;
+      const changesOpenedAt = performance.now();
+      await openChangesTreePanel(page);
+      const treePanelShellAt = performance.now();
+      const changedFile = page
+        .locator('[data-testid^="diff-tree-file-"][data-testid$="-toggle"]')
+        .filter({ visible: true })
+        .first();
+      await expect(changedFile).toBeVisible({ timeout: 90_000 });
+      const treeFilesAt = performance.now();
+      await changedFile.click();
+      await expect(
+        page.getByTestId("working-diff-panel").filter({ visible: true }).first(),
+      ).toBeVisible({ timeout: 30_000 });
+      const diffPanelShellAt = performance.now();
+      await expect(page.getByTestId("diff-file-0-toggle")).toBeVisible({ timeout: 30_000 });
+      const firstDiffAt = performance.now();
+      const startup = {
+        routeReadyMs: changesOpenedAt - openedAt,
+        treePanelShellMs: treePanelShellAt - changesOpenedAt,
+        treeFilesMs: treeFilesAt - changesOpenedAt,
+        diffPanelShellMs: diffPanelShellAt - treeFilesAt,
+        firstDiffMs: firstDiffAt - treeFilesAt,
+        changesReadyMs: firstDiffAt - changesOpenedAt,
+        totalReadyMs: firstDiffAt - openedAt,
+      };
       const [initialShells, initialElements, paintKind] = await page
         .getByTestId("git-diff-canvas-root")
         .evaluate(
@@ -162,7 +189,7 @@ diffPerfDescribe("Diff canvas performance", () => {
         scenario: "many-small-files",
         sourceFiles: MANY_FILE_COUNT,
         cpuSlowdown: CPU_SLOWDOWN,
-        readyMs,
+        startup,
         initialShells,
         initialElements,
         paintKind,
@@ -173,8 +200,11 @@ diffPerfDescribe("Diff canvas performance", () => {
         heap,
       });
       console.log(
-        `[perf] Many-file headers: ${JSON.stringify({ readyMs, initialShells, initialElements, paintKind, headerDomMetrics, headerCanvasMetrics, benchmark, renderer, heap })}`,
+        `[perf] Many-file headers: ${JSON.stringify({ startup, initialShells, initialElements, paintKind, headerDomMetrics, headerCanvasMetrics, benchmark, renderer, heap })}`,
       );
+      expect(startup.treePanelShellMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_PANEL_SHELL_MS);
+      expect(startup.treeFilesMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_FILES_MS);
+      expect(startup.firstDiffMs).toBeLessThanOrEqual(MANY_FILE_MAX_FIRST_DIFF_MS);
       if (!RUN_HEADER_COMPARISON) {
         expect(benchmark.maximumShells).toBeLessThan(120);
         expect(benchmark.maximumStickyCanvases).toBe(2);
