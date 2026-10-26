@@ -224,7 +224,9 @@ gh workflow run ci-recovery.yml --ref fix/my-failure -f job=playwright-3
 
 This reuses the real CI steps but allocates runners only for change detection and the selected check. Recovery checks have a `Recover /` prefix; they do not replace normal required checks or claim that the whole commit passed. Recovery concurrency is separate from full CI and from other recovery targets. Merge/main and ordinary manual CI still run the complete suite.
 
-The desktop build compiles shared workspace dependencies once before exporting the renderer and packaging the daemon. Linux workflow artifacts contain distributable archives/installers and YAML metadata, not an additional unpacked copy of the same application; extract the tarball when unpacked inspection is needed. Already-compressed distributables are uploaded without a second compression pass.
+The recovery caller explicitly grants the read permissions needed by the reused jobs, including pull-request reads for path routing and package reads for dependency installation. A called workflow cannot elevate its caller's token; missing permissions fail validation before any runner starts.
+
+The desktop build compiles shared workspace dependencies once before exporting the renderer and packaging the daemon. Linux workflow artifacts contain distributable archives/installers and YAML metadata, not an additional unpacked copy of the same application; extract the tarball when unpacked inspection is needed. Sessions Windows artifacts keep the architecture-specific installers and ZIPs, not the unused combined installer. Already-compressed distributables are uploaded without a second compression pass.
 
 ## Agent authentication in tests
 
