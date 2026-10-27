@@ -14,7 +14,8 @@ import {
   mutedIconColorMapping,
 } from "@/components/ui/icon-button-chrome";
 
-const ThemedPanelLeft = withUnistyles(PanelLeft);
+const ThemedPanelLeft = withUnistyles(PanelLeft, mutedIconColorMapping);
+const ExtraMutedPanelLeft = withUnistyles(PanelLeft, extraMutedIconColorMapping);
 
 interface SidebarMenuToggleProps {
   style?: StyleProp<ViewStyle>;
@@ -68,6 +69,7 @@ function SidebarMenuToggleButton({
   }, [toggleAgentListForLayout, isMobile]);
 
   const accessibilityState = useMemo(() => ({ expanded: isOpen }), [isOpen]);
+  const DesktopMenuIcon = extraMutedIdleIcon ? ExtraMutedPanelLeft : ThemedPanelLeft;
 
   return (
     <HeaderToggleButton
@@ -86,11 +88,7 @@ function SidebarMenuToggleButton({
       {isMobile ? (
         <MobileMenuIcon extraMuted={extraMutedIdleIcon} />
       ) : (
-        <ThemedPanelLeft
-          size={iconButtonChromeGlyphSize("large")}
-          strokeWidth={1.5}
-          uniProps={extraMutedIdleIcon ? extraMutedIconColorMapping : mutedIconColorMapping}
-        />
+        <DesktopMenuIcon size={iconButtonChromeGlyphSize("large")} strokeWidth={1.5} />
       )}
     </HeaderToggleButton>
   );

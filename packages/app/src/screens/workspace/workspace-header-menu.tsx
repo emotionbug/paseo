@@ -33,25 +33,20 @@ import {
 } from "@/screens/workspace/scripts";
 import { usePluginWorkspaceMenu } from "@/plugins";
 
-const ThemedEllipsis = withUnistyles(Ellipsis);
-const ThemedCopy = withUnistyles(Copy);
-const ThemedGlobe = withUnistyles(Globe);
-const ThemedImport = withUnistyles(ImportIcon);
-const ThemedSettings = withUnistyles(Settings);
-
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const MENU_NEW_BROWSER_ICON = <ThemedGlobe size={16} uniProps={mutedColorMapping} />;
-const MENU_IMPORT_ICON = <ThemedImport size={16} uniProps={mutedColorMapping} />;
-const MENU_COPY_ICON = <ThemedCopy size={16} uniProps={mutedColorMapping} />;
-const MENU_SETTINGS_ICON = <ThemedSettings size={16} uniProps={mutedColorMapping} />;
+const ThemedEllipsis = withUnistyles(Ellipsis, extraMutedIconColorMapping);
+const ThemedCopy = withUnistyles(Copy, mutedColorMapping);
+const ThemedGlobe = withUnistyles(Globe, mutedColorMapping);
+const ThemedImport = withUnistyles(ImportIcon, mutedColorMapping);
+const ThemedSettings = withUnistyles(Settings, mutedColorMapping);
+
+const MENU_NEW_BROWSER_ICON = <ThemedGlobe size={16} />;
+const MENU_IMPORT_ICON = <ThemedImport size={16} />;
+const MENU_COPY_ICON = <ThemedCopy size={16} />;
+const MENU_SETTINGS_ICON = <ThemedSettings size={16} />;
 function WorkspaceHeaderMenuTriggerIcon() {
-  return (
-    <ThemedEllipsis
-      size={iconButtonChromeGlyphSize("large")}
-      uniProps={extraMutedIconColorMapping}
-    />
-  );
+  return <ThemedEllipsis size={iconButtonChromeGlyphSize("large")} />;
 }
 
 /** The ⋯ with a dot on it, for when something inside the menu needs looking at. */

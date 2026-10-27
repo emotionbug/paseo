@@ -24,6 +24,7 @@
 - Serialized same-file editor saves, prevented rename collisions from replacing files, and made directory listings tolerate inaccessible children.
 - Propagated durable agent-deletion failures instead of acknowledging deletion that could reappear after restart.
 - Cleaned up mirrored terminals after worker crashes and bounded WebSocket shutdown handshakes before forced daemon exit.
+- Stopped browser workspace icons from forwarding internal styling props to the DOM, and deferred browser-automation implementation loading to remove a startup import cycle.
 
 ## 0.13.0 - 2026-10-24
 

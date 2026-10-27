@@ -10,22 +10,22 @@ import {
 } from "lucide-react-native";
 import type { Theme } from "@/styles/theme";
 
-const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal);
-const ThemedDownload = withUnistyles(Download);
-const ThemedUpload = withUnistyles(Upload);
-const ThemedArrowDownUp = withUnistyles(ArrowDownUp);
-const ThemedGitMerge = withUnistyles(GitMerge);
-const ThemedRefreshCcw = withUnistyles(RefreshCcw);
-const ThemedArchive = withUnistyles(Archive);
-
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
+const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal, mutedColorMapping);
+const ThemedDownload = withUnistyles(Download, mutedColorMapping);
+const ThemedUpload = withUnistyles(Upload, mutedColorMapping);
+const ThemedArrowDownUp = withUnistyles(ArrowDownUp, mutedColorMapping);
+const ThemedGitMerge = withUnistyles(GitMerge, mutedColorMapping);
+const ThemedRefreshCcw = withUnistyles(RefreshCcw, mutedColorMapping);
+const ThemedArchive = withUnistyles(Archive, mutedColorMapping);
+
 export const GIT_ACTION_ICONS = {
-  commit: <ThemedGitCommitHorizontal size={16} uniProps={mutedColorMapping} />,
-  pull: <ThemedDownload size={16} uniProps={mutedColorMapping} />,
-  push: <ThemedUpload size={16} uniProps={mutedColorMapping} />,
-  pullAndPush: <ThemedArrowDownUp size={16} uniProps={mutedColorMapping} />,
-  merge: <ThemedGitMerge size={16} uniProps={mutedColorMapping} />,
-  mergeFromBase: <ThemedRefreshCcw size={16} uniProps={mutedColorMapping} />,
-  archive: <ThemedArchive size={16} uniProps={mutedColorMapping} />,
+  commit: <ThemedGitCommitHorizontal size={16} />,
+  pull: <ThemedDownload size={16} />,
+  push: <ThemedUpload size={16} />,
+  pullAndPush: <ThemedArrowDownUp size={16} />,
+  merge: <ThemedGitMerge size={16} />,
+  mergeFromBase: <ThemedRefreshCcw size={16} />,
+  archive: <ThemedArchive size={16} />,
 };

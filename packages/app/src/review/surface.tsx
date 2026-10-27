@@ -72,14 +72,14 @@ const destructiveIconColorMapping = (theme: Theme) => ({
 const accentForegroundIconColorMapping = (theme: Theme) => ({
   color: theme.colors.accentForeground,
 });
-const ThemedPencil = withUnistyles(Pencil);
-const ThemedPlus = withUnistyles(Plus);
-const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedPencil = withUnistyles(Pencil, foregroundMutedIconColorMapping);
+const ThemedPlus = withUnistyles(Plus, accentForegroundIconColorMapping);
+const ThemedTrash2 = withUnistyles(Trash2, destructiveIconColorMapping);
 
 function InlineReviewAddIcon({ style, testID }: { style?: StyleProp<ViewStyle>; testID?: string }) {
   return (
     <View style={[styles.gutterActionVisual, style]} testID={testID}>
-      <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+      <ThemedPlus size={16} strokeWidth={2.4} />
     </View>
   );
 }
@@ -101,7 +101,7 @@ export function InlineReviewAddButton({
       style={[styles.gutterActionVisual, style]}
       testID="inline-review-add"
     >
-      <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+      <ThemedPlus size={16} strokeWidth={2.4} />
     </Pressable>
   );
 }
@@ -364,7 +364,7 @@ function CommentRow({
           onPress={handleEdit}
           style={iconButtonStyle}
         >
-          <ThemedPencil size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedPencil size={14} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -374,7 +374,7 @@ function CommentRow({
           onPress={handleDelete}
           style={iconButtonDestructiveStyle}
         >
-          <ThemedTrash2 size={14} uniProps={destructiveIconColorMapping} />
+          <ThemedTrash2 size={14} />
         </Pressable>
       </View>
     </View>

@@ -47,6 +47,12 @@ diffPerfDescribe("Diff canvas performance", () => {
     const client = await connectSeedClient();
     let cdp: CDPSession | null = null;
 
+    const forwardedStylingPropErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("uniProps")) {
+        forwardedStylingPropErrors.push(message.text());
+      }
+    });
     try {
       const created = await client.createWorkspace({
         source: { kind: "directory", path: repo.path },
@@ -68,6 +74,7 @@ diffPerfDescribe("Diff canvas performance", () => {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: CPU_SLOWDOWN });
       const elapsedMs = await openFirstReviewEditor(page);
       expect(elapsedMs).toBeLessThanOrEqual(200 * CPU_SLOWDOWN);
+      expect(forwardedStylingPropErrors).toEqual([]);
     } finally {
       await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 1 }).catch(() => undefined);
       await cdp?.detach().catch(() => undefined);

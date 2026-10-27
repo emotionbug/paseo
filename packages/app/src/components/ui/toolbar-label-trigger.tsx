@@ -48,7 +48,7 @@ interface ToolbarLabelSelectTriggerProps extends Omit<PressableProps, "children"
   open?: boolean;
 }
 
-const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedChevronDown = withUnistyles(ChevronDown, extraMutedIconColorMapping);
 
 /** The shared current/base branch geometry. Disabled keeps the frame but has no interaction. */
 export const ToolbarLabelSelectTrigger = forwardRef<View, ToolbarLabelSelectTriggerProps>(
@@ -67,7 +67,7 @@ export const ToolbarLabelSelectTrigger = forwardRef<View, ToolbarLabelSelectTrig
                 {label}
               </Text>
               <ToolbarLabelTriggerIcon>
-                <ThemedChevronDown size={12} uniProps={extraMutedIconColorMapping} />
+                <ThemedChevronDown size={12} />
               </ToolbarLabelTriggerIcon>
             </>
           );

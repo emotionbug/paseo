@@ -30,16 +30,13 @@ const foregroundExtraMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundExtraMuted,
 });
 
-const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedChevronRight = withUnistyles(ChevronRight, foregroundExtraMutedIconColorMapping);
 
 /** Rotating disclosure chevron for a directory row (points right; rotates down when expanded). */
 export function TreeChevron({ expanded }: { expanded: boolean }) {
   return (
     <View style={expanded ? [styles.chevron, styles.chevronExpanded] : styles.chevron}>
-      <ThemedChevronRight
-        size={WORKSPACE_TREE_ICON_SIZE}
-        uniProps={foregroundExtraMutedIconColorMapping}
-      />
+      <ThemedChevronRight size={WORKSPACE_TREE_ICON_SIZE} />
     </View>
   );
 }

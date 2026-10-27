@@ -25,12 +25,11 @@ import {
   type WorkspaceTabLaunchItem,
 } from "@/workspace-tabs/launcher";
 
-const ThemedPlus = withUnistyles(Plus);
-const ThemedPencil = withUnistyles(Pencil);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const extraMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundExtraMuted,
 });
+const ThemedPencil = withUnistyles(Pencil, extraMutedColorMapping);
 /** Every launcher row leads with the same glyph box so labels share one rail. */
 const LAUNCHER_ICON_SIZE = ICON_SIZE.md;
 const LAUNCHER_MAX_WIDTH = 380;
@@ -81,7 +80,7 @@ function EditProfilesButton({ label, onPress }: { label: string; onPress: () => 
       testID="workspace-new-tab-edit-terminal-profiles"
     >
       <View style={styles.editProfilesGlyph}>
-        <ThemedPencil size={ICON_SIZE.xs} uniProps={extraMutedColorMapping} />
+        <ThemedPencil size={ICON_SIZE.xs} />
       </View>
     </Pressable>
   );
@@ -124,7 +123,7 @@ function useNewTabDescriptor() {
     subtitle: label,
     tooltip: label,
     titleState: "ready" as const,
-    icon: ThemedPlus,
+    icon: Plus,
     statusBucket: null,
   };
 }

@@ -1,7 +1,7 @@
 import { memo, useCallback } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { ThemedChevron, chevronColorMapping } from "@/git/themed-chevron";
+import { ThemedChevron } from "@/git/themed-chevron";
 import type { ClassifiedCheckoutCommit } from "@/git/use-commits-query";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useTimeAgo } from "@/hooks/use-time-ago";
@@ -49,7 +49,7 @@ export const CommitRow = memo(function CommitRow({
       </View>
       <CommitTimestamp authorDate={commit.authorDate} />
       <View style={styles.caret}>
-        <ThemedChevron size={14} uniProps={chevronColorMapping} />
+        <ThemedChevron size={14} />
       </View>
     </Pressable>
   );

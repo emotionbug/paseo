@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/icon-button-chrome";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 
-const ThemedPanelRight = withUnistyles(PanelRight);
+const MutedPanelRight = withUnistyles(PanelRight, mutedIconColorMapping);
+const ExtraMutedPanelRight = withUnistyles(PanelRight, extraMutedIconColorMapping);
 
 export const EXPLORER_TOGGLE_KEYS: ShortcutKey[] = ["mod", "E"];
 
@@ -46,6 +47,7 @@ export function WorkspaceExplorerToggle({
   mobile,
   style,
 }: WorkspaceExplorerToggleProps) {
+  const PanelRightIcon = mobile ? MutedPanelRight : ExtraMutedPanelRight;
   return (
     <HeaderToggleButton
       testID="workspace-explorer-toggle"
@@ -59,11 +61,7 @@ export function WorkspaceExplorerToggle({
       accessibilityLabel={label}
       accessibilityState={accessibilityState}
     >
-      <ThemedPanelRight
-        size={iconButtonChromeGlyphSize("large")}
-        strokeWidth={1.5}
-        uniProps={mobile ? mutedIconColorMapping : extraMutedIconColorMapping}
-      />
+      <PanelRightIcon size={iconButtonChromeGlyphSize("large")} strokeWidth={1.5} />
     </HeaderToggleButton>
   );
 }

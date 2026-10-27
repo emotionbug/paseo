@@ -121,24 +121,25 @@ const TAB_CLOSE_BUTTON_RESERVED_WIDTH = 0;
 const TAB_LABEL_LAYOUT_ALLOWANCE = 4;
 const AGENT_TOOLTIP_TITLE_MAX_LENGTH = 80;
 
-const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
-const ThemedX = withUnistyles(X);
-const ThemedCopy = withUnistyles(Copy);
-
-const ThemedRotateCw = withUnistyles(RotateCw);
-const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
-const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
-const ThemedCopyX = withUnistyles(CopyX);
-const ThemedPencil = withUnistyles(Pencil);
-const ThemedPlus = withUnistyles(Plus);
-const ThemedColumns2 = withUnistyles(Columns2);
-const ThemedRows2 = withUnistyles(Rows2);
-const ThemedEllipsis = withUnistyles(Ellipsis);
-const ThemedMaximize = withUnistyles(Maximize);
-const ThemedMinimize = withUnistyles(Minimize);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const extraMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
+
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const ThemedX = withUnistyles(X, mutedColorMapping);
+const ForegroundX = withUnistyles(X, foregroundColorMapping);
+const ThemedCopy = withUnistyles(Copy, mutedColorMapping);
+const ThemedRotateCw = withUnistyles(RotateCw, mutedColorMapping);
+const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine, mutedColorMapping);
+const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine, mutedColorMapping);
+const ThemedCopyX = withUnistyles(CopyX, mutedColorMapping);
+const ThemedPencil = withUnistyles(Pencil, mutedColorMapping);
+const ThemedPlus = withUnistyles(Plus, extraMutedColorMapping);
+const ThemedColumns2 = withUnistyles(Columns2, extraMutedColorMapping);
+const ThemedRows2 = withUnistyles(Rows2, extraMutedColorMapping);
+const ThemedEllipsis = withUnistyles(Ellipsis, extraMutedColorMapping);
+const ThemedMaximize = withUnistyles(Maximize, extraMutedColorMapping);
+const ThemedMinimize = withUnistyles(Minimize, extraMutedColorMapping);
 
 function updateMeasuredWidth(
   setWidth: React.Dispatch<React.SetStateAction<number>>,
@@ -249,7 +250,7 @@ function WorkspaceNewTabButton({
         testID="workspace-new-tab-button"
         style={placement === "inline" ? styles.inlineNewTabButton : undefined}
       >
-        <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
+        <ThemedPlus size={14} />
       </ToolbarButton>
       <WorkspaceNewTabMenuContent
         serverId={serverId}
@@ -297,14 +298,8 @@ function WorkspacePaneToolbarActions({
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const splitActionsVisible = showSplitActions && Boolean(onSplitRight && onSplitDown);
-  const splitRightLeading = useMemo(
-    () => <ThemedColumns2 size={14} uniProps={extraMutedColorMapping} />,
-    [],
-  );
-  const splitDownLeading = useMemo(
-    () => <ThemedRows2 size={14} uniProps={extraMutedColorMapping} />,
-    [],
-  );
+  const splitRightLeading = useMemo(() => <ThemedColumns2 size={14} />, []);
+  const splitDownLeading = useMemo(() => <ThemedRows2 size={14} />, []);
   const splitRightTrailing = useMemo(
     () => (splitRightKeys ? <Shortcut chord={splitRightKeys} /> : null),
     [splitRightKeys],
@@ -340,11 +335,7 @@ function WorkspacePaneToolbarActions({
           testID={paneMaximized ? "workspace-restore-pane" : "workspace-maximize-pane"}
           onPress={onTogglePaneMaximized}
         >
-          {paneMaximized ? (
-            <ThemedMinimize size={14} uniProps={extraMutedColorMapping} />
-          ) : (
-            <ThemedMaximize size={14} uniProps={extraMutedColorMapping} />
-          )}
+          {paneMaximized ? <ThemedMinimize size={14} /> : <ThemedMaximize size={14} />}
         </ToolbarButton>
       ) : null}
       {splitActionsVisible && onSplitRight && onSplitDown ? (
@@ -354,7 +345,7 @@ function WorkspacePaneToolbarActions({
             label={t("workspace.git.actions.moreActions")}
             testID="workspace-split-pane-menu"
           >
-            <ThemedEllipsis size={14} uniProps={extraMutedColorMapping} />
+            <ThemedEllipsis size={14} />
           </ToolbarButton>
           <DropdownMenuContent
             side="bottom"
@@ -409,7 +400,7 @@ function WorkspaceExitFocusModeButton({
         testID="workspace-exit-focus-mode"
         onPress={onPress}
       >
-        <ThemedX size={14} uniProps={mutedColorMapping} />
+        <ThemedX size={14} />
       </ToolbarButton>
     </View>
   );
@@ -423,19 +414,19 @@ function TabContextMenuItem({
   const leading = useMemo(() => {
     switch (entry.icon) {
       case "copy":
-        return <ThemedCopy size={16} uniProps={mutedColorMapping} />;
+        return <ThemedCopy size={16} />;
       case "rotate-cw":
-        return <ThemedRotateCw size={16} uniProps={mutedColorMapping} />;
+        return <ThemedRotateCw size={16} />;
       case "arrow-left-to-line":
-        return <ThemedArrowLeftToLine size={16} uniProps={mutedColorMapping} />;
+        return <ThemedArrowLeftToLine size={16} />;
       case "arrow-right-to-line":
-        return <ThemedArrowRightToLine size={16} uniProps={mutedColorMapping} />;
+        return <ThemedArrowRightToLine size={16} />;
       case "copy-x":
-        return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
+        return <ThemedCopyX size={16} />;
       case "pencil":
-        return <ThemedPencil size={16} uniProps={mutedColorMapping} />;
+        return <ThemedPencil size={16} />;
       case "x":
-        return <ThemedX size={16} uniProps={mutedColorMapping} />;
+        return <ThemedX size={16} />;
       default:
         return undefined;
     }
@@ -920,6 +911,7 @@ function TabChip({
             >
               {({ hovered: closeHovered, pressed }) => {
                 const highlighted = closeHovered || pressed;
+                const CloseIcon = highlighted ? ForegroundX : ThemedX;
                 if (isClosingTab) {
                   return (
                     <ThemedLoadingSpinner
@@ -928,12 +920,7 @@ function TabChip({
                     />
                   );
                 }
-                return (
-                  <ThemedX
-                    size={12}
-                    uniProps={highlighted ? foregroundColorMapping : mutedColorMapping}
-                  />
-                );
+                return <CloseIcon size={12} />;
               }}
             </Pressable>
           </View>

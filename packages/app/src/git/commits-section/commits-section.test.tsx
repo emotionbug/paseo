@@ -18,7 +18,6 @@ vi.mock("@/git/use-commits-query", () => ({
 
 vi.mock("@/git/themed-chevron", () => ({
   ThemedChevron: () => null,
-  chevronColorMapping: () => ({}),
 }));
 
 vi.mock("./commit-row", () => ({

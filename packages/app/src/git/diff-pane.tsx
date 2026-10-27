@@ -199,36 +199,29 @@ type PressableStyleFn = (
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
-const ThemedAlignJustify = withUnistyles(AlignJustify);
-const ThemedColumns2 = withUnistyles(Columns2);
-const ThemedPilcrow = withUnistyles(Pilcrow);
-const ThemedWrapText = withUnistyles(WrapText);
-const ThemedListChevronsDownUp = withUnistyles(ListChevronsDownUp);
-const ThemedListChevronsUpDown = withUnistyles(ListChevronsUpDown);
-const ThemedMaximize = withUnistyles(Maximize);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner, foregroundMutedIconColorMapping);
+const ThemedAlignJustify = withUnistyles(AlignJustify, foregroundMutedIconColorMapping);
+const ThemedColumns2 = withUnistyles(Columns2, foregroundMutedIconColorMapping);
+const ThemedPilcrow = withUnistyles(Pilcrow, foregroundMutedIconColorMapping);
+const ThemedWrapText = withUnistyles(WrapText, foregroundMutedIconColorMapping);
+const ThemedListChevronsDownUp = withUnistyles(ListChevronsDownUp, foregroundMutedIconColorMapping);
+const ThemedListChevronsUpDown = withUnistyles(ListChevronsUpDown, foregroundMutedIconColorMapping);
+const ThemedMaximize = withUnistyles(Maximize, foregroundMutedIconColorMapping);
 const noopStateChange = () => {};
-const ThemedChevronDown = withUnistyles(ChevronDown);
-const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
-const ThemedExternalLink = withUnistyles(ExternalLink);
-const DIFF_OPTIONS_WHITESPACE_ICON = (
-  <ThemedPilcrow size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-const DIFF_OPTIONS_WRAP_ICON = (
-  <ThemedWrapText size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-const DIFF_OPTIONS_SPLIT_ICON = (
-  <ThemedColumns2 size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-const DIFF_OPTIONS_COLLAPSE_ICON = (
-  <ThemedListChevronsDownUp size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-const DIFF_OPTIONS_EXPAND_ICON = (
-  <ThemedListChevronsUpDown size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-const DIFF_OPTIONS_CHANGES_TAB_ICON = (
-  <ThemedMaximize size={14} uniProps={foregroundMutedIconColorMapping} />
-);
+const ExtraMutedChevronDown = withUnistyles(ChevronDown, extraMutedIconColorMapping);
+const ExtraMutedMoreHorizontal = withUnistyles(MoreHorizontal, extraMutedIconColorMapping);
+const ExtraMutedExternalLink = withUnistyles(ExternalLink, extraMutedIconColorMapping);
+const ExtraMutedColumns2 = withUnistyles(Columns2, extraMutedIconColorMapping);
+const ExtraMutedPilcrow = withUnistyles(Pilcrow, extraMutedIconColorMapping);
+const ExtraMutedWrapText = withUnistyles(WrapText, extraMutedIconColorMapping);
+const ExtraMutedListChevronsDownUp = withUnistyles(ListChevronsDownUp, extraMutedIconColorMapping);
+const ExtraMutedListChevronsUpDown = withUnistyles(ListChevronsUpDown, extraMutedIconColorMapping);
+const DIFF_OPTIONS_WHITESPACE_ICON = <ThemedPilcrow size={14} />;
+const DIFF_OPTIONS_WRAP_ICON = <ThemedWrapText size={14} />;
+const DIFF_OPTIONS_SPLIT_ICON = <ThemedColumns2 size={14} />;
+const DIFF_OPTIONS_COLLAPSE_ICON = <ThemedListChevronsDownUp size={14} />;
+const DIFF_OPTIONS_EXPAND_ICON = <ThemedListChevronsUpDown size={14} />;
+const DIFF_OPTIONS_CHANGES_TAB_ICON = <ThemedMaximize size={14} />;
 
 interface DiffLayoutToggleProps {
   layout: "unified" | "split";
@@ -264,12 +257,9 @@ export function DiffLayoutToggle({
           style={toggleStyle ?? defaultToggleStyle}
         >
           {layout === "unified" ? (
-            <ThemedColumns2 size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedColumns2 size={isMobile ? 18 : 14} />
           ) : (
-            <ThemedAlignJustify
-              size={isMobile ? 18 : 14}
-              uniProps={foregroundMutedIconColorMapping}
-            />
+            <ThemedAlignJustify size={isMobile ? 18 : 14} />
           )}
         </Pressable>
       </TooltipTrigger>
@@ -317,7 +307,7 @@ export function DiffModeMenu({
                 {{ all: allLabel, uncommitted: uncommittedLabel, base: committedLabel }[diffMode]}
               </Text>
               <ToolbarLabelTriggerIcon>
-                <ThemedChevronDown size={12} uniProps={extraMutedIconColorMapping} />
+                <ExtraMutedChevronDown size={12} />
               </ToolbarLabelTriggerIcon>
             </>
           );
@@ -720,11 +710,7 @@ function ChangesPullRequestExternalLink({
       onPress={handlePress}
       testID="changes-open-pull-request-external"
     >
-      <ThemedExternalLink
-        size={paneContentToolbarIconSize(compact)}
-        strokeWidth={1.5}
-        uniProps={extraMutedIconColorMapping}
-      />
+      <ExtraMutedExternalLink size={paneContentToolbarIconSize(compact)} strokeWidth={1.5} />
     </ToolbarButton>
   );
 }
@@ -838,9 +824,9 @@ function ChangesDiffToolbar({
           }
         >
           {options.collapse.allFilesCollapsed ? (
-            <ThemedListChevronsUpDown size={iconSize} uniProps={extraMutedIconColorMapping} />
+            <ExtraMutedListChevronsUpDown size={iconSize} />
           ) : (
-            <ThemedListChevronsDownUp size={iconSize} uniProps={extraMutedIconColorMapping} />
+            <ExtraMutedListChevronsDownUp size={iconSize} />
           )}
         </ToolbarButton>
       ) : null}
@@ -852,7 +838,7 @@ function ChangesDiffToolbar({
           testID="changes-toggle-layout"
           onPress={options.layout.onToggle}
         >
-          <ThemedColumns2 size={iconSize} uniProps={extraMutedIconColorMapping} />
+          <ExtraMutedColumns2 size={iconSize} />
         </ToolbarButton>
       ) : null}
       <ToolbarButton
@@ -862,7 +848,7 @@ function ChangesDiffToolbar({
         testID="changes-toggle-whitespace"
         onPress={options.onToggleHideWhitespace}
       >
-        <ThemedPilcrow size={iconSize} uniProps={extraMutedIconColorMapping} />
+        <ExtraMutedPilcrow size={iconSize} />
       </ToolbarButton>
       <ToolbarButton
         compact={compact}
@@ -871,7 +857,7 @@ function ChangesDiffToolbar({
         testID="changes-toggle-wrap-lines"
         onPress={options.onToggleWrapLines}
       >
-        <ThemedWrapText size={iconSize} uniProps={extraMutedIconColorMapping} />
+        <ExtraMutedWrapText size={iconSize} />
       </ToolbarButton>
     </>
   );
@@ -902,10 +888,7 @@ function ChangesRefreshButton({
           uniProps={extraMutedIconColorMapping}
         />
       ) : (
-        <ThemedRotateCw
-          size={paneContentToolbarIconSize(compact)}
-          uniProps={extraMutedIconColorMapping}
-        />
+        <ExtraMutedRotateCw size={paneContentToolbarIconSize(compact)} />
       )}
     </ToolbarButton>
   );
@@ -939,10 +922,7 @@ function ChangesOptionsMenu({ mode, compact }: { mode: ChangesOptionsMenuMode; c
         compact={compact}
         testID="changes-options-menu"
       >
-        <ThemedMoreHorizontal
-          size={paneContentToolbarIconSize(compact)}
-          uniProps={extraMutedIconColorMapping}
-        />
+        <ExtraMutedMoreHorizontal size={paneContentToolbarIconSize(compact)} />
       </ToolbarButton>
       <DropdownMenuContent align="end" width={240} testID="changes-options-menu-content">
         {content}
@@ -1057,7 +1037,7 @@ function ChangesDiffOptions({ options }: { options: ChangesToolbarDiffOptions })
   );
 }
 
-const ThemedRotateCw = withUnistyles(RotateCw);
+const ExtraMutedRotateCw = withUnistyles(RotateCw, extraMutedIconColorMapping);
 
 interface DiffBodyContentProps {
   isStatusLoading: boolean;
@@ -1091,7 +1071,7 @@ function DiffBodyContent({
   if (isStatusLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedIconColorMapping} />
+        <ThemedLoadingSpinner size="large" />
         <Text style={styles.loadingText}>{checkingRepositoryLabel}</Text>
       </View>
     );
@@ -1113,7 +1093,7 @@ function DiffBodyContent({
   if (isDiffLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedIconColorMapping} />
+        <ThemedLoadingSpinner size="large" />
       </View>
     );
   }

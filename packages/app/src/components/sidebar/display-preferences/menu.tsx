@@ -34,8 +34,8 @@ import { WorkspaceLabelManagerModal } from "@/workspace-labels/manager-modal";
 
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const ThemedSettings2 = withUnistyles(Settings2);
-const ThemedCircle = withUnistyles(Circle);
+const ThemedSettings2 = withUnistyles(Settings2, mutedIconMapping);
+const ThemedCircle = withUnistyles(Circle, mutedIconMapping);
 
 /** Fits the item's 16pt leading slot with a hair of room, matching the trailing check. */
 const OPTION_ICON_SIZE = 14;
@@ -48,7 +48,7 @@ const MENU_WIDTH = 232;
  * circle inside it, so the ring's outer edge lands on the dots' edge at 11 and 1pt short at 10.
  * The glyphs are what have to agree here, not the boxes they are centred in.
  */
-const UNLABELLED_MARK = <ThemedCircle size={11} uniProps={mutedIconMapping} />;
+const UNLABELLED_MARK = <ThemedCircle size={11} />;
 
 /**
  * What the sidebar shows and how it is arranged.
@@ -139,7 +139,7 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           accessibilityLabel={t("sidebar.display.trigger")}
           testID="sidebar-display-preferences-menu"
         >
-          <ThemedSettings2 size={14} uniProps={mutedIconMapping} />
+          <ThemedSettings2 size={14} />
         </MenuTrigger>
         <MenuSurface
           align="end"

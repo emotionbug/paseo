@@ -4,7 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useCheckoutCommitsQuery, type CheckoutCommitsQueryResult } from "@/git/use-commits-query";
-import { ThemedChevron, chevronColorMapping } from "@/git/themed-chevron";
+import { ThemedChevron } from "@/git/themed-chevron";
 import { treeRowPaddingLeft } from "@/components/tree-primitives";
 import { normalizeBranchOptionName } from "@/utils/branch-suggestions";
 import { CommitRow } from "./commit-row";
@@ -126,7 +126,7 @@ export function CommitsSection({
         style={styles.header}
       >
         <View style={headerChevronStyle}>
-          <ThemedChevron size={14} uniProps={chevronColorMapping} />
+          <ThemedChevron size={14} />
         </View>
         <Text style={styles.title}>{t("workspace.git.diff.commits.title")}</Text>
         {commitCount === null ? (

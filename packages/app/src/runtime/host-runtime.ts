@@ -70,7 +70,7 @@ import {
   invalidateServerDataQueriesAfterReconnect,
   mountServerDataPushRouter,
 } from "@/data/push-router";
-import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
+import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/daemon-handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
 import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/composer/actions";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";

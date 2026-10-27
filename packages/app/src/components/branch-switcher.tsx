@@ -24,7 +24,7 @@ interface BranchSwitcherProps {
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedGitBranch = withUnistyles(GitBranch, foregroundMutedIconColorMapping);
 
 export function BranchSwitcher({
   currentBranchName,
@@ -55,10 +55,7 @@ export function BranchSwitcher({
 
   const handleOpen = useCallback(() => setIsOpen(true), [setIsOpen]);
 
-  const branchLeadingSlot = useMemo(
-    () => <ThemedGitBranch size={14} uniProps={foregroundMutedIconColorMapping} />,
-    [],
-  );
+  const branchLeadingSlot = useMemo(() => <ThemedGitBranch size={14} />, []);
 
   const renderBranchOption = useCallback<NonNullable<ComboboxProps["renderOption"]>>(
     ({ option, selected, active, onPress }) => (
