@@ -815,10 +815,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.assertNotDisposed();
     const normalizedCwd = resolve(cwd);
     const normalizedOptions = this.normalizeCheckoutDiffOptions(options);
-    // Initial inventory events cover the watcher setup gap. Process them before
-    // starting a cold diff, rather than invalidating that build halfway through.
-    await this.workspaceTargets.get(normalizedCwd)?.observationSetupPromise;
-    this.assertNotDisposed();
+    // Full diffs avoid racing the initial inventory because a mid-build invalidation
+    // discards expensive patch/highlight work. Summary reads are cheap and authoritative
+    // from Git, so returning them immediately is preferable; inventory still invalidates
+    // an overlapping cache fill and schedules the normal refresh.
+    if (normalizedOptions.detail !== "summary") {
+      await this.workspaceTargets.get(normalizedCwd)?.observationSetupPromise;
+      this.assertNotDisposed();
+    }
     return this.checkoutDiffCache.read({
       cwd: normalizedCwd,
       compare: normalizedOptions,
@@ -839,6 +843,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         : {}),
       ...(options.ignoreWhitespace === true ? { ignoreWhitespace: true } : {}),
       ...(options.includeStructured === true ? { includeStructured: true } : {}),
+      ...(options.detail === "summary" ? { detail: "summary" as const } : {}),
     };
   }
 

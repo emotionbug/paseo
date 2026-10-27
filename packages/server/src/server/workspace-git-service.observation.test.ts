@@ -293,6 +293,36 @@ describe("WorkspaceGitService checkout observation", () => {
     }
   });
 
+  test("builds a file summary without waiting for initial watcher inventory", async () => {
+    const watcher = createWatcherHarness();
+    const inventoryFinished = createDeferred<void>();
+    const observedDetails: Array<string | undefined> = [];
+    const service = createService(watcher, {
+      subscribe: async (...args: Parameters<typeof watcher.subscribe>) => {
+        await inventoryFinished.promise;
+        return watcher.subscribe(...args);
+      },
+      getCheckoutDiff: async (_cwd, options) => {
+        observedDetails.push(options.detail);
+        return { diff: "", structured: [] };
+      },
+    });
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, () => {});
+    try {
+      const read = service.getCheckoutDiff(REPO_CWD, {
+        mode: "uncommitted",
+        detail: "summary",
+      });
+      await flushPromises();
+      expect(observedDetails).toEqual(["summary"]);
+      await read;
+    } finally {
+      inventoryFinished.resolve();
+      subscription.unsubscribe();
+      await service.dispose();
+    }
+  });
+
   test("dispose waits for file observation to finish closing", async () => {
     const watcher = createWatcherHarness();
     const closeFinished = createDeferred<void>();

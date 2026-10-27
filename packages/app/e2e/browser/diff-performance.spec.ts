@@ -35,6 +35,8 @@ const MANY_FILE_MAX_MEDIAN_FRAME_MS = 50;
 const MANY_FILE_MAX_P95_FRAME_MS = 100;
 const MANY_FILE_MAX_TREE_PANEL_SHELL_MS = 1_000;
 const MANY_FILE_MAX_TREE_FILES_MS = 3_000;
+const MANY_FILE_MAX_TREE_MOUNTED_MS = 3_000;
+const MANY_FILE_MAX_TREE_FIRST_ROW_MS = 250;
 const MANY_FILE_MAX_FIRST_DIFF_MS = 1_500;
 const MANY_FILE_MAX_CHANGES_READY_MS = 4_000;
 
@@ -95,9 +97,12 @@ diffPerfDescribe("Diff canvas performance", () => {
       const openedAt = performance.now();
       await page.goto(buildHostWorkspaceRoute(getServerId(), created.workspace.id));
       await waitForWorkspaceTabsVisible(page);
+
       const changesOpenedAt = performance.now();
       await openChangesTreePanel(page);
       const treePanelShellAt = performance.now();
+      await expect(page.getByTestId("changes-file-tree")).toBeVisible({ timeout: 90_000 });
+      const treeMountedAt = performance.now();
       const changedFile = page
         .locator('[data-testid^="diff-tree-file-"][data-testid$="-toggle"]')
         .filter({ visible: true })
@@ -115,6 +120,8 @@ diffPerfDescribe("Diff canvas performance", () => {
         routeReadyMs: changesOpenedAt - openedAt,
         treePanelShellMs: treePanelShellAt - changesOpenedAt,
         treeFilesMs: treeFilesAt - changesOpenedAt,
+        treeMountedMs: treeMountedAt - changesOpenedAt,
+        treeFirstRowMs: treeFilesAt - treeMountedAt,
         diffPanelShellMs: diffPanelShellAt - treeFilesAt,
         firstDiffMs: firstDiffAt - treeFilesAt,
         changesReadyMs: firstDiffAt - changesOpenedAt,
@@ -205,6 +212,8 @@ diffPerfDescribe("Diff canvas performance", () => {
       );
       expect(startup.treePanelShellMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_PANEL_SHELL_MS);
       expect(startup.treeFilesMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_FILES_MS);
+      expect(startup.treeMountedMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_MOUNTED_MS);
+      expect(startup.treeFirstRowMs).toBeLessThanOrEqual(MANY_FILE_MAX_TREE_FIRST_ROW_MS);
       expect(startup.firstDiffMs).toBeLessThanOrEqual(MANY_FILE_MAX_FIRST_DIFF_MS);
       expect(startup.changesReadyMs).toBeLessThanOrEqual(MANY_FILE_MAX_CHANGES_READY_MS);
       if (!RUN_HEADER_COMPARISON) {
@@ -455,18 +464,19 @@ async function configureUnwrappedUnifiedDiff(page: Page): Promise<void> {
         __PASEO_DIFF_REACT_STATS__?: { commits: number };
       };
       scope.__PASEO_DIFF_REACT_STATS__ = { commits: 0 };
-      if (!localStorage.getItem(preferencesKey)) {
-        localStorage.setItem(
-          preferencesKey,
-          JSON.stringify({
-            layout: "unified",
-            viewMode: "flat",
-            wrapLines: false,
-            hideWhitespace: false,
-            inlineDiff: false,
-          }),
-        );
-      }
+      const stored = localStorage.getItem(preferencesKey);
+      const current = stored ? (JSON.parse(stored) as Record<string, unknown>) : {};
+      localStorage.setItem(
+        preferencesKey,
+        JSON.stringify({
+          ...current,
+          layout: "unified",
+          viewMode: "flat",
+          wrapLines: false,
+          hideWhitespace: false,
+          inlineDiff: false,
+        }),
+      );
     },
     { preferencesKey: CHANGES_PREFERENCES_KEY },
   );

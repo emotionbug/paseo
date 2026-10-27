@@ -56,16 +56,40 @@ runDescribe("daemon E2E git diff bottleneck profiling", () => {
 
       const ctx = await createDaemonTestContext();
       try {
-        const checkoutStart = performance.now();
-        const checkoutPayload = await ctx.client.getCheckoutDiff(cwd, {
-          mode: "uncommitted",
+        const measure = async (
+          mode: "uncommitted" | "all",
+          detail?: "summary",
+        ): Promise<{ elapsedMs: number; fileCount: number }> => {
+          const startedAt = performance.now();
+          const payload = await ctx.client.getCheckoutDiff(cwd, {
+            mode,
+            ...(mode === "all" ? { baseRef: "main" } : {}),
+            ...(detail ? { detail } : {}),
+          });
+          expect(payload.error).toBeNull();
+          expect(payload.files.length).toBeGreaterThanOrEqual(LARGE_CHANGESET_SIZE);
+          return { elapsedMs: performance.now() - startedAt, fileCount: payload.files.length };
+        };
+
+        const observedAllSummaryStartedAt = performance.now();
+        const observedAllSummarySubscription = ctx.client.observeCheckoutDiff(cwd, {
+          mode: "all",
+          baseRef: "main",
+          detail: "summary",
         });
-        const checkoutMs = performance.now() - checkoutStart;
+        const observedAllSummaryPayload = await observedAllSummarySubscription.ready;
+        const observedAllSummaryMs = performance.now() - observedAllSummaryStartedAt;
+        await observedAllSummarySubscription.release();
+        expect(observedAllSummaryPayload.error).toBeNull();
+        expect(observedAllSummaryPayload.files.length).toBeGreaterThanOrEqual(LARGE_CHANGESET_SIZE);
 
-        expect(checkoutPayload.error).toBeNull();
-        expect(checkoutPayload.files.length).toBeGreaterThanOrEqual(LARGE_CHANGESET_SIZE);
+        const uncommittedSummary = await measure("uncommitted", "summary");
+        const allSummary = await measure("all", "summary");
+        const uncommittedFull = await measure("uncommitted");
 
-        const binaryEntry = checkoutPayload.files.find((file) => file.path === "blob.bin");
+        const binaryEntry = (
+          await ctx.client.getCheckoutDiff(cwd, { mode: "uncommitted" })
+        ).files.find((file) => file.path === "blob.bin");
         expect(binaryEntry).toBeTruthy();
         expect(binaryEntry?.status).toBe("binary");
 
@@ -77,16 +101,19 @@ runDescribe("daemon E2E git diff bottleneck profiling", () => {
               fileCount: LARGE_CHANGESET_SIZE,
               cliMs: Math.round(cliMs),
               cliDiffBytes: cliDiff.length,
-              checkoutMs: Math.round(checkoutMs),
-              checkoutFiles: checkoutPayload.files.length,
-              speedRatio: Number((checkoutMs / Math.max(cliMs, 1)).toFixed(2)),
+              uncommittedSummaryMs: Math.round(uncommittedSummary.elapsedMs),
+              observedAllSummaryMs: Math.round(observedAllSummaryMs),
+              allSummaryMs: Math.round(allSummary.elapsedMs),
+              fullMs: Math.round(uncommittedFull.elapsedMs),
+              checkoutFiles: uncommittedFull.fileCount,
+              speedRatio: Number((uncommittedFull.elapsedMs / Math.max(cliMs, 1)).toFixed(2)),
             },
             null,
             2,
           ),
         );
 
-        expect(checkoutMs).toBeLessThan(cliMs * 10);
+        expect(uncommittedFull.elapsedMs).toBeLessThan(cliMs * 10);
       } finally {
         await ctx.cleanup();
       }
