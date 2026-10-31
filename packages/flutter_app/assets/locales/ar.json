@@ -1100,7 +1100,11 @@
     "host": {
       "noHost": "لا مضيف",
       "switchTitle": "تبديل المضيف",
-      "searchPlaceholder": "بحث عن المضيفين..."
+      "searchPlaceholder": "بحث عن المضيفين...",
+      "actions": {
+        "reconnect": "إعادة الاتصال",
+        "edit": "تعديل المضيف"
+      }
     },
     "actions": {
       "addProject": "إضافة مشروع",
@@ -1136,7 +1140,12 @@
         "openFolder": "Open in file manager",
         "openFolderFailed": "Couldn't open folder",
         "remove": "إزالة المشروع",
-        "removing": "جارٍ الإزالة..."
+        "removing": "جارٍ الإزالة...",
+        "rename": "إعادة تسمية المشروع",
+        "resetName": "إعادة تعيين اسم المشروع",
+        "chooseIcon": "اختيار أيقونة المشروع",
+        "resetIcon": "إعادة تعيين أيقونة المشروع",
+        "archiveAll": "أرشفة جميع مساحات العمل"
       },
       "confirmations": {
         "removeTitle": "هل تريد إزالة المشروع؟",
@@ -1180,7 +1189,9 @@
         "archiveWorkspace": "أرشفة مساحة العمل",
         "hideFromSidebar": "إخفاء من الشريط الجانبي",
         "archiving": "أرشفة...",
-        "hiding": "إخفاء..."
+        "hiding": "إخفاء...",
+        "markUnread": "وضع علامة كغير مقروء",
+        "recover": "استعادة مساحة العمل"
       },
       "confirmations": {
         "hideTitle": "إخفاء مساحة العمل؟",

@@ -1428,39 +1428,6 @@ class EmptyState extends StatelessWidget {
   );
 }
 
-class PanelToolbar extends StatelessWidget {
-  const PanelToolbar({
-    super.key,
-    required this.title,
-    this.actions = const [],
-    this.leading,
-  });
-  final String title;
-  final List<Widget> actions;
-  final Widget? leading;
-  @override
-  Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(minHeight: 44),
-    decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 8),
-    child: Row(
-      children: [
-        ?leading,
-        Expanded(
-          child: Text(
-            title,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        ...actions,
-      ],
-    ),
-  );
-}
-
 class JsonDetails extends StatelessWidget {
   const JsonDetails({super.key, required this.value});
   final Object? value;

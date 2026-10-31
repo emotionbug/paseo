@@ -1108,7 +1108,11 @@
     "host": {
       "noHost": "No host",
       "switchTitle": "Switch host",
-      "searchPlaceholder": "Search hosts..."
+      "searchPlaceholder": "Search hosts...",
+      "actions": {
+        "reconnect": "Reconnect",
+        "edit": "Edit host"
+      }
     },
     "actions": {
       "addProject": "Add project",
@@ -1144,7 +1148,12 @@
         "openFolder": "Open in file manager",
         "openFolderFailed": "Couldn't open folder",
         "remove": "Remove project",
-        "removing": "Removing..."
+        "removing": "Removing...",
+        "rename": "Rename project",
+        "resetName": "Reset project name",
+        "chooseIcon": "Choose project icon",
+        "resetIcon": "Reset project icon",
+        "archiveAll": "Archive all workspaces"
       },
       "confirmations": {
         "removeTitle": "Remove project?",
@@ -1188,7 +1197,9 @@
         "archiveWorkspace": "Archive workspace",
         "hideFromSidebar": "Hide from sidebar",
         "archiving": "Archiving...",
-        "hiding": "Hiding..."
+        "hiding": "Hiding...",
+        "markUnread": "Mark as unread",
+        "recover": "Recover workspace"
       },
       "confirmations": {
         "hideTitle": "Hide workspace?",

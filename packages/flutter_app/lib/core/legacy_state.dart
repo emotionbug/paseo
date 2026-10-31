@@ -18,6 +18,23 @@ class LegacyStateSnapshot {
   final List<String> sources;
 }
 
+/// The original Electron app's userData directory. Its `app.setName` and
+/// electron-builder productName were "Paseo Sessions", so Electron stored
+/// localStorage and desktop documents under that name on every desktop OS.
+String? originalDesktopUserDataDir(Map<String, String> env) {
+  final override = env['PASEO_ELECTRON_USER_DATA_DIR'];
+  if (override != null) return override;
+  final home = env['HOME'] ?? env['USERPROFILE'];
+  if (Platform.isWindows) {
+    final appData = env['APPDATA'] ?? (home == null ? null : p.join(home, 'AppData', 'Roaming'));
+    return appData == null ? null : p.join(appData, 'Paseo Sessions');
+  }
+  if (home == null) return null;
+  return Platform.isMacOS
+      ? p.join(home, 'Library', 'Application Support', 'Paseo Sessions')
+      : p.join(env['XDG_CONFIG_HOME'] ?? p.join(home, '.config'), 'Paseo Sessions');
+}
+
 Future<LegacyStateSnapshot> readLegacyState() async {
   if (Platform.isAndroid || Platform.isIOS) {
     final result = await const MethodChannel('sh.paseo/legacy_storage')
@@ -33,15 +50,10 @@ Future<LegacyStateSnapshot> readLegacyState() async {
   if (!(Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
     throw UnsupportedError('Original settings import is unavailable on this platform.');
   }
-  final env = Platform.environment;
-  final home = env['HOME'] ?? env['USERPROFILE'];
-  if (home == null && env['PASEO_ELECTRON_USER_DATA_DIR'] == null) {
+  final base = originalDesktopUserDataDir(Platform.environment);
+  if (base == null) {
     throw StateError('Cannot locate original desktop settings: home directory is unavailable.');
   }
-  final base = env['PASEO_ELECTRON_USER_DATA_DIR'] ?? (Platform.isMacOS
-      ? p.join(home!, 'Library', 'Application Support', 'Paseo')
-      : Platform.isWindows ? p.join(env['APPDATA'] ?? home!, 'Paseo')
-      : p.join(env['XDG_CONFIG_HOME'] ?? p.join(home!, '.config'), 'Paseo'));
   final storage = Directory(p.join(base, 'Local Storage', 'leveldb'));
   final values = await readLegacyLocalStorage(storage);
   final sources = [storage.path];

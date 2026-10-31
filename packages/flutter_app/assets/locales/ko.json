@@ -1114,7 +1114,11 @@
     "host": {
       "noHost": "호스트 없음",
       "switchTitle": "호스트 전환",
-      "searchPlaceholder": "호스트 검색..."
+      "searchPlaceholder": "호스트 검색...",
+      "actions": {
+        "reconnect": "다시 연결",
+        "edit": "호스트 편집"
+      }
     },
     "actions": {
       "addProject": "프로젝트 추가",
@@ -1150,7 +1154,12 @@
         "openFolder": "파일 관리자에서 열기",
         "openFolderFailed": "폴더를 열 수 없습니다.",
         "remove": "프로젝트 제거",
-        "removing": "제거하는 중..."
+        "removing": "제거하는 중...",
+        "rename": "프로젝트 이름 변경",
+        "resetName": "프로젝트 이름 초기화",
+        "chooseIcon": "프로젝트 아이콘 선택",
+        "resetIcon": "프로젝트 아이콘 초기화",
+        "archiveAll": "모든 워크스페이스 보관"
       },
       "confirmations": {
         "removeTitle": "프로젝트를 제거할까요?",
@@ -1197,7 +1206,9 @@
         "archiveWorkspace": "워크스페이스 보관",
         "hideFromSidebar": "사이드바에서 숨기기",
         "archiving": "보관하는 중...",
-        "hiding": "숨기는 중..."
+        "hiding": "숨기는 중...",
+        "markUnread": "읽지 않음으로 표시",
+        "recover": "워크스페이스 복구"
       },
       "confirmations": {
         "hideTitle": "워크스페이스를 숨길까요?",
@@ -1959,38 +1970,38 @@
     },
     "layout": {
       "openInSidePane": {
-        "title": "Open location",
+        "title": "여는 위치",
         "destinations": {
-          "main": "Main panel",
-          "side": "On the side",
-          "explorer": "Explorer sidebar"
+          "main": "기본 패널",
+          "side": "옆에",
+          "explorer": "사이드 패널"
         },
         "sources": {
           "explorerFiles": {
-            "label": "Clicking a file in the Explorer sidebar",
-            "description": "Open files selected in the Explorer sidebar beside your work"
+            "label": "사이드 패널에서 파일을 클릭할 때",
+            "description": "사이드 패널에서 선택한 파일을 작업 옆에 엽니다"
           },
           "diffs": {
-            "label": "Clicking a change in the Explorer sidebar or a chat",
-            "description": "Open diffs from Explorer and agent conversations beside your work"
+            "label": "사이드 패널이나 채팅에서 변경 사항을 클릭할 때",
+            "description": "사이드 패널과 에이전트 대화의 diff를 작업 옆에 엽니다"
           },
           "chatFiles": {
-            "label": "Clicking a file in an agent chat",
-            "description": "Open file links and tool-call files beside the conversation"
+            "label": "에이전트 채팅에서 파일을 클릭할 때",
+            "description": "파일 링크와 도구 호출 파일을 대화 옆에 엽니다"
           },
           "diffFiles": {
-            "label": "Clicking a file in a diff",
-            "description": "Open source files selected from a diff beside it"
+            "label": "diff에서 파일을 클릭할 때",
+            "description": "diff에서 선택한 소스 파일을 그 옆에 엽니다"
           },
           "subagents": {
-            "label": "Clicking a subagent in an agent chat",
-            "description": "Open subagents beside their parent agent"
+            "label": "에이전트 채팅에서 하위 에이전트를 클릭할 때",
+            "description": "하위 에이전트를 상위 에이전트 옆에 엽니다"
           },
           "pullRequests": {
-            "label": "Clicking a pull request in the Explorer sidebar",
-            "description": "Open pull request details beside Changes"
+            "label": "사이드 패널에서 풀 리퀘스트를 클릭할 때",
+            "description": "풀 리퀘스트 세부 정보를 변경 사항 옆에 엽니다"
           },
-          "serviceUrls": { "label": "Clicking a script's service URL" }
+          "serviceUrls": { "label": "스크립트의 서비스 URL을 클릭할 때" }
         }
       }
     },

@@ -1,4 +1,5 @@
-import 'package:flutter/scheduler.dart';
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 // Port of agent-stream/text-reveal.ts + hooks/use-revealed-text.ts: streamed
@@ -8,8 +9,10 @@ import 'package:flutter/widgets.dart';
 /// Backlog is drained over this horizon.
 const textRevealHorizonMs = 150.0;
 
-/// Reveal at most once per 60Hz frame, even on high-refresh displays.
-const textRevealFrameIntervalMs = 1000 / 60;
+/// Reveal steps run on a 30Hz timer. Each step relays out the growing
+/// markdown and redraws the window, and a vsync Ticker would also render the
+/// frames between steps.
+const textRevealFrameIntervalMs = 1000 / 30;
 
 const _maxElapsedMs = 250.0;
 const _zeroWidthJoiner = 0x200d;
@@ -79,13 +82,19 @@ class RevealedText extends StatefulWidget {
   State<RevealedText> createState() => _RevealedTextState();
 }
 
-class _RevealedTextState extends State<RevealedText> with SingleTickerProviderStateMixin {
+class _RevealedTextState extends State<RevealedText> {
   late String _target = widget.text;
   late int _revealed = widget.text.length;
-  Ticker? _ticker;
-  Duration? _lastFrame;
+  Timer? _timer;
+  final Stopwatch _sinceStep = Stopwatch();
 
   bool get _settled => _revealed >= _target.length;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
 
   @override
   void didUpdateWidget(covariant RevealedText oldWidget) {
@@ -98,14 +107,9 @@ class _RevealedTextState extends State<RevealedText> with SingleTickerProviderSt
     _sync();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _sync();
-  }
-
   void _sync() {
-    if (!widget.streaming) {
+    // Pacing is only seen on screen; a hidden tab (TickerMode off) shows it whole.
+    if (!widget.streaming || !TickerMode.valuesOf(context).enabled) {
       _stop();
       _revealed = _target.length;
       return;
@@ -114,27 +118,27 @@ class _RevealedTextState extends State<RevealedText> with SingleTickerProviderSt
       _stop();
       return;
     }
-    final ticker = _ticker ??= createTicker(_tick);
-    if (!ticker.isActive) {
-      _lastFrame = null;
-      ticker.start();
-    }
+    if (_timer != null) return;
+    _sinceStep
+      ..reset()
+      ..start();
+    _timer = Timer.periodic(
+      Duration(microseconds: (textRevealFrameIntervalMs * 1000).round()),
+      (_) => _step(),
+    );
   }
 
   void _stop() {
-    if (_ticker?.isActive ?? false) _ticker!.stop();
-    _lastFrame = null;
+    _timer?.cancel();
+    _timer = null;
+    _sinceStep.stop();
   }
 
-  void _tick(Duration elapsed) {
-    final previous = _lastFrame;
-    final elapsedMs = previous == null
-        ? textRevealFrameIntervalMs
-        : (elapsed - previous).inMicroseconds / 1000;
-    if (elapsedMs < textRevealFrameIntervalMs) return;
-    // Carry the remainder so high-refresh displays still reveal at 60Hz.
-    _lastFrame = elapsed -
-        Duration(microseconds: ((elapsedMs % textRevealFrameIntervalMs) * 1000).round());
+  void _step() {
+    final elapsedMs = _sinceStep.elapsedMicroseconds / 1000;
+    _sinceStep
+      ..reset()
+      ..start();
     final step = computeRevealStep(backlog: _target.length - _revealed, elapsedMs: elapsedMs);
     if (step > 0) setState(() => _revealed = (_revealed + step).clamp(0, _target.length));
     if (_settled) _stop();
@@ -142,7 +146,7 @@ class _RevealedTextState extends State<RevealedText> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _ticker?.dispose();
+    _stop();
     super.dispose();
   }
 

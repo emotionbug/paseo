@@ -19,6 +19,7 @@ import '../features/schedules/schedules_screen.dart';
 import '../features/workspace/project_settings_panel.dart';
 import 'common.dart';
 import 'localization.dart';
+import 'shell_pages.dart';
 import 'shortcuts.dart';
 import 'theme.dart';
 
@@ -665,6 +666,18 @@ String paseoTimeAgo(DateTime? date) {
   if (elapsed.inHours < 1) return '${elapsed.inMinutes}m ago';
   if (elapsed.inDays < 1) return '${elapsed.inHours}h ago';
   if (elapsed.inDays < 7) return '${elapsed.inDays}d ago';
+  return '${_monthNames[local.month - 1]} ${local.day}';
+}
+
+/// Original `formatCompactTimeAgo`: the same thresholds without the prose, for a
+/// dense column ("now", "5m", "2h", "3d", then "Jan 15").
+String formatCompactTimeAgo(DateTime date, [DateTime? now]) {
+  final elapsed = (now ?? DateTime.now()).difference(date);
+  if (elapsed < const Duration(minutes: 1)) return 'now';
+  if (elapsed < const Duration(hours: 1)) return '${elapsed.inMinutes}m';
+  if (elapsed < const Duration(days: 1)) return '${elapsed.inHours}h';
+  if (elapsed < const Duration(days: 7)) return '${elapsed.inDays}d';
+  final local = date.toLocal();
   return '${_monthNames[local.month - 1]} ${local.day}';
 }
 
@@ -1351,9 +1364,7 @@ class _CommandCenterState extends State<_CommandCenter> {
         title: tr(context, 'sidebar.sections.schedules'),
         icon: LucideIcons.calendarClock400,
         keywords: const ['schedules', 'scheduled', 'automation', 'recurring'],
-        run: (context, _) => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SchedulesScreen()),
-        ),
+        run: (context, _) => ShellPages.open(context, const SchedulesScreen()),
       ),
       root(
         'settings',

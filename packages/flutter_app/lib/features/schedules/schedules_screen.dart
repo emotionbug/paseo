@@ -13,6 +13,7 @@ import '../../core/target.dart';
 import '../../ui/common.dart';
 import '../../ui/controls.dart';
 import '../../ui/localization.dart';
+import '../../ui/shell_pages.dart';
 import '../../ui/theme.dart';
 import '../chat/agent_controls.dart' show formatThinkingOptionLabel;
 import '../chat/provider_icon.dart';
@@ -363,10 +364,14 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
             _MenuHeader(
               title: 'Schedules',
               compact: compact,
-              // Original `MenuHeader`'s `SidebarMenuToggle`: the schedules route sits on
-              // the shell, so revealing the agent list leaves this screen for the
-              // sidebar beneath it.
+              // Original `MenuHeader`'s `SidebarMenuToggle`: beside the sidebar it shows
+              // or hides it; over the shell (compact) revealing the agent list leaves
+              // this screen for the sidebar beneath it.
               onMenu: () {
+                if (EmbeddedShellPage.of(context)) {
+                  store?.showSidebar(!(store?.sidebarVisible ?? true));
+                  return;
+                }
                 store?.showSidebar(true);
                 Navigator.of(context).maybePop();
               },

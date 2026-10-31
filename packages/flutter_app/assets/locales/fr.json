@@ -1149,7 +1149,11 @@
     "host": {
       "noHost": "Aucun hôte",
       "switchTitle": "Changer d’hôte",
-      "searchPlaceholder": "Rechercher des hôtes…"
+      "searchPlaceholder": "Rechercher des hôtes…",
+      "actions": {
+        "reconnect": "Se reconnecter",
+        "edit": "Modifier l’hôte"
+      }
     },
     "actions": {
       "addProject": "Ajouter un projet",
@@ -1185,7 +1189,12 @@
         "openFolder": "Ouvrir dans le gestionnaire de fichiers",
         "openFolderFailed": "Impossible d’ouvrir le dossier",
         "remove": "Retirer le projet",
-        "removing": "Retrait…"
+        "removing": "Retrait…",
+        "rename": "Renommer le projet",
+        "resetName": "Réinitialiser le nom du projet",
+        "chooseIcon": "Choisir l’icône du projet",
+        "resetIcon": "Réinitialiser l’icône du projet",
+        "archiveAll": "Archiver tous les espaces de travail"
       },
       "confirmations": {
         "removeTitle": "Retirer le projet ?",
@@ -1232,7 +1241,9 @@
         "archiveWorkspace": "Archiver l’espace de travail",
         "hideFromSidebar": "Masquer de la barre latérale",
         "archiving": "Archivage…",
-        "hiding": "Masquage…"
+        "hiding": "Masquage…",
+        "markUnread": "Marquer comme non lu",
+        "recover": "Récupérer l’espace de travail"
       },
       "confirmations": {
         "hideTitle": "Masquer l’espace de travail ?",

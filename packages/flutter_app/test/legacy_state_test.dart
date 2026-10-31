@@ -101,6 +101,18 @@ void main() {
     await dir.create(recursive: true);
     return File('${dir.path}/state.json');
   }
+  Future<File> importFile() async => File('${(await stateFile()).parent.path}/legacy-import.json');
+
+  test('desktop import reads the original "Paseo Sessions" Electron profile', () {
+    // Original main.ts: app.setName("Paseo Sessions"); electron-builder productName matches.
+    if (Platform.isLinux) {
+      expect(originalDesktopUserDataDir({'HOME': '/home/u'}), '/home/u/.config/Paseo Sessions');
+      expect(originalDesktopUserDataDir({'HOME': '/home/u', 'XDG_CONFIG_HOME': '/cfg'}), '/cfg/Paseo Sessions');
+    } else if (Platform.isMacOS) {
+      expect(originalDesktopUserDataDir({'HOME': '/Users/u'}), '/Users/u/Library/Application Support/Paseo Sessions');
+    }
+    expect(originalDesktopUserDataDir({'HOME': '/home/u', 'PASEO_ELECTRON_USER_DATA_DIR': '/override'}), '/override');
+  });
 
   test('init restores original auth, preferences, selected session and split layout exactly once', () async {
     final values = _legacyValues();
@@ -160,8 +172,10 @@ void main() {
     expect(reopened.hosts, hasLength(1));
     expect(reopened.hosts.single.connections, hasLength(2));
     expect(reopened.preferences.locale, 'ja');
-    final saved = jsonMap(jsonDecode(await (await stateFile()).readAsString()));
-    expect(saved.object('legacyImport').object('values'), values);
+    final saved = jsonMap(jsonDecode(await (await importFile()).readAsString()));
+    expect(saved.object('values'), values);
+    // Routine saves rewrite state.json; the original snapshot stays out of it.
+    expect(jsonMap(jsonDecode(await (await stateFile()).readAsString())).containsKey('legacyImport'), isFalse);
     expect(await source.readAsBytes(), originalBytes);
     await reopened.disposeAsync();
   });
@@ -403,9 +417,9 @@ void main() {
     // Nothing else moved: same host, same restored session.
     expect(reopened.hosts, hasLength(1));
     expect(reopened.selected?.id, 'session-9');
-    final saved = jsonMap(jsonDecode(await (await stateFile()).readAsString()));
-    expect(saved.object('legacyImport').object('values'), values);
-    expect(saved.object('legacyImport')['digest'], legacyDigest(values));
+    final saved = jsonMap(jsonDecode(await (await importFile()).readAsString()));
+    expect(saved.object('values'), values);
+    expect(saved['digest'], legacyDigest(values));
     await reopened.disposeAsync();
   });
 
@@ -489,18 +503,54 @@ void main() {
     await first.initialize();
     await first.disposeAsync();
     final file = await stateFile();
-    final state = jsonMap(jsonDecode(await file.readAsString()));
+    final marker = await importFile();
+    final state = {
+      ...jsonMap(jsonDecode(await file.readAsString())),
+      'legacyImport': jsonDecode(await marker.readAsString()),
+    };
     expect(identical(mergeLegacyState(state, LegacyStateSnapshot(values: Map.of(values), sources: const ['fixture'])), state), isTrue);
     // An earlier build's marker has no digest; any write would also replace
     // this distinctive formatting.
     state.object('legacyImport').remove('digest');
-    final pretty = const JsonEncoder.withIndent('  ').convert(state);
-    await file.writeAsString(pretty);
+    final pretty = const JsonEncoder.withIndent('  ').convert(state['legacyImport']);
+    await marker.writeAsString(pretty);
+    final stateBefore = await file.readAsString();
     final again = store(read);
     await again.initialize();
     expect(reads, 2);
     expect(again.storageError, isNull);
-    expect(await file.readAsString(), pretty);
+    expect(await marker.readAsString(), pretty);
+    expect(await file.readAsString(), stateBefore);
     await again.disposeAsync();
+  });
+
+  test('a marker an earlier build kept inside state.json moves out without changing anything', () async {
+    final values = _legacyValues();
+    var reads = 0;
+    Future<LegacyStateSnapshot> read() async {
+      reads++;
+      return LegacyStateSnapshot(values: Map.of(values), sources: const ['fixture']);
+    }
+    final first = store(read);
+    await first.initialize();
+    first.preferences.locale = 'ja';
+    await first.savePreferences();
+    await first.disposeAsync();
+    final file = await stateFile();
+    final marker = await importFile();
+    final split = jsonMap(jsonDecode(await file.readAsString()));
+    final base = jsonMap(jsonDecode(await marker.readAsString()));
+    await file.writeAsString(jsonEncode({...split, 'legacyImport': base}));
+    await marker.delete();
+
+    final again = store(read);
+    await again.initialize();
+    expect(again.storageError, isNull);
+    // Same base: the original is not re-merged over the Flutter change.
+    expect(again.preferences.locale, 'ja');
+    expect(jsonDecode(await marker.readAsString()), base);
+    expect(jsonDecode(await file.readAsString()), split);
+    await again.disposeAsync();
+    expect(reads, 2);
   });
 }

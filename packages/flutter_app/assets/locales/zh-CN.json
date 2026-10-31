@@ -1089,7 +1089,11 @@
     "host": {
       "noHost": "没有 Host",
       "switchTitle": "切换 Host",
-      "searchPlaceholder": "搜索 Hosts..."
+      "searchPlaceholder": "搜索 Hosts...",
+      "actions": {
+        "reconnect": "重新连接",
+        "edit": "编辑 Host"
+      }
     },
     "actions": {
       "addProject": "添加 project",
@@ -1125,7 +1129,12 @@
         "openFolder": "Open in file manager",
         "openFolderFailed": "Couldn't open folder",
         "remove": "移除 project",
-        "removing": "正在移除..."
+        "removing": "正在移除...",
+        "rename": "重命名 project",
+        "resetName": "重置 project 名称",
+        "chooseIcon": "选择 project 图标",
+        "resetIcon": "重置 project 图标",
+        "archiveAll": "归档所有工作区"
       },
       "confirmations": {
         "removeTitle": "移除 project？",
@@ -1169,7 +1178,9 @@
         "archiveWorkspace": "归档工作区",
         "hideFromSidebar": "从侧边栏隐藏",
         "archiving": "正在归档...",
-        "hiding": "正在隐藏..."
+        "hiding": "正在隐藏...",
+        "markUnread": "标记为未读",
+        "recover": "恢复工作区"
       },
       "confirmations": {
         "hideTitle": "隐藏 workspace？",

@@ -376,6 +376,37 @@ void main() {
       await h.close();
     }
   });
+
+  test('a sent prompt keeps its images and attachments after the daemon echoes it', () async {
+    // The daemon never echoes images: the sending client keeps them, as the
+    // original merged its local row with the "existing" presentation.
+    final image = {'data': 'aGVsbG8=', 'mimeType': 'image/png'};
+    final file = {'type': 'workspace_file', 'path': 'lib/main.dart'};
+    SentUserMessages.remember(_agentId, {
+      'messageId': 'client-1',
+      'images': [image],
+      'attachments': [file],
+    });
+    final h = await _open((request) => _page(direction: 'tail', entries: [
+      _row(1, {'type': 'user_message', 'text': 'Look', 'clientMessageId': 'client-1'}),
+    ]));
+    try {
+      JsonMap user() => jsonMap(h.controller.timeline.single['item']);
+      expect(jsonList(user()['images']), [image]);
+      expect(jsonList(user()['attachments']), [file]);
+      // A re-delivered echo of the same prompt keeps the shown row.
+      h.stream(2, {
+        'type': 'timeline',
+        'item': {'type': 'user_message', 'text': 'Look', 'clientMessageId': 'client-1', 'messageId': 'm-1'},
+      });
+      await h.settle();
+      expect(h.controller.timeline, hasLength(1));
+      expect(user()['messageId'], 'm-1');
+      expect(jsonList(user()['images']), [image]);
+    } finally {
+      await h.close();
+    }
+  });
 }
 
 /// The daemon endpoint replaced with controlled wire responses; production

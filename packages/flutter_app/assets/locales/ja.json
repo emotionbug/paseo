@@ -1138,7 +1138,11 @@
     "host": {
       "noHost": "ホストなし",
       "switchTitle": "ホストを切り替え",
-      "searchPlaceholder": "ホストを検索..."
+      "searchPlaceholder": "ホストを検索...",
+      "actions": {
+        "reconnect": "再接続",
+        "edit": "ホストを編集"
+      }
     },
     "actions": {
       "addProject": "プロジェクトを追加",
@@ -1174,7 +1178,12 @@
         "openFolder": "Open in file manager",
         "openFolderFailed": "Couldn't open folder",
         "remove": "プロジェクトを削除",
-        "removing": "削除中..."
+        "removing": "削除中...",
+        "rename": "プロジェクト名を変更",
+        "resetName": "プロジェクト名をリセット",
+        "chooseIcon": "プロジェクトアイコンを選択",
+        "resetIcon": "プロジェクトアイコンをリセット",
+        "archiveAll": "すべてのワークスペースをアーカイブ"
       },
       "confirmations": {
         "removeTitle": "プロジェクトを削除しますか？",
@@ -1221,7 +1230,9 @@
         "archiveWorkspace": "ワークスペースをアーカイブ",
         "hideFromSidebar": "サイドバーから非表示",
         "archiving": "アーカイブ中...",
-        "hiding": "非表示にしています..."
+        "hiding": "非表示にしています...",
+        "markUnread": "未読にする",
+        "recover": "ワークスペースを復元"
       },
       "confirmations": {
         "hideTitle": "ワークスペースを非表示にしますか？",

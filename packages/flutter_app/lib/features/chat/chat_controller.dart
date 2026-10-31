@@ -129,11 +129,41 @@ String _toolIdentity(Object? callId, Object? turnId) {
   return 'turn:${Uri.encodeComponent(turnId)}/${Uri.encodeComponent(call)}';
 }
 
+/// stream.ts produceUserMessage with the "existing" presentation: the daemon
+/// echoes a prompt without its images or attachments, so the sending client
+/// keeps them for the rest of its session (in memory, like the original
+/// stream store), keyed by agent and clientMessageId.
+class SentUserMessages {
+  SentUserMessages._();
+  static const _capacity = 64;
+  static final _entries = <String, JsonMap>{};
+
+  static void remember(String agentId, JsonMap message) {
+    final id = stringValue(message['messageId']);
+    final images = jsonList(message['images']);
+    final attachments = jsonList(message['attachments']);
+    if (agentId.isEmpty || id.isEmpty || (images.isEmpty && attachments.isEmpty)) return;
+    final key = '$agentId/$id';
+    _entries.remove(key);
+    _entries[key] = {'images': images, 'attachments': attachments};
+    if (_entries.length > _capacity) _entries.remove(_entries.keys.first);
+  }
+
+  static JsonMap? lookup(String agentId, Object? clientMessageId) {
+    final id = stringValue(clientMessageId);
+    return id.isEmpty ? null : _entries['$agentId/$id'];
+  }
+}
+
 /// types/stream.ts reduceTimelineEvent as a resumable left fold over the
 /// stored rows: live rows only ever append, so a streamed chunk folds into
 /// the projection without refolding (and re-copying) the whole history, and
 /// every entry it does not touch stays the identical map.
 class _TimelineFold {
+  _TimelineFold(this._sent);
+
+  /// The sending client's images and attachments for a clientMessageId.
+  final JsonMap? Function(Object? clientMessageId) _sent;
   final entries = <JsonMap>[];
   final _tools = <String, int>{};
   final _plugins = <String, int>{};
@@ -215,6 +245,14 @@ class _TimelineFold {
         }
         _plugins[identity] = result.length;
       case 'user_message':
+        final local = _sent(item['clientMessageId']);
+        if (local != null) {
+          next['item'] = {
+            ...item,
+            if (jsonList(item['images']).isEmpty) 'images': local['images'],
+            if (jsonList(item['attachments']).isEmpty) 'attachments': local['attachments'],
+          };
+        }
         final id = stringValue(
           item['clientMessageId'],
           stringValue(item['messageId']),
@@ -222,7 +260,20 @@ class _TimelineFold {
         if (id.isNotEmpty) {
           final index = _users[id];
           if (index != null) {
-            result[index] = next;
+            // produceUserMessage "existing": the shown row keeps its text,
+            // time, images and attachments; the echo adds identity and seq.
+            final previous = result[index];
+            final shown = jsonMap(previous['item']);
+            result[index] = {
+              ...next,
+              'timestamp': previous['timestamp'] ?? next['timestamp'],
+              'item': {
+                ...jsonMap(next['item']),
+                'text': shown['text'],
+                if (shown['images'] != null) 'images': shown['images'],
+                if (shown['attachments'] != null) 'attachments': shown['attachments'],
+              },
+            };
             return;
           }
           _users[id] = result.length;
@@ -276,7 +327,7 @@ class ChatController extends ChangeNotifier {
   final PaseoClient client;
   final PanelTarget target;
   final List<JsonMap> _rows = [];
-  final _fold = _TimelineFold();
+  late final _fold = _TimelineFold((id) => SentUserMessages.lookup(agentId, id));
   List<JsonMap> timeline = [];
   JsonMap agent = {};
 

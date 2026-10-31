@@ -149,6 +149,9 @@ class AppStore extends ChangeNotifier {
   final Map<String, String> _explorerFocus = {};
   bool explorerVisible = false;
   double explorerWidth = 340;
+
+  /// Original panel-store DEFAULT_SIDEBAR_WIDTH (320) within MIN/MAX 200–600.
+  double sidebarWidth = 320;
   bool sidebarVisible = true;
   CompactDestination compactDestination = CompactDestination.agent;
   Object? storageError;
@@ -159,6 +162,14 @@ class AppStore extends ChangeNotifier {
   JsonMap _retained = {};
   Future<void>? _initializing;
   Future<void> _writeTail = Future.value();
+
+  /// Saves are content-addressed: any caller may request one, and only files
+  /// whose contents differ from what this store last wrote or loaded are
+  /// written. [_writtenFiles] holds per-path contents (host replicas, window
+  /// layouts); [_writtenState] the encoded state this store last merged into
+  /// state.json, which other windows also merge into.
+  final Map<String, String> _writtenFiles = {};
+  String? _writtenState;
   Timer? _saveTimer;
   final Map<String, Future<bool> Function()> _closeGuards = {};
   final Set<String> _routing = {};
@@ -419,6 +430,12 @@ class AppStore extends ChangeNotifier {
     return jsonMap(decoded);
   }
 
+  /// The original app's snapshot (legacy_state.dart's `legacyImport` marker,
+  /// every original string as the re-sync base) is large and changes only on
+  /// import/re-sync. It lives beside state.json so routine saves, which
+  /// re-read and rewrite state.json, never carry it.
+  File _legacyImportFile() => File(p.join(_directory!.path, 'legacy-import.json'));
+
   Future<void> _importLegacyState(File file) async {
     final lockFile = File(p.join(_directory!.path, 'state.lock'));
     final lock = await lockFile.open(mode: FileMode.append);
@@ -427,27 +444,37 @@ class AppStore extends ChangeNotifier {
       await _restrict(lockFile.path);
       await lock.lock(FileLock.blockingExclusive);
       locked = true;
-      _retained = await _readStateFile(file);
-      if (intValue(_retained['version']) > 1) {
+      final stored = await _readStateFile(file);
+      if (intValue(stored['version']) > 1) {
         throw StateError('App state belongs to a newer Paseo version; it will not be overwritten.');
       }
-      final resync = jsonMap(_retained['legacyImport'])['version'] == legacyImportVersion;
-      final JsonMap imported;
+      // Earlier builds kept the marker inside state.json; it moves out once.
+      final embedded = stored.remove('legacyImport');
+      final markerFile = _legacyImportFile();
+      final marker = embedded ??
+          (await markerFile.exists() ? jsonDecode(await markerFile.readAsString()) : null);
+      _retained = stored;
+      final current = <String, dynamic>{...stored, 'legacyImport': ?marker};
+      final resync = jsonMap(marker)['version'] == legacyImportVersion;
+      var next = current;
       try {
-        imported = mergeLegacyState(_retained, await legacyStateReader());
+        next = mergeLegacyState(current, await legacyStateReader());
       } catch (error) {
         if (!resync) rethrow;
         // Flutter state is already complete and stays writable; an unreadable
         // original only defers the re-sync. Neither state nor base changes.
         storageError = error;
-        return;
       }
-      // Unchanged original (same digest): no write.
-      if (identical(imported, _retained)) return;
-      // Mapped/merged values and the new base snapshot are one atomic commit.
-      // Nothing is observable on any parse/read/write failure; next launch retries.
-      await _atomicWrite(file.path, jsonEncode(imported));
-      _retained = imported;
+      // Unchanged original (same digest) and nothing to move: no write.
+      if (identical(next, current) && embedded == null) return;
+      final nextMarker = next['legacyImport'];
+      final nextState = <String, dynamic>{...next}..remove('legacyImport');
+      // State first, then base. A lost base write re-syncs against the older
+      // base next launch, where the values merged here already win as ours.
+      // Nothing is observable on a parse/read failure; next launch retries.
+      await _atomicWrite(file.path, jsonEncode(nextState));
+      if (nextMarker != null) await _atomicWrite(markerFile.path, jsonEncode(nextMarker));
+      _retained = nextState;
     } finally {
       if (locked) await lock.unlock();
       await lock.close();
@@ -1292,7 +1319,12 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  /// Bumped whenever a tab is opened or selected, so a page shown in place of
+  /// the conversation knows the user moved on.
+  int navigationSerial = 0;
+
   void open(PanelTarget target, {bool beside = false}) {
+    navigationSerial++;
     unawaited(_markChildTabOpen(target));
     final current = tabs.indexWhere((tab) => tab.key == target.key);
     if (current < 0) {
@@ -1364,6 +1396,11 @@ class AppStore extends ChangeNotifier {
     _changed();
   }
 
+  void setSidebarWidth(double width) {
+    sidebarWidth = width.clamp(200, 600);
+    _changed();
+  }
+
   void showSidebar(bool visible) {
     sidebarVisible = visible;
     compactDestination = visible
@@ -1388,6 +1425,7 @@ class AppStore extends ChangeNotifier {
   }
 
   void selectTab(String key) {
+    navigationSerial++;
     for (final pane in layout.panes) {
       if (pane.tabKeys.contains(key)) {
         pane.selectedKey = key;
@@ -1763,6 +1801,10 @@ class AppStore extends ChangeNotifier {
         1000,
       );
     }
+    // A saved Flutter width wins; otherwise the original panel-state width
+    // imported into preferences.
+    final sidebar = saved['sidebarWidth'] ?? preferences['sidebarWidth'];
+    if (sidebar is num) sidebarWidth = sidebar.toDouble().clamp(200, 600);
     sidebarVisible = saved['sidebarVisible'] != false;
     // Compact starts at the active agent, never a persisted side destination.
     compactDestination = CompactDestination.agent;
@@ -1837,10 +1879,12 @@ class AppStore extends ChangeNotifier {
         'selectedExplorer': selectedExplorerKey,
         'explorerVisible': explorerVisible,
         'explorerWidth': explorerWidth,
+        'sidebarWidth': sidebarWidth,
         'sidebarVisible': sidebarVisible,
       },
     };
-    final snapshot = jsonMap(jsonDecode(jsonEncode(data)));
+    final encoded = jsonEncode(data);
+    final snapshot = jsonMap(jsonDecode(encoded));
     final replicas = connectHosts
         ? hosts
               .map(
@@ -1852,54 +1896,24 @@ class AppStore extends ChangeNotifier {
               .toList()
         : <MapEntry<String, String>>[];
     final next = _writeTail.catchError((Object _) {}).then((_) async {
+      // Compared after earlier writes settle, so queued saves see their result.
+      final stateChanged = _writtenState != encoded;
+      final changedReplicas = [
+        for (final replica in replicas)
+          if (_writtenFiles[replica.key] != replica.value) replica,
+      ];
+      // Host events usually change only a replica; state.json stays untouched.
+      if (!stateChanged && changedReplicas.isEmpty) return;
       final lockFile = File(p.join(_directory!.path, 'state.lock'));
       final lock = await lockFile.open(mode: FileMode.append);
       try {
         await _restrict(lockFile.path);
         await lock.lock(FileLock.blockingExclusive);
-        final file = File(p.join(_directory!.path, 'state.json'));
-        final latest = await _readStateFile(file);
-        if (intValue(latest['version']) > 1) {
-          throw StateError('A newer client owns the saved state.');
+        if (stateChanged) await _mergeState(snapshot);
+        for (final replica in changedReplicas) {
+          await _writeIfChanged(replica.key, replica.value);
         }
-        final nextPreferences = jsonMap(snapshot['preferences']);
-        final nextHosts = _hostRecords(jsonList(snapshot['hosts']));
-        final mergedPreferences = _mergeChanges(
-          jsonMap(latest['preferences']),
-          _savedPreferences,
-          nextPreferences,
-        );
-        final mergedHosts = _mergeChanges(
-          _hostRecords(jsonList(latest['hosts'])),
-          _savedHosts,
-          nextHosts,
-        );
-        final merged = <String, dynamic>{
-          ...latest,
-          'version': 1,
-          'preferences': mergedPreferences,
-          'hosts': mergedHosts.values.toList(),
-          'suppressedRoutes': {
-            ...jsonList(latest['suppressedRoutes']).whereType<String>(),
-            ..._suppressedRoutes,
-          }.toList(),
-          if (connectHosts && windowId == '0') 'layout': snapshot['layout'],
-        };
-        await _atomicWrite(file.path, jsonEncode(merged));
-        if (connectHosts && windowId != '0') {
-          await _atomicWrite(
-            p.join(
-              _directory!.path,
-              'layout-${Uri.encodeComponent(windowId)}.json',
-            ),
-            jsonEncode(snapshot['layout']),
-          );
-        }
-        for (final replica in replicas) {
-          await _atomicWrite(replica.key, replica.value);
-        }
-        _savedPreferences = nextPreferences;
-        _savedHosts = nextHosts;
+        if (stateChanged) _writtenState = encoded;
       } finally {
         await lock.unlock();
         await lock.close();
@@ -1907,6 +1921,55 @@ class AppStore extends ChangeNotifier {
     });
     _writeTail = next;
     await next;
+  }
+
+  /// Three-way merges this store's state into state.json under the state lock:
+  /// preferences and hosts against what this store last saved, so another
+  /// window's concurrent edits survive.
+  Future<void> _mergeState(JsonMap snapshot) async {
+    final file = File(p.join(_directory!.path, 'state.json'));
+    final latest = await _readStateFile(file);
+    if (intValue(latest['version']) > 1) {
+      throw StateError('A newer client owns the saved state.');
+    }
+    final nextPreferences = jsonMap(snapshot['preferences']);
+    final nextHosts = _hostRecords(jsonList(snapshot['hosts']));
+    final mergedPreferences = _mergeChanges(
+      jsonMap(latest['preferences']),
+      _savedPreferences,
+      nextPreferences,
+    );
+    final mergedHosts = _mergeChanges(
+      _hostRecords(jsonList(latest['hosts'])),
+      _savedHosts,
+      nextHosts,
+    );
+    final merged = <String, dynamic>{
+      ...latest,
+      'version': 1,
+      'preferences': mergedPreferences,
+      'hosts': mergedHosts.values.toList(),
+      'suppressedRoutes': {
+        ...jsonList(latest['suppressedRoutes']).whereType<String>(),
+        ..._suppressedRoutes,
+      }.toList(),
+      if (connectHosts && windowId == '0') 'layout': snapshot['layout'],
+    };
+    await _atomicWrite(file.path, jsonEncode(merged));
+    if (connectHosts && windowId != '0') {
+      await _writeIfChanged(
+        p.join(_directory!.path, 'layout-${Uri.encodeComponent(windowId)}.json'),
+        jsonEncode(snapshot['layout']),
+      );
+    }
+    _savedPreferences = nextPreferences;
+    _savedHosts = nextHosts;
+  }
+
+  Future<void> _writeIfChanged(String path, String contents) async {
+    if (_writtenFiles[path] == contents) return;
+    await _atomicWrite(path, contents);
+    _writtenFiles[path] = contents;
   }
 
   JsonMap _hostRecords(List<dynamic> rows) => {
@@ -1956,12 +2019,14 @@ class AppStore extends ChangeNotifier {
     final file = File(_replicaPath(host.serverId));
     if (!await file.exists()) return;
     try {
-      final data = jsonMap(jsonDecode(await file.readAsString()));
+      final contents = await file.readAsString();
+      final data = jsonMap(jsonDecode(contents));
       if (data['serverId'] != host.serverId) return;
       host.projects = jsonList(data['projects']).map(jsonMap).toList();
       host.workspaces = jsonList(data['workspaces']).map(jsonMap).toList();
       host.agents = jsonList(data['agents']).map(jsonMap).toList();
       host.cachedAt = DateTime.tryParse(stringValue(data['cachedAt']));
+      _writtenFiles[file.path] = contents;
     } catch (error) {
       host.error = error;
     }
@@ -1973,7 +2038,7 @@ class AppStore extends ChangeNotifier {
     final encoded = jsonEncode(_replicaJson(host));
     final next = _writeTail
         .catchError((Object _) {})
-        .then((_) => _atomicWrite(path, encoded));
+        .then((_) => _writeIfChanged(path, encoded));
     _writeTail = next;
     await next;
   }

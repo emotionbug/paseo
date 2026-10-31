@@ -10,6 +10,7 @@ import '../../core/client.dart';
 import '../../core/json.dart';
 import '../../core/scope.dart';
 import '../../core/target.dart';
+import '../../ui/command_center.dart' show formatCompactTimeAgo;
 import '../../ui/common.dart';
 import '../../ui/localization.dart';
 import '../../ui/theme.dart';
@@ -671,15 +672,15 @@ class _SessionSidebarState extends State<SessionSidebar> {
           'new': tr(context, 'sessionNavigation.newSession'),
           'history': tr(context, 'sessions.title'),
           'import': tr(context, 'importSession.title'),
-          'rename': 'Rename project',
-          'reset': 'Reset project name',
-          'icon': 'Choose project icon',
-          'resetIcon': 'Reset project icon',
-          'settings': 'Project settings',
-          'archive': 'Archive all workspaces',
-          'up': 'Move up',
-          'down': 'Move down',
-          'remove': 'Remove project',
+          'rename': tr(context, 'sidebar.project.actions.rename'),
+          'reset': tr(context, 'sidebar.project.actions.resetName'),
+          'icon': tr(context, 'sidebar.project.actions.chooseIcon'),
+          'resetIcon': tr(context, 'sidebar.project.actions.resetIcon'),
+          'settings': tr(context, 'sidebar.project.actions.openSettings'),
+          'archive': tr(context, 'sidebar.project.actions.archiveAll'),
+          'up': tr(context, 'settings.appearance.sidebar.moveUp'),
+          'down': tr(context, 'settings.appearance.sidebar.moveDown'),
+          'remove': tr(context, 'sidebar.project.actions.remove'),
         };
         void onProjectAction(String action) => _run(
           () => _projectAction(
@@ -766,10 +767,10 @@ class _SessionSidebarState extends State<SessionSidebar> {
             final sessionActions = {
               'rename': tr(context, 'workspace.tabs.menu.renameAgent'),
               'archive': tr(context, 'agentList.archiveSheet.archive'),
-              'labels': 'Workspace labels',
-              'pin': pinned ? 'Unpin workspace' : 'Pin workspace',
-              'unread': 'Mark workspace unread',
-              'recover': 'Recover workspace',
+              'labels': tr(context, 'workspaceLabels.manage.open'),
+              'pin': tr(context, pinned ? 'sidebar.workspace.actions.unpin' : 'sidebar.workspace.actions.pin'),
+              'unread': tr(context, 'sidebar.workspace.actions.markUnread'),
+              'recover': tr(context, 'sidebar.workspace.actions.recover'),
               'archiveWorkspace': tr(
                 context,
                 'workspace.git.actions.archive.label',
@@ -777,12 +778,18 @@ class _SessionSidebarState extends State<SessionSidebar> {
             };
             void onSessionAction(String action) =>
                 _run(() => _agentAction(store, host, agent, action));
+            // Original row trailing (`sidebarWorkspaceTrailing`): the compact last
+            // activity time; hovering swaps in the row's actions.
+            final updated = DateTime.tryParse(agent.text('updatedAt', agent.text('createdAt')));
+            final trailingTime = store.preferences['sidebarWorkspaceTrailing'] == 'diff' || updated == null
+                ? ''
+                : formatCompactTimeAgo(updated);
             projectRows.add(
               Padding(
                 key: ValueKey('session:${host.serverId}:${agent.text('id')}'),
                 padding: const EdgeInsets.only(left: 48, right: 8),
                 // Original `selected`: the border colour behind a 6px-radius row.
-                child: Material(
+                child: _HoverReveal(builder: (hovered) => Material(
                   color: selected ? theme.dividerColor : Colors.transparent,
                   borderRadius: BorderRadius.circular(6),
                   clipBehavior: Clip.antiAlias,
@@ -845,16 +852,25 @@ class _SessionSidebarState extends State<SessionSidebar> {
                           ),
                         ),
                       ),
-                      _toolbarButton(
-                        icon: LucideIcons.pencil300,
-                        tooltip: tr(context, 'workspace.tabs.menu.renameAgent'),
-                        primary: 'rename',
-                        items: sessionActions,
-                        onSelected: onSessionAction,
-                      ),
+                      if (hovered)
+                        _toolbarButton(
+                          icon: LucideIcons.pencil300,
+                          tooltip: tr(context, 'workspace.tabs.menu.renameAgent'),
+                          primary: 'rename',
+                          items: sessionActions,
+                          onSelected: onSessionAction,
+                        )
+                      else if (trailingTime.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, right: 12),
+                          child: Text(
+                            trailingTime,
+                            style: theme.textTheme.bodySmall!.copyWith(color: colors.extraMuted),
+                          ),
+                        ),
                     ],
                   ),
-                ),
+                )),
               ),
             );
           }
@@ -871,13 +887,13 @@ class _SessionSidebarState extends State<SessionSidebar> {
         'project': tr(context, 'sidebar.actions.addProject'),
         'history': tr(context, 'sessions.title'),
         'import': tr(context, 'importSession.title'),
-        'refresh': 'Reconnect / refresh',
-        'edit': 'Edit host / authentication',
-        'connections': 'Manage connections',
-        'pair': 'Pair another device',
-        'up': 'Move up',
-        'down': 'Move down',
-        'remove': 'Remove host',
+        'refresh': tr(context, 'sidebar.host.actions.reconnect'),
+        'edit': tr(context, 'sidebar.host.actions.edit'),
+        'connections': tr(context, 'settings.hostSections.connections'),
+        'pair': tr(context, 'settings.host.pairDevices.rowTitle'),
+        'up': tr(context, 'settings.appearance.sidebar.moveUp'),
+        'down': tr(context, 'settings.appearance.sidebar.moveDown'),
+        'remove': tr(context, 'settings.host.daemon.remove.title'),
       };
       void onHostAction(String action) => _run(
         () => _hostAction(
@@ -1168,4 +1184,22 @@ class _SessionSidebarState extends State<SessionSidebar> {
       ),
     );
   }
+}
+
+/// Rebuilds [builder] with whether the pointer is over it.
+class _HoverReveal extends StatefulWidget {
+  const _HoverReveal({required this.builder});
+  final Widget Function(bool hovered) builder;
+  @override
+  State<_HoverReveal> createState() => _HoverRevealState();
+}
+
+class _HoverRevealState extends State<_HoverReveal> {
+  bool _hovered = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: widget.builder(_hovered),
+  );
 }

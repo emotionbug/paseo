@@ -22,6 +22,7 @@ import '../features/files/file_panel.dart';
 import '../features/files/files_panel.dart';
 import '../features/git/changes_panel.dart';
 import '../features/git/git_actions.dart';
+import '../features/git/open_in_button.dart';
 import '../features/git/pull_request_panel.dart';
 import '../features/logs/execution_log_panel.dart';
 import '../features/navigation/host_dialog.dart';
@@ -37,6 +38,7 @@ import '../features/settings/settings_screen.dart';
 import '../features/workspace/new_tab_panel.dart';
 import '../features/workspace/project_settings_panel.dart';
 import '../features/workspace/setup_panel.dart';
+import '../features/workspace/workspace_rpc.dart' show requireWorkspaceSuccess;
 import '../platform/desktop/desktop_host.dart';
 import 'client_activity.dart';
 import 'command_center.dart';
@@ -45,6 +47,7 @@ import 'controls.dart';
 import 'localization.dart';
 import 'panel_activity.dart';
 import 'shortcuts.dart';
+import 'shell_pages.dart';
 import 'theme.dart';
 
 class PaseoShell extends StatefulWidget {
@@ -56,7 +59,8 @@ class PaseoShell extends StatefulWidget {
 }
 
 class _PaseoShellState extends State<PaseoShell>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin
+    implements ShellPageHost {
   AppStore? _store;
   late final _shortcuts = PaseoShortcutRouter(
     (action, args) => unawaited(_run(() => _execute(action, args))),
@@ -73,7 +77,6 @@ class _PaseoShellState extends State<PaseoShell>
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
   bool _commandCenter = false;
   bool _leaving = false;
-  double _sidebarWidth = 280;
   Offset? _edgeStart;
   // Original mobile-panels: the compact Explorer slides in from the right over the
   // conversation (0 closed, 1 open) with a 220ms bezier(.25,.1,.25,1) timing, and a
@@ -86,12 +89,23 @@ class _PaseoShellState extends State<PaseoShell>
   bool _explorerDragging = false;
   double _drag = 0;
   VoidCallback? _draftGuard;
+  // A desktop page (history, schedules) shown beside the sidebar until a session
+  // or tab is opened; its own routes pop back to the conversation.
+  Widget? _page;
+  int _pageSerial = 0;
+  GlobalKey<NavigatorState>? _pageNavigator;
+  late final _pageObserver = ShellPageObserver(
+    () => WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _page = null);
+    }),
+  );
   AppStore get store => _store!;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ShellPages.attach(this);
     _shortcuts.initialize().catchError((Object error) {
       if (mounted) showError(context, error);
     });
@@ -131,6 +145,7 @@ class _PaseoShellState extends State<PaseoShell>
   @override
   void dispose() {
     _draftGuard?.call();
+    ShellPages.detach(this);
     WidgetsBinding.instance.removeObserver(this);
     _shortcuts.dispose();
     _explorerMotion.dispose();
@@ -725,8 +740,9 @@ class _PaseoShellState extends State<PaseoShell>
                               onSecondaryTapDown: (details) => _tabMenu(
                                 target,
                                 id,
-                                details.globalPosition,
+                                Rect.fromLTWH(details.globalPosition.dx, details.globalPosition.dy, 0, 0),
                                 explorer: explorer,
+                                fromPointer: true,
                               ),
                               child: Container(
                                 constraints: const BoxConstraints(
@@ -775,17 +791,19 @@ class _PaseoShellState extends State<PaseoShell>
                                     // laid-out sibling after the label (4px content gap).
                                     _ModifiedTabDot(tabKey: key, gap: 4),
                                     if (!pill) ...[
-                                      IconButton(
-                                        tooltip: 'Tab actions',
-                                        visualDensity: VisualDensity.compact,
-                                        iconSize: 14,
-                                        onPressed: () => _tabMenu(
-                                          target,
-                                          id,
-                                          null,
-                                          explorer: explorer,
+                                      Builder(
+                                        builder: (anchor) => IconButton(
+                                          tooltip: tr(context, 'workspace.tabs.menu.openFor', args: {'label': _title(target)}),
+                                          visualDensity: VisualDensity.compact,
+                                          iconSize: 14,
+                                          onPressed: () => _tabMenu(
+                                            target,
+                                            id,
+                                            paseoAnchorRect(anchor),
+                                            explorer: explorer,
+                                          ),
+                                          icon: const Icon(LucideIcons.ellipsis300),
                                         ),
-                                        icon: const Icon(LucideIcons.ellipsis300),
                                       ),
                                       IconButton(
                                         tooltip: tr(
@@ -892,62 +910,172 @@ class _PaseoShellState extends State<PaseoShell>
     );
   }
 
+  /// Original desktop tab menu (`buildWorkspaceTabMenuEntries`, surface "desktop"):
+  /// copy resume command, agent id or file path, rename, close left/right/others,
+  /// reload and close. The conversation's own actions (find, outline, fork, archive…)
+  /// join it so the pane needs no second title row, and main-pane tabs add the
+  /// native split, pane focus and close-pane actions.
   Future<void> _tabMenu(
     PanelTarget target,
     String paneId,
-    Offset? position, {
+    Rect anchor, {
     required bool explorer,
+    bool fromPointer = false,
   }) async {
-    final location = position ?? const Offset(80, 90);
-    final choice = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        location.dx,
-        location.dy,
-        location.dx,
-        location.dy,
-      ),
-      items: [
-        const PopupMenuItem(value: 'rename', child: Text('Rename tab')),
-        if (!explorer && !_compact) ...[
-          const PopupMenuItem(value: 'right', child: Text('Split right')),
-          const PopupMenuItem(value: 'down', child: Text('Split down')),
-          const PopupMenuItem(
-            value: 'maximize',
-            child: Text('Toggle pane focus'),
+    final agent = target.kind == 'agent';
+    final id = target.id ?? '';
+    final keys = explorer
+        ? store.explorerTabKeys
+        : store.layout.panes.where((pane) => pane.id == paneId).firstOrNull?.tabKeys ?? const <String>[];
+    final index = keys.indexOf(target.key);
+    final conversation = ConversationMenus.of(target.key);
+    final conversationActions = [
+      for (final action in conversation?.actions() ?? const <(String, String)>[])
+        if (action.$1 != 'rename') action,
+    ];
+    final conversationReloads = conversationActions.any((action) => action.$1 == 'refresh');
+    final maximized = store.maximizedPaneId == paneId;
+    String t(String key) => tr(context, key);
+    final action = await showPaseoMenu<String>(
+      context,
+      title: _tabKindLabel(target),
+      anchor: anchor,
+      // A context menu grows from the pointer; the ··· button's menu ends at it.
+      alignEnd: !fromPointer,
+      entries: [
+        if (agent) ...[
+          PaseoMenuEntry.item(
+            value: 'resume',
+            label: t('workspace.tabs.menu.copyResumeCommand'),
+            icon: LucideIcons.copy300,
+          ),
+          PaseoMenuEntry.item(
+            value: 'agentId',
+            label: t('workspace.tabs.menu.copyAgentId'),
+            icon: LucideIcons.copy300,
+            hint: id.length > 7 ? id.substring(0, 7) : id,
           ),
         ],
-        const PopupMenuItem(value: 'close', child: Text('Close tab')),
-        if (!explorer)
-          const PopupMenuItem(value: 'others', child: Text('Close other tabs')),
-        if (!explorer)
-          const PopupMenuItem(value: 'all', child: Text('Close pane')),
+        if (target.kind == 'file')
+          PaseoMenuEntry.item(
+            value: 'path',
+            label: t('workspace.tabs.menu.copyFilePath'),
+            icon: LucideIcons.copy300,
+          ),
+        PaseoMenuEntry.item(
+          value: 'rename',
+          label: t(agent ? 'workspace.tabs.menu.renameAgent' : 'workspace.tabs.menu.rename'),
+          icon: LucideIcons.pencil300,
+        ),
+        if (conversationActions.isNotEmpty) ...[
+          const PaseoMenuEntry.separator(),
+          for (final (value, label) in conversationActions)
+            PaseoMenuEntry.item(value: 'conversation:$value', label: label),
+        ],
+        const PaseoMenuEntry.separator(),
+        if (!explorer) ...[
+          PaseoMenuEntry.item(
+            value: 'left',
+            label: t('workspace.tabs.menu.closeLeft'),
+            icon: LucideIcons.arrowLeftToLine300,
+            enabled: index > 0,
+          ),
+          PaseoMenuEntry.item(
+            value: 'right',
+            label: t('workspace.tabs.menu.closeRight'),
+            icon: LucideIcons.arrowRightToLine300,
+            enabled: index >= 0 && index < keys.length - 1,
+          ),
+          PaseoMenuEntry.item(
+            value: 'others',
+            label: t('workspace.tabs.menu.closeOthers'),
+            icon: LucideIcons.copyX300,
+            enabled: keys.length > 1,
+          ),
+          if (!_compact) ...[
+            const PaseoMenuEntry.separator(),
+            PaseoMenuEntry.item(
+              value: 'splitRight',
+              label: t('workspace.tabs.actions.splitRight'),
+              icon: LucideIcons.columns2300,
+            ),
+            PaseoMenuEntry.item(
+              value: 'splitDown',
+              label: t('workspace.tabs.actions.splitDown'),
+              icon: LucideIcons.rows2300,
+            ),
+            PaseoMenuEntry.item(
+              value: 'maximize',
+              label: t(maximized ? 'workspace.tabs.actions.restorePane' : 'workspace.tabs.actions.maximizePane'),
+              icon: maximized ? LucideIcons.minimize2300 : LucideIcons.maximize2300,
+            ),
+            PaseoMenuEntry.item(
+              value: 'closePane',
+              label: t('workspace.tabs.actions.closePane'),
+              icon: LucideIcons.squareX300,
+            ),
+          ],
+          const PaseoMenuEntry.separator(),
+        ],
+        if (agent && !conversationReloads)
+          PaseoMenuEntry.item(
+            value: 'reload',
+            label: t('workspace.tabs.menu.reloadAgent'),
+            icon: LucideIcons.rotateCw300,
+          ),
+        PaseoMenuEntry.item(
+          value: 'close',
+          label: t('workspace.tabs.menu.close'),
+          icon: LucideIcons.x300,
+        ),
       ],
     );
-    if (choice == null || !mounted) return;
+    if (action == null || !mounted) return;
+    if (action.startsWith('conversation:')) {
+      conversation?.run(action.substring('conversation:'.length));
+      return;
+    }
     await _run(() async {
-      switch (choice) {
+      switch (action) {
+        case 'resume':
+          await _copyResumeCommand(target);
+        case 'agentId':
+          await _copy(id, 'workspace.tabs.toasts.agentIdCopiedLabel');
+        case 'path':
+          await _copy(
+            target.data.text('path', target.id ?? ''),
+            'workspace.tabs.toasts.filePathCopiedLabel',
+          );
         case 'rename':
           await _renameTab(target);
+        case 'left':
+          await _closeWorkspaceTabs([
+            for (final key in keys.take(index)) ?store.targetFor(key),
+          ], 'workspace.tabs.confirmations.closeTabsLeftTitle');
         case 'right':
-        case 'down':
+          await _closeWorkspaceTabs([
+            for (final key in keys.skip(index + 1)) ?store.targetFor(key),
+          ], 'workspace.tabs.confirmations.closeTabsRightTitle');
+        case 'others':
+          await _closeWorkspaceTabs([
+            for (final key in keys)
+              if (key != target.key) ?store.targetFor(key),
+          ], 'workspace.tabs.confirmations.closeOtherTabsTitle');
+        case 'splitRight':
+        case 'splitDown':
           final next = store.splitPane(
             paneId,
-            choice == 'right' ? Axis.horizontal : Axis.vertical,
+            action == 'splitRight' ? Axis.horizontal : Axis.vertical,
           );
           store.moveTab(target.key, next);
         case 'maximize':
-          store.maximizePane(store.maximizedPaneId == paneId ? null : paneId);
+          store.maximizePane(maximized ? null : paneId);
+        case 'closePane':
+          await _closePane(paneId);
+        case 'reload':
+          await _reloadAgent(target);
         case 'close':
           await _closeWorkspaceTab(target);
-        case 'others':
-          final pane = store.layout.panes.where((p) => p.id == paneId).firstOrNull;
-          await _closeWorkspaceTabs([
-            for (final key in pane?.tabKeys ?? const <String>[])
-              if (key != target.key) ?store.targetFor(key),
-          ], 'workspace.tabs.confirmations.closeOtherTabsTitle');
-        case 'all':
-          await _closePane(paneId);
       }
     });
   }
@@ -1075,9 +1203,7 @@ class _PaseoShellState extends State<PaseoShell>
       _ => SidebarHeaderRow(
         icon: LucideIcons.calendarClock300,
         label: tr(context, 'sidebar.sections.schedules'),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SchedulesScreen()),
-        ),
+        onTap: () => _run(() => ShellPages.open(context, const SchedulesScreen())),
       ),
     };
     if (order.isEmpty && !_compact) return const SizedBox.shrink();
@@ -1930,6 +2056,95 @@ class _PaseoShellState extends State<PaseoShell>
     }
   }
 
+  /// Original desktop `WorkspaceScriptsButton` (header, `hideLabels`): every
+  /// workspace script with its state, started or stopped from the menu, its
+  /// read-only log and its service URL; the full list stays in setup.
+  Future<void> _scriptsMenu(PanelTarget target, JsonMap workspace, Rect anchor) async {
+    String t(String key, [Map<String, Object?> args = const {}]) => tr(context, key, args: args);
+    String url(JsonMap script) =>
+        script.text('proxyUrl', script.text('publicProxyUrl', script.text('localProxyUrl')));
+    final scripts = workspace.array('scripts').map(jsonMap).toList();
+    final action = await showPaseoMenu<String>(
+      context,
+      title: t('workspace.scripts.title'),
+      anchor: anchor,
+      alignEnd: true,
+      entries: [
+        for (final script in scripts) ...[
+          PaseoMenuEntry.item(
+            value: 'toggle:${script.text('scriptName')}',
+            label: script.text('scriptName'),
+            icon: script.text('lifecycle') == 'running' ? LucideIcons.square300 : LucideIcons.play300,
+            hint: [
+              if (script.text('lifecycle').isNotEmpty) script.text('lifecycle'),
+              if (script['exitCode'] != null)
+                t('workspace.scripts.states.exitCode', {'code': '${script['exitCode']}'}),
+            ].join(' · '),
+          ),
+          if (script.text('terminalId').isNotEmpty)
+            PaseoMenuEntry.item(
+              value: 'log:${script.text('scriptName')}',
+              label: t('workspace.scripts.actions.view'),
+              icon: LucideIcons.squareTerminal300,
+              muted: true,
+            ),
+          if (url(script).isNotEmpty)
+            PaseoMenuEntry.item(
+              value: 'open:${script.text('scriptName')}',
+              label: t('workspace.scripts.actions.openService'),
+              icon: LucideIcons.externalLink300,
+              muted: true,
+            ),
+        ],
+        const PaseoMenuEntry.separator(),
+        PaseoMenuEntry.item(
+          value: 'setup',
+          label: t('workspace.header.actions.showSetup'),
+          icon: LucideIcons.settings300,
+        ),
+      ],
+    );
+    if (action == null || !mounted) return;
+    if (action == 'setup') {
+      store.open(PanelTarget(
+        kind: 'setup',
+        serverId: target.serverId,
+        workspaceId: target.workspaceId,
+        cwd: target.cwd,
+        data: {'repoRoot': workspace.text('projectRootPath', target.cwd)},
+      ));
+      return;
+    }
+    final separator = action.indexOf(':');
+    final verb = action.substring(0, separator);
+    final name = action.substring(separator + 1);
+    final script = scripts.firstWhere((entry) => entry.text('scriptName') == name);
+    switch (verb) {
+      case 'log':
+        store.open(PanelTarget(
+          kind: 'execution_log',
+          serverId: target.serverId,
+          workspaceId: target.workspaceId,
+          cwd: target.cwd,
+          id: script.text('terminalId'),
+          title: name,
+        ));
+      case 'open':
+        final uri = Uri.parse(url(script));
+        if (!const ['http', 'https'].contains(uri.scheme) ||
+            !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+          throw StateError('Could not open service URL in the system browser.');
+        }
+      default:
+        final command = script.text('lifecycle') == 'running' ? 'stop' : 'start';
+        requireWorkspaceSuccess(await store.clientFor(target.serverId).request(
+          'workspace.script.$command.request',
+          {'workspaceId': target.workspaceId, 'scriptName': name},
+          responseType: 'workspace.script.$command.response',
+        ));
+    }
+  }
+
   /// Original `WorkspaceHeaderProjectRow`: project name, `·`, then the HostBadge (12px
   /// server glyph, 3px gap, sm label on a 16px line, both in the host's identity colour).
   /// The badge yields its label before the project gives up a pixel; local hosts hide it.
@@ -2121,14 +2336,31 @@ class _PaseoShellState extends State<PaseoShell>
                       _run(() => _headerMenu(target, paseoAnchorRect(anchor))),
                   child: Icon(LucideIcons.ellipsis300, size: 16, color: colors.extraMuted),
                 ),
-                // Original workspace header `WorkspaceActions` (git split button), right
-                // before the explorer toggle; compact layouts keep it in Changes.
-                if (!_compact && target != null && target.cwd.isNotEmpty)
+                if (!_compact && target != null && (_workspaceFor(target)?.array('scripts').isNotEmpty ?? false))
+                  _IslandButton(
+                    compact: false,
+                    tooltip: tr(context, 'workspace.scripts.title'),
+                    onPressed: (anchor) => _run(
+                      () => _scriptsMenu(target, _workspaceFor(target)!, paseoAnchorRect(anchor)),
+                    ),
+                    child: Icon(LucideIcons.play300, size: 16, color: colors.extraMuted),
+                  ),
+                // Original workspace header `WorkspaceOpenInEditorButton` then
+                // `WorkspaceActions` (git split button), right before the explorer
+                // toggle; compact layouts keep git actions in Changes.
+                if (!_compact && target != null && target.cwd.isNotEmpty) ...[
+                  WorkspaceOpenInButton(
+                    serverId: target.serverId,
+                    cwd: target.cwd,
+                    activeFilePath: target.kind == 'file' ? target.data.text('path', target.id ?? '') : null,
+                  ),
+                  const SizedBox(width: 4),
                   WorkspaceGitActionsButton(
                     serverId: target.serverId,
                     workspaceId: target.workspaceId,
                     cwd: target.cwd,
                   ),
+                ],
                 _IslandButton(
                   compact: _compact,
                   tooltip: tr(context, 'workspace.tabs.explorerSidebar.toggle'),
@@ -2332,6 +2564,35 @@ class _PaseoShellState extends State<PaseoShell>
     ),
   );
 
+  @override
+  void showPage(Widget page) => setState(() {
+    _page = page;
+    _pageSerial = store.navigationSerial;
+    _pageNavigator = GlobalKey<NavigatorState>();
+  });
+
+  /// The desktop page beside the sidebar; opening any session or tab ends it.
+  Widget? get _shownPage {
+    if (_compact || _page == null) return null;
+    if (store.navigationSerial != _pageSerial) _page = null;
+    return _page;
+  }
+
+  Widget _pageHost(Widget page) => EmbeddedShellPage(
+    child: Navigator(
+      key: _pageNavigator,
+      onGenerateInitialRoutes: (_, _) => [
+        PageRouteBuilder<void>(pageBuilder: (_, _, _) => const SizedBox.shrink()),
+        PageRouteBuilder<void>(
+          pageBuilder: (_, _, _) => page,
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+        ),
+      ],
+      observers: [_pageObserver],
+    ),
+  );
+
   Widget _content() {
     // The original routes host-less clients to the standalone /welcome screen.
     if (store.hosts.isEmpty) {
@@ -2400,7 +2661,7 @@ class _PaseoShellState extends State<PaseoShell>
     return Row(
       children: [
         SizedBox(
-          width: store.sidebarVisible ? _sidebarWidth : 0,
+          width: store.sidebarVisible ? store.sidebarWidth : 0,
           child: Offstage(
             offstage: !store.sidebarVisible,
             child: ColoredBox(
@@ -2411,21 +2672,24 @@ class _PaseoShellState extends State<PaseoShell>
         ),
         if (store.sidebarVisible)
           _resizeHandle(
-            (delta) => setState(
-              () => _sidebarWidth = (_sidebarWidth + delta).clamp(220, 480),
-            ),
+            (delta) => store.setSidebarWidth(store.sidebarWidth + delta),
           ),
-        Expanded(child: _layout(store.layout)),
-        if (store.explorerVisible)
+        Expanded(
+          child: switch (_shownPage) {
+            final page? => _pageHost(page),
+            null => _layout(store.layout),
+          },
+        ),
+        if (store.explorerVisible && _shownPage == null)
           _resizeHandle(
             (delta) => store.setExplorerWidth(
               (store.explorerWidth - delta).clamp(260, 720),
             ),
           ),
         SizedBox(
-          width: store.explorerVisible ? store.explorerWidth : 0,
+          width: store.explorerVisible && _shownPage == null ? store.explorerWidth : 0,
           child: Offstage(
-            offstage: !store.explorerVisible,
+            offstage: !store.explorerVisible || _shownPage != null,
             child: _explorer(store.explorerVisible),
           ),
         ),
@@ -2531,7 +2795,8 @@ class _PaseoShellState extends State<PaseoShell>
                           if ((!_compact ||
                                   store.compactDestination !=
                                       CompactDestination.sidebar) &&
-                              !(_compact && store.hosts.isEmpty))
+                              !(_compact && store.hosts.isEmpty) &&
+                              _shownPage == null)
                             _header(),
                           if (error != null)
                             MaterialBanner(
@@ -2539,7 +2804,7 @@ class _PaseoShellState extends State<PaseoShell>
                               actions: [
                                 TextButton(
                                   onPressed: () => _run(_openSettings),
-                                  child: const Text('Settings'),
+                                  child: Text(tr(context, 'settings.title')),
                                 ),
                               ],
                             ),

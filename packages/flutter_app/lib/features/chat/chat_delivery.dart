@@ -136,6 +136,7 @@ class ChatDelivery {
       queue[0] = {...sending, 'state': 'sending'};
       drafts.update(key, {'queue': queue});
       await drafts.flush();
+      SentUserMessages.remember(agentId, sending);
       requireSuccess(
         await client.request(
           'send_agent_message_request',

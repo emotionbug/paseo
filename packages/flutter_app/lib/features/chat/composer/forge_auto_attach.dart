@@ -52,7 +52,7 @@ bool _validRemoteHost(String host) =>
 }
 
 /// protocol forge-manifest.ts FORGE_DEFINITIONS cloudHosts.
-const _forgeCloudHosts = {
+const forgeCloudHosts = {
   'github': ['github.com', 'ssh.github.com'],
   'gitlab': ['gitlab.com'],
   'gitea': ['gitea.com'],
@@ -79,7 +79,7 @@ List<ForgeRef> extractForgeRefs(String? text, String? remoteUrl) {
   if (remote == null || body.isEmpty) return const [];
   final webHosts = {remote.host};
   final forgeIds = <String>{};
-  for (final entry in _forgeCloudHosts.entries) {
+  for (final entry in forgeCloudHosts.entries) {
     final hosts = entry.value.map(normalizeGitHost).toList();
     if (hosts.contains(remote.host)) {
       forgeIds.add(entry.key);

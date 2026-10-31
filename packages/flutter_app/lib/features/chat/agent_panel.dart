@@ -19,6 +19,7 @@ import '../../core/scope.dart';
 import '../../core/target.dart';
 import '../../ui/command_center.dart' show formatShortcutStep;
 import '../../ui/common.dart';
+import '../../ui/indicator_clock.dart';
 import '../../ui/localization.dart';
 import '../../ui/panel_activity.dart';
 import '../../ui/shortcuts.dart' show ShortcutBinding, ShortcutCatalog;
@@ -65,6 +66,35 @@ part 'chrome/stream_chrome.dart';
 /// One entry of the virtualized stream list: its stable identity and the
 /// builder that runs only when the list lays the entry out.
 typedef _StreamItem = ({Key key, Widget Function() build});
+
+/// A conversation's own actions (find, outline, tool details, history sync,
+/// rename, fork, reload, usage, detach, archive, delete). Its workspace tab
+/// menu offers them, so the pane carries no second title row of its own.
+class ConversationMenus {
+  ConversationMenus._();
+  static final _menus = <String, ({
+    Object owner,
+    List<(String, String)> Function() actions,
+    void Function(String) run,
+  })>{};
+
+  static void register(
+    String tabKey,
+    Object owner,
+    List<(String, String)> Function() actions,
+    void Function(String) run,
+  ) => _menus[tabKey] = (owner: owner, actions: actions, run: run);
+
+  static void unregister(String tabKey, Object owner) {
+    if (identical(_menus[tabKey]?.owner, owner)) _menus.remove(tabKey);
+  }
+
+  /// The open conversation's (value, label) actions and their runner.
+  static ({List<(String, String)> Function() actions, void Function(String) run})? of(String tabKey) {
+    final menu = _menus[tabKey];
+    return menu == null ? null : (actions: menu.actions, run: menu.run);
+  }
+}
 
 class AgentPanel extends StatefulWidget {
   const AgentPanel({super.key, required this.target});
@@ -398,6 +428,7 @@ class _AgentPanelState extends State<AgentPanel> {
     editor.addListener(_editorChanged);
     focus.onKeyEvent = _composerKey;
     focus.addListener(_inputFocusChanged);
+    ConversationMenus.register(widget.target.key, this, _conversationActions, _conversationAction);
     fullscreenFocus.addListener(_inputFocusChanged);
     scroll.addListener(_onStreamScroll);
     _appLifecycle = AppLifecycleListener(onStateChange: _appLifecycleChanged);
@@ -513,6 +544,8 @@ class _AgentPanelState extends State<AgentPanel> {
   void didUpdateWidget(AgentPanel old) {
     super.didUpdateWidget(old);
     if (old.target.key != widget.target.key) {
+      ConversationMenus.unregister(old.target.key, this);
+      ConversationMenus.register(widget.target.key, this, _conversationActions, _conversationAction);
       _installCloseGuard();
       if (_attentionFocused) _attention?.clearOnAgentBlur();
       _attention = null;
@@ -1190,6 +1223,7 @@ class _AgentPanelState extends State<AgentPanel> {
   /// composer/index.tsx sendAgentMessage: a dispatched prompt then clears
   /// the agent's attention (onAttentionPromptSend).
   Future<void> _send(JsonMap message) async {
+    SentUserMessages.remember(stringValue(widget.target.id), message);
     requireSuccess(
       await client.request(
         'send_agent_message_request',
@@ -1267,6 +1301,7 @@ class _AgentPanelState extends State<AgentPanel> {
         'Creation has not returned an agent yet. Retry recovers the same creation intent.',
       );
     }
+    SentUserMessages.remember(stringValue(agent['id']), message);
     if (response['promptError'] != null) {
       final createdWorkspace = stringValue(agent['workspaceId'], workspaceId);
       final createdKey = ChatDrafts.key(
@@ -2032,13 +2067,6 @@ class _AgentPanelState extends State<AgentPanel> {
     final toast = _panelToast();
     return Column(
       children: [
-        if (MediaQuery.sizeOf(context).width >= 600 && !isSheet)
-          PanelToolbar(
-            title: isDraft
-                ? widget.target.title ?? 'New session'
-                : stringValue(agent['title'], widget.target.title ?? 'Session'),
-            actions: [_conversationMenu()],
-          ),
         Expanded(
           child: ColoredBox(
             color: PaseoColors.of(context).surface0,
@@ -3071,9 +3099,9 @@ class _AgentPanelState extends State<AgentPanel> {
     );
   }
 
-  List<PopupMenuEntry<String>> _conversationMenuItems() {
-    PopupMenuItem<String> item(String value, String key) =>
-        PopupMenuItem(value: value, child: Text(tr(context, key)));
+  /// The conversation's actions as (value, label), offered from its tab menu.
+  List<(String, String)> _conversationActions() {
+    (String, String) item(String value, String key) => (value, tr(context, key));
     return [
       // Native has no chat find or outline (chat-find/index.tsx, rail.tsx).
       if (!isDraft && !isSubagent && !_nativeStream) ...[
@@ -3111,12 +3139,6 @@ class _AgentPanelState extends State<AgentPanel> {
     }
   }
 
-  Widget _conversationMenu() => PopupMenuButton<String>(
-    tooltip: tr(context, 'agentPanel.menu.trigger'),
-    icon: const Icon(LucideIcons.ellipsis300, size: 20),
-    onSelected: _conversationAction,
-    itemBuilder: (_) => _conversationMenuItems(),
-  );
 
   List<JsonMap> get _modes {
     if (!isDraft) return maps(controller?.agent['availableModes']);
@@ -3342,6 +3364,7 @@ class _AgentPanelState extends State<AgentPanel> {
     // agent-panel.tsx unmount: leaving the focused agent clears its attention.
     if (_attentionFocused) _attention?.clearOnAgentBlur();
     _removeCloseGuard?.call();
+    ConversationMenus.unregister(widget.target.key, this);
     _appLifecycle?.dispose();
     _removeCommands?.call();
     autocomplete.dispose();
@@ -3374,28 +3397,32 @@ class _ElapsedLabel extends StatefulWidget {
   State<_ElapsedLabel> createState() => _ElapsedLabelState();
 }
 
-class _ElapsedLabelState extends State<_ElapsedLabel> {
-  Timer? _timer, _reveal;
+class _ElapsedLabelState extends State<_ElapsedLabel>
+    with IndicatorClockState<_ElapsedLabel> {
+  Timer? _reveal;
   bool _hovered = false, _revealed = false;
+  late String _shown = _runningText();
+
   @override
-  void initState() {
-    super.initState();
-    _updateTimer();
-  }
+  bool get indicatorActive => widget.running;
 
   @override
   void didUpdateWidget(covariant _ElapsedLabel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.running != widget.running) _updateTimer();
+    if (oldWidget.running != widget.running) syncIndicatorClock();
   }
 
-  void _updateTimer() {
-    _timer?.cancel();
-    if (widget.running) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
-    }
+  String _runningText() {
+    final start = widget.start;
+    return start == null ? '' : formatDuration(DateTime.now().difference(start));
+  }
+
+  /// Rides the shared indicator clock, so the seconds change in the same frame
+  /// as the working dots instead of on a frame of their own.
+  @override
+  void onIndicatorTick() {
+    final next = _runningText();
+    if (next != _shown) setState(() => _shown = next);
   }
 
   static String formatDuration(Duration duration) {
@@ -3419,9 +3446,8 @@ class _ElapsedLabelState extends State<_ElapsedLabel> {
     );
     final start = widget.start, end = widget.end;
     if (widget.running) {
-      return start == null
-          ? const SizedBox.shrink()
-          : Text(formatDuration(DateTime.now().difference(start)), style: style);
+      _shown = _runningText();
+      return start == null ? const SizedBox.shrink() : Text(_shown, style: style);
     }
     final duration = start != null && end != null
         ? tr(context, 'message.turnFooter.workedFor', args: {
@@ -3482,14 +3508,14 @@ class _ElapsedLabelState extends State<_ElapsedLabel> {
 
   @override
   void dispose() {
-    _timer?.cancel();
     _reveal?.cancel();
     super.dispose();
   }
 }
 
 /// components/synced-loader.tsx: a 2x3 dot grid stepping through six opacity
-/// states every 950ms, synchronized to wall-clock time across loaders.
+/// states every 950ms, synchronized to wall-clock time across loaders and
+/// sampled on [IndicatorClock].
 class _WorkingDots extends StatefulWidget {
   const _WorkingDots({required this.color});
   final Color color;
@@ -3498,7 +3524,7 @@ class _WorkingDots extends StatefulWidget {
 }
 
 class _WorkingDotsState extends State<_WorkingDots>
-    with SingleTickerProviderStateMixin {
+    with IndicatorClockState<_WorkingDots> {
   static const _durationMs = 950;
   static const _states = [
     [1, 0, .78, 0, .56, .34],
@@ -3508,27 +3534,18 @@ class _WorkingDotsState extends State<_WorkingDots>
     [0, .34, 0, .56, 1, .78],
     [0, 0, 1, .34, .78, .56],
   ];
-  late final ticker = createTicker((_) {
-    final next = _step();
-    if (next != step) setState(() => step = next);
-  });
   late int step = _step();
 
   static int _step() =>
       (DateTime.now().millisecondsSinceEpoch % _durationMs) * 6 ~/ _durationMs;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final reduce = MediaQuery.disableAnimationsOf(context);
-    if (reduce && ticker.isActive) ticker.stop();
-    if (!reduce && !ticker.isActive) ticker.start();
-  }
+  bool get pausesForReducedMotion => true;
 
   @override
-  void dispose() {
-    ticker.dispose();
-    super.dispose();
+  void onIndicatorTick() {
+    final next = _step();
+    if (next != step) setState(() => step = next);
   }
 
   @override

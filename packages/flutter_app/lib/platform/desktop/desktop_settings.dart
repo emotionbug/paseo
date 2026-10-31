@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/json.dart';
+import '../../core/legacy_state.dart' show originalDesktopUserDataDir;
 
 /// One process-wide settings owner; secondary engines forward mutations to it.
 class DesktopSettingsStore {
@@ -28,19 +29,8 @@ class DesktopSettingsStore {
     final support = await getApplicationSupportDirectory();
     _file = File(p.join(support.path, 'desktop-settings.json'));
     File source = _file;
-    if (!await source.exists()) {
-      final env = Platform.environment;
-      final home = env['HOME'] ?? env['USERPROFILE'] ?? '';
-      final legacyBase =
-          env['PASEO_ELECTRON_USER_DATA_DIR'] ??
-          (Platform.isMacOS
-              ? p.join(home, 'Library', 'Application Support', 'Paseo')
-              : Platform.isWindows
-              ? p.join(env['APPDATA'] ?? home, 'Paseo')
-              : p.join(
-                  env['XDG_CONFIG_HOME'] ?? p.join(home, '.config'),
-                  'Paseo',
-                ));
+    final legacyBase = originalDesktopUserDataDir(Platform.environment);
+    if (!await source.exists() && legacyBase != null) {
       source = File(p.join(legacyBase, 'desktop-settings.json'));
     }
     if (await source.exists()) {

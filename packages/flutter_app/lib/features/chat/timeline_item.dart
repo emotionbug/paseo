@@ -9,6 +9,7 @@ import '../../core/scope.dart';
 import '../../core/target.dart';
 import '../../ui/common.dart';
 import '../../ui/localization.dart';
+import '../../ui/indicator_clock.dart';
 import '../../ui/theme.dart';
 import 'assistant_file_links.dart';
 import 'attachment_pill.dart';
@@ -1393,8 +1394,9 @@ class _Shimmer extends StatefulWidget {
   State<_Shimmer> createState() => _ShimmerState();
 }
 
-class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin {
-  late final AnimationController controller = AnimationController(vsync: this);
+class _ShimmerState extends State<_Shimmer> with IndicatorClockState<_Shimmer> {
+  final _start = DateTime.now();
+  late final _phase = ValueNotifier<double>(_currentPhase());
 
   Duration get _duration {
     final adjust = widget.characters <= 12 ? .25 : 0;
@@ -1402,28 +1404,18 @@ class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin 
     return Duration(milliseconds: (seconds * 1000).round());
   }
 
-  @override
-  void initState() {
-    super.initState();
-    controller
-      ..duration = _duration
-      ..repeat();
+  double _currentPhase() {
+    final period = _duration.inMilliseconds;
+    return (DateTime.now().difference(_start).inMilliseconds % period) / period;
   }
 
+  /// Stepped on [IndicatorClock]; only the mask below rebuilds.
   @override
-  void didUpdateWidget(covariant _Shimmer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final duration = _duration;
-    if (controller.duration != duration) {
-      controller
-        ..duration = duration
-        ..repeat();
-    }
-  }
+  void onIndicatorTick() => _phase.value = _currentPhase();
 
   @override
   void dispose() {
-    controller.dispose();
+    _phase.dispose();
     super.dispose();
   }
 
@@ -1440,10 +1432,10 @@ class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin 
           widget.child,
           Positioned.fill(
             child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: controller,
-                builder: (context, mask) {
-                  final x = -peak + (end + peak) * controller.value;
+              child: ValueListenableBuilder<double>(
+                valueListenable: _phase,
+                builder: (context, phase, mask) {
+                  final x = -peak + (end + peak) * phase;
                   return ShaderMask(
                     blendMode: BlendMode.srcIn,
                     shaderCallback: (bounds) => LinearGradient(

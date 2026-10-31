@@ -336,9 +336,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   });
 
+  /// The detail title. Desktop opens on General before any section is
+  /// chosen ([view] null), like [content]; the compact root never asks.
   String? title(AppStore store) {
-    final current = view;
-    if (current == null) return null;
+    final current = view ?? 'general';
     if (projectRoot != null) return t('settings.projects');
     if (current == 'local-daemon') return t('desktop.daemon.title');
     if (current.startsWith('host/')) {

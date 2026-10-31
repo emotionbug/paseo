@@ -11,6 +11,7 @@ import '../../ui/command_center.dart';
 import '../../ui/common.dart';
 import '../../ui/controls.dart';
 import '../../ui/localization.dart';
+import '../../ui/shell_pages.dart';
 import '../../ui/theme.dart';
 import '../chat/provider_icon.dart';
 import '../settings/settings_host_widgets.dart';
@@ -27,15 +28,14 @@ Future<void> showSessionHistory(
   String cwd = '',
   String projectKey = '',
   bool allHosts = false,
-}) => Navigator.of(context).push(
-  MaterialPageRoute<void>(
-    builder: (_) => _SessionsScreen(
-      store: store,
-      serverId: serverId,
-      cwd: cwd,
-      projectKey: projectKey,
-      allHosts: allHosts,
-    ),
+}) => ShellPages.open(
+  context,
+  _SessionsScreen(
+    store: store,
+    serverId: serverId,
+    cwd: cwd,
+    projectKey: projectKey,
+    allHosts: allHosts,
   ),
 );
 
@@ -494,9 +494,13 @@ class _SessionsScreenState extends State<_SessionsScreen> {
             _MenuHeader(
               title: tr(context, 'sessions.title'),
               compact: compact,
-              // Original `SidebarMenuToggle`: the history route sits on the shell, so
-              // revealing the agent list leaves this screen for the sidebar beneath it.
+              // Original `SidebarMenuToggle`: beside the sidebar it shows or hides it;
+              // over the shell (compact) revealing the agent list leaves this screen.
               onMenu: () {
+                if (EmbeddedShellPage.of(context)) {
+                  widget.store.showSidebar(!widget.store.sidebarVisible);
+                  return;
+                }
                 widget.store.showSidebar(true);
                 Navigator.of(context).maybePop();
               },
@@ -715,22 +719,31 @@ class _SessionRowState extends State<_SessionRow> {
       workspaceName.isNotEmpty ? workspaceName : projectName,
       base,
     );
-    final titleRow = Row(
-      spacing: 8,
-      children: [
-        if (compact)
-          Flexible(child: workspaceTitle)
-        else
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: workspaceTitle,
-          ),
-        if (!compact) ...[
-          Icon(LucideIcons.chevronRight300, size: 12, color: colors.muted),
-          Flexible(child: agentTitle),
-        ],
-        for (final badge in badges) Flexible(child: badge),
-      ],
+    // agent-list.tsx rowContent (`minWidth: 0`, `overflow: hidden`): the workspace
+    // name keeps up to 320px, the session title shrinks, and the cell clips rather
+    // than painting over the project column.
+    final titleRow = ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          spacing: 8,
+          children: [
+            if (compact)
+              Flexible(child: workspaceTitle)
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth < 320 ? constraints.maxWidth : 320,
+                ),
+                child: workspaceTitle,
+              ),
+            if (!compact) ...[
+              Icon(LucideIcons.chevronRight300, size: 12, color: colors.muted),
+              Flexible(child: agentTitle),
+            ],
+            for (final badge in badges) Flexible(child: badge),
+          ],
+        ),
+      ),
     );
     final Widget content;
     if (compact) {
@@ -763,6 +776,8 @@ class _SessionRowState extends State<_SessionRow> {
       content = Row(
         children: [
           Expanded(child: titleRow),
+          // agent-list.tsx rowColumns: the columns keep spacing[3] from the content.
+          const SizedBox(width: 12),
           SizedBox(width: 132, child: highlighted(projectName, muted)),
           const SizedBox(width: 12 + 16),
           SizedBox(

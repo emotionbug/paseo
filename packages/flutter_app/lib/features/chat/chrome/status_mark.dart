@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/indicator_clock.dart';
 import '../../../ui/theme.dart';
 
 /// utils/sidebar-agent-state.ts SidebarStateBucket.
@@ -64,8 +65,9 @@ const statusRingFrameSize = statusRingSize + statusRingHaloInset * 2;
 const _ringPeriodMs = 900;
 
 /// components/status-ring: the running indicator — a 6px dot inside a 1.5px
-/// ring whose quarter turns once every 900ms. Every ring reads one wall clock,
-/// so a ring that mounts mid-flight is already in phase with the others.
+/// ring whose quarter turns once every 900ms, stepped on [IndicatorClock].
+/// Every ring reads one wall clock, so a ring that mounts mid-flight is
+/// already in phase with the others.
 /// [backdrop] fills the 1px knockout halo; null leaves it transparent.
 class StatusRing extends StatefulWidget {
   const StatusRing({super.key, this.backdrop, this.halo = true});
@@ -78,26 +80,12 @@ class StatusRing extends StatefulWidget {
   State<StatusRing> createState() => _StatusRingState();
 }
 
-class _StatusRingState extends State<StatusRing> with SingleTickerProviderStateMixin {
-  late final AnimationController _clock = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: _ringPeriodMs),
-  );
+class _StatusRingState extends State<StatusRing> with IndicatorClockState<StatusRing> {
+  static double _phase() =>
+      (DateTime.now().millisecondsSinceEpoch % _ringPeriodMs) / _ringPeriodMs;
 
   @override
-  void initState() {
-    super.initState();
-    final phase = (DateTime.now().millisecondsSinceEpoch % _ringPeriodMs) / _ringPeriodMs;
-    _clock
-      ..value = phase
-      ..repeat();
-  }
-
-  @override
-  void dispose() {
-    _clock.dispose();
-    super.dispose();
-  }
+  void onIndicatorTick() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +97,7 @@ class _StatusRingState extends State<StatusRing> with SingleTickerProviderStateM
         child: RepaintBoundary(
           child: CustomPaint(
             painter: _RingPainter(
-              _clock,
+              _phase(),
               PaseoColors.of(context).running,
               widget.halo ? widget.backdrop : null,
             ),
@@ -121,8 +109,8 @@ class _StatusRingState extends State<StatusRing> with SingleTickerProviderStateM
 }
 
 class _RingPainter extends CustomPainter {
-  _RingPainter(this.rotation, this.color, this.backdrop) : super(repaint: rotation);
-  final Animation<double> rotation;
+  _RingPainter(this.rotation, this.color, this.backdrop);
+  final double rotation;
   final Color color;
   final Color? backdrop;
 
@@ -139,7 +127,7 @@ class _RingPainter extends CustomPainter {
     canvas.drawCircle(center, radius, stroke..color = color.withValues(alpha: .3));
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2 + rotation.value * 2 * math.pi,
+      -math.pi / 2 + rotation * 2 * math.pi,
       math.pi / 2,
       false,
       stroke..color = color.withValues(alpha: .9),
@@ -148,7 +136,8 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) => old.color != color || old.backdrop != backdrop;
+  bool shouldRepaint(_RingPainter old) =>
+      old.rotation != rotation || old.color != color || old.backdrop != backdrop;
 }
 
 /// components/status-icon.tsx: an icon with its state pinned to the bottom-right

@@ -1150,7 +1150,11 @@
     "host": {
       "noHost": "Nenhum host",
       "switchTitle": "Trocar host",
-      "searchPlaceholder": "Buscar hosts..."
+      "searchPlaceholder": "Buscar hosts...",
+      "actions": {
+        "reconnect": "Reconectar",
+        "edit": "Editar host"
+      }
     },
     "actions": {
       "addProject": "Adicionar projeto",
@@ -1186,7 +1190,12 @@
         "openFolder": "Open in file manager",
         "openFolderFailed": "Couldn't open folder",
         "remove": "Remover projeto",
-        "removing": "Removendo..."
+        "removing": "Removendo...",
+        "rename": "Renomear projeto",
+        "resetName": "Redefinir nome do projeto",
+        "chooseIcon": "Escolher ícone do projeto",
+        "resetIcon": "Redefinir ícone do projeto",
+        "archiveAll": "Arquivar todos os workspaces"
       },
       "confirmations": {
         "removeTitle": "Remover projeto?",
@@ -1233,7 +1242,9 @@
         "archiveWorkspace": "Arquivar workspace",
         "hideFromSidebar": "Ocultar da barra lateral",
         "archiving": "Arquivando...",
-        "hiding": "Ocultando..."
+        "hiding": "Ocultando...",
+        "markUnread": "Marcar como não lido",
+        "recover": "Recuperar workspace"
       },
       "confirmations": {
         "hideTitle": "Ocultar workspace?",
