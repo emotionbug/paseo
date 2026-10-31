@@ -338,6 +338,8 @@ class _ComposerTrackPillState extends State<ComposerTrackPill> {
   bool _hovered = false, _pressed = false, _open = false;
   late final ValueNotifier<List<Widget> Function(BuildContext)> _panel =
       ValueNotifier(widget.panelBuilder);
+  NavigatorState? _navigator;
+  ModalRoute<Object?>? _panelRoute;
 
   @override
   void didUpdateWidget(ComposerTrackPill old) {
@@ -350,21 +352,37 @@ class _ComposerTrackPillState extends State<ComposerTrackPill> {
 
   @override
   void dispose() {
-    _panel.dispose();
+    final route = _panelRoute, navigator = _navigator;
+    if (_open && route != null && navigator != null) {
+      // The pill left with its panel open, e.g. archive-finished emptied the
+      // track. The original popover lives inside the track, so the panel goes
+      // with it rather than freezing on rows nothing updates any more. Its rows
+      // listen to [_panel] until the route is gone, so it is not disposed here.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!route.isActive) return;
+        route.isCurrent ? navigator.pop() : navigator.removeRoute(route);
+      });
+    } else {
+      _panel.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _openPanel() async {
     setState(() => _open = true);
+    _navigator = Navigator.of(context);
     final colors = PaseoColors.of(context);
-    Widget rows(BuildContext context) => ValueListenableBuilder(
-      valueListenable: _panel,
-      builder: (context, build, _) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: build(context),
-      ),
-    );
+    Widget rows(BuildContext context) {
+      _panelRoute = ModalRoute.of(context);
+      return ValueListenableBuilder(
+        valueListenable: _panel,
+        builder: (context, build, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: build(context),
+        ),
+      );
+    }
     if (isCompactLayout(context)) {
       await showModalBottomSheet<void>(
         context: context,
@@ -456,6 +474,7 @@ class _ComposerTrackPillState extends State<ComposerTrackPill> {
         ),
       );
     }
+    _panelRoute = null;
     if (mounted) setState(() => _open = false);
   }
 

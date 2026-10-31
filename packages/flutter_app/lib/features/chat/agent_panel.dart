@@ -1790,33 +1790,34 @@ class _AgentPanelState extends State<AgentPanel> {
     }
   }
 
-  Future<void> _imagePreview(JsonMap image) => showDialog<void>(
-    context: context,
-    builder: (context) => Dialog.fullscreen(
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: InteractiveViewer(
-              minScale: .2,
-              maxScale: 8,
-              child: Image.memory(
-                base64Decode(stringValue(image['data'])),
-                fit: BoxFit.contain,
+  Future<void> _imagePreview(JsonMap image) async {
+    final source = AttachmentPill.provider(image);
+    if (source == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog.fullscreen(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: .2,
+                maxScale: 8,
+                child: Image(image: source, fit: BoxFit.contain, gaplessPlayback: true),
               ),
             ),
-          ),
-          Positioned(
-            top: 12,
-            right: 12,
-            child: IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(LucideIcons.x300),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(LucideIcons.x300),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Future<void> _lifecycle(String action) async {
     try {

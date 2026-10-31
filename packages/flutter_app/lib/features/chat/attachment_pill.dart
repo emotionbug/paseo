@@ -139,8 +139,12 @@ class AttachmentPill extends StatefulWidget {
       data = comma < 0 ? '' : data.substring(comma + 1);
     }
     if (data.isNotEmpty) {
+      final cached = _inline.remove(data);
+      if (cached != null) return _inline[data] = cached;
       try {
-        return MemoryImage(base64Decode(base64.normalize(data.replaceAll(RegExp(r'\s'), ''))));
+        final provider = MemoryImage(base64Decode(base64.normalize(data.replaceAll(RegExp(r'\s'), ''))));
+        if (_inline.length >= _inlineLimit) _inline.remove(_inline.keys.first);
+        return _inline[data] = provider;
       } on FormatException {
         return null;
       }
@@ -149,6 +153,12 @@ class AttachmentPill extends StatefulWidget {
     if (url.startsWith('http://') || url.startsWith('https://')) return NetworkImage(url);
     return null;
   }
+
+  /// One provider per inline payload, least recently used first out. A fresh
+  /// MemoryImage is a new image-cache key, so every rebuild of the composer
+  /// or a sent message decoded each thumbnail again and blanked it meanwhile.
+  static final Map<String, ImageProvider> _inline = {};
+  static const _inlineLimit = 32;
 
   /// 48px square thumbnail for an inline (base64) or remote image.
   static Widget thumbnail(BuildContext context, JsonMap image) {
@@ -162,7 +172,7 @@ class AttachmentPill extends StatefulWidget {
     final source = provider(image);
     if (source == null) return fallback();
     return Image(image: source, width: 48, height: 48, fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => fallback());
+        gaplessPlayback: true, errorBuilder: (_, _, _) => fallback());
   }
 
   /// Title, type subtitle (null: the localized "File") and glyph for each

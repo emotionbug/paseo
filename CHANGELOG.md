@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- Fixed the subagent list ignoring "Archive finished subagents" until it was closed. Dismissing finished provider subagents emptied the track in one step, and the open sheet or popover kept showing the old rows. The panel now closes with its track.
+- Fixed attached images flickering in the composer and sent messages. Every rebuild decoded each thumbnail again and blanked it while decoding; one decoded image is now kept per attachment.
 - Kept the images and attachments of a sent message after the host acknowledges it. The host never echoes them, so the native client now keeps them for the session as the original did, instead of replacing the row with a text-only copy.
 - Imported desktop settings from the original app's `Paseo Sessions` data directory (its Electron app name) instead of `Paseo`, so hosts, passwords, preferences and desktop settings carry over on Linux, macOS and Windows.
 - Restored the desktop workspace header's Open-in button (local editors for the desktop's own daemon, plus the GitHub/GitLab/Gitea branch or file page) and its Scripts menu for starting and stopping workspace scripts.
