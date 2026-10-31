@@ -42,11 +42,11 @@ Existing functionality keeps working across versions because of the protocol con
 
 ## Client capability ownership
 
-The client package advertises the protocol behavior it implements. Add each new capability to
-its exhaustive defaults and implement the associated subscription or decoding behavior there.
-The app, CLI, and plugins inherit those defaults; they supply only host resources such as browser
-automation, or explicit overrides. A schema accepting a message does not establish support for
-its delivery semantics.
+Each implementation advertises only the protocol behavior it actually implements: the Dart native
+client, Rust CLI/daemon client and retained TypeScript SDK have separate decoding/subscription
+boundaries. Keep capabilities aligned with those implementations, not merely with accepted schemas.
+The native product does not advertise embedded browser automation. A schema accepting a message
+does not establish support for its delivery semantics.
 
 On capable daemons, connecting creates no timeline or event demand. Client subscriptions own their network membership,
 release it on unsubscribe, and restore it after reconnect. Raw message observers inspect traffic
@@ -55,7 +55,7 @@ without requesting streams. Application caches and which agents are visible rema
 ## Owned observations
 
 `owned_subscriptions` and `server_info.features.ownedSubscriptions` negotiate the source-owned
-contract described in [architecture](architecture.md#websocket-protocol). The client selects delivery
+contract described in [architecture](architecture.md#protocol-and-persistence). The client selects delivery
 behavior once at its connection boundary. App workflows use the same observation interface on both.
 
 With an older daemon, the client uses the existing connection and legacy RPCs. Directory subscriptions

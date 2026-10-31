@@ -149,7 +149,7 @@ children.
 
 `create_agent_request` can opt an agent into `autoArchive`. In that mode the daemon archives the agent after the first terminal turn event (`turn_completed`, `turn_failed`, or `turn_canceled`). When the agent owns an isolated workspace, auto-archive archives that workspace too; the managed worktree is removed when its final workspace reference is gone.
 
-Archiving runs through `AgentManager.archiveAgent` (`packages/server/src/server/agent/agent-manager.ts`):
+Archiving is owned by the Rust agent lifecycle under `packages/daemon/src/agent`:
 
 1. Snapshot the current session into the registry
 2. Set `archivedAt` and normalize `lastStatus` away from `running`/`initializing`
@@ -222,19 +222,28 @@ A finished workspace can be marked unread after it has been reviewed. The daemon
 notification. Opening the workspace clears that attention through the normal focus flow.
 
 Attention is set by the agent finishing or failing and cleared by the client's
-`workspace.clear_attention`, which fires when the user reads the chat. Loading an agent's runtime is
+`workspace.clear_attention`, which fires when the user reads the chat. It is edge-triggered: it is
+raised once when the agent goes from `running` to `idle` (`finished`) or enters `error`, and an
+unread attention is never replaced or re-stamped by later turns. A pending permission request raises
+an attention notification but does not set the agent's unread state; its needs-input status comes
+from `pendingPermissions`. A replacing prompt holds the agent `running` while the interrupted turn
+settles, so a replacement does not raise `finished`. Loading an agent's runtime is
 neither, so resuming carries the stored attention and the stored last-activity time through
 untouched. Forging either makes a background resume look like the user read a workspace and like the
 agent worked in it just now, which rewrites the sidebar timestamp permanently — persisted
 `updatedAt` is what workspace `statusEnteredAt` is re-derived from on the next daemon start.
 
+A failed turn, including a prompt the provider rejected before a turn started, appends an
+`assistant_message` reading `[System Error] <error>` (plus `code: …` and a distinct diagnostic),
+skipped when it repeats the latest item. A rejected prompt still records the user's message first.
+
 ## The subagents track
 
-The track is a pill at the foot of an agent's pane (`packages/app/src/subagents/track.tsx`): a count you can read at a glance, and a panel behind it — a popover on wide screens, a sheet on compact ones — holding the rows. It floats over the transcript rather than sitting in a band above the composer, so the timeline scrolls underneath it; `packages/app/src/panels/agent-tracks.tsx` owns that placement, and the pill frame is shared with the task list in `packages/app/src/composer/tracks.tsx`.
+Native subagent presentation belongs to `packages/flutter_app/lib/features/chat`. Keep managed children and provider-owned child executions distinct even when a view combines them; neither a tab nor a compact view owns their daemon lifecycle.
 
 The rows combine two kinds of children:
 
-- **Paseo subagents** are full managed agents. Their membership rule (`packages/app/src/subagents/select.ts`) is:
+- **Paseo subagents** are full managed agents. Their membership rule is:
 
 ```
 parentAgentId === thisAgent.id  AND  !archivedAt
@@ -242,7 +251,7 @@ parentAgentId === thisAgent.id  AND  !archivedAt
 
 - **Provider subagents** are child executions owned by Claude, Codex, or OpenCode. They are not inserted into `AgentManager` as managed agents. Providers emit a separate descriptor and timeline stream through `agent.provider_subagents.*`; the client keeps that state outside the normal agent store and merges only the presentation rows into the track. A descriptor's optional `parentSubagentId` identifies its direct provider-subagent parent; an absent value identifies a direct child of the managed agent.
 
-Clicking either kind opens a workspace tab. On compact layouts it opens in a [sheet](explorer-sidebar.md#sheets) over the subagents list instead; the sheet hides the composer and shows the agent's model and thinking as one line in its place (`PaneSubtitle`, the row provider subagents already use), and a Paseo subagent's sheet offers **Open as tab** (the full-screen glyph in the header) to get the composer back. A Paseo subagent tab is a normal interactive agent pane. A provider subagent tab is a read-only timeline pane with no composer, archive, detach, rewind, or fork actions. It shows its own direct children in a subagents track. Both panes use `AgentStreamView`, so message, reasoning, tool-call, and layout rendering stay identical.
+Opening either kind selects its host and actual child identity in the native client. Managed agents retain their normal interactive capabilities; provider-owned child timelines are read-only observations, not independent managed agents with archive/detach/rewind authority. Closing a view changes presentation only.
 
 Provider timelines use the same structural timeline item format but deliberately have a separate lifecycle and transport. A provider thread/session identifier is not a Paseo agent identifier, and closing its tab is always layout-only.
 

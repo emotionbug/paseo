@@ -147,7 +147,7 @@ A workspace handle exposes `id`, `projectId`, `directory`, `name`, `status`, `cu
 
 ## `client.terminals`
 
-Terminal operations require a host that supports workspace terminals. An older host receives no terminal request; the SDK throws an update-host error.
+Terminal operations control retained daemon-side PTYs for script/setup automation, not an interactive terminal UI in Flutter. The native client presents read-only logs. These APIs require a host that supports workspace terminals; an older host receives no terminal request and the SDK throws an update-host error.
 
 | Method              | Result                             | Behavior                                                                           |
 | ------------------- | ---------------------------------- | ---------------------------------------------------------------------------------- |
@@ -183,7 +183,7 @@ Terminal handles expose:
 
 Capture accepts optional `start`, `end`, `stripAnsi`, and `requestId`. Line bounds are zero-based and inclusive across scrollback and the viewport. Negative bounds count from the end; omitted bounds capture all lines. `stripAnsi` defaults to `true`. A missing terminal returns empty lines.
 
-Use `workspace.terminals.create(options?)` and `workspace.terminals.list(options?)` to supply the workspace ID from a handle. Creation accepts the same options except `workspaceId`; listing accepts only `requestId`. Plugins get these methods through `usePaseo()` and the handler's `paseo` context.
+Use `workspace.terminals.create(options?)` and `workspace.terminals.list(options?)` to supply the workspace ID from a handle. Creation accepts the same options except `workspaceId`; listing accepts only `requestId`. Backend plugins can access the handler's `paseo` context. Executable React UI plugins and their `usePaseo()` hook are not supported in the Flutter product client.
 
 ## `client.providers`
 

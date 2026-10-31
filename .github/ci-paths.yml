@@ -24,33 +24,21 @@ format:
   - ".agents/**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}"
   - ".github/**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}"
   - "**/*.{cjs,css,html,js,json,jsonc,jsx,md,mjs,ts,tsx,yaml,yml}"
-  - "packages/expo-two-way-audio/**"
 
 quality:
-  - "**/*.{cjs,js,json,jsx,mjs,ts,tsx}"
-  - "packages/expo-two-way-audio/**"
+  - "*.{cjs,js,json,jsx,mjs,ts,tsx}"
+  - "!(packages)/**/*.{cjs,js,json,jsx,mjs,ts,tsx}"
+  - "packages/!(flutter_app|flutter_audio|flutter_desktop_host)/**/*.{cjs,js,json,jsx,mjs,ts,tsx}"
 
-hub:
-  - "packages/cli/src/commands/hub/**"
-  - "packages/server/src/server/hub/**"
-
-server:
+daemon:
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "rust-toolchain.toml"
+  - "packages/daemon/**"
+  - "packages/protocol/src/provider-definitions.json"
+  - "skills/**"
+  - "packages/plugin/**"
   - "plugins/**"
-  - "packages/server/**"
-  - "packages/app/e2e/support/fixtures/recording.*"
-
-desktop:
-  - "packages/desktop/**"
-  - "packages/app/src/desktop/**"
-  - "packages/app/src/**/*.electron.{ts,tsx}"
-  - "packages/server/src/server/browser-tools/**"
-  - "packages/app/e2e/support/**"
-  - "packages/app/*config.{cjs,js,ts}"
-  - "packages/app/package.json"
-
-app:
-  - "packages/app/**"
-  - "packages/expo-two-way-audio/**"
 
 sdk:
   - "packages/plugin/**"
@@ -60,30 +48,36 @@ sdk:
   - "packages/highlight/**"
   - "packages/protocol/**"
 
-browser:
-  - "packages/server/src/server/agent/provider-snapshot-manager.ts"
-  - "packages/server/src/server/session/provider/provider-catalog-session.ts"
-  - "packages/client/src/compat/normalize-provider-models.ts"
-  - "packages/protocol/src/client-capabilities.ts"
-  - "packages/server/src/server/agent/provider-registry.ts"
-  - "packages/server/src/server/agent/agent-sdk-types.ts"
-  - "packages/server/src/server/agent/providers/codex-app-server-agent.ts"
-  - "packages/server/src/server/agent/providers/claude/agent.ts"
-  - "packages/server/src/server/agent/plugin-provider.ts"
-  - "packages/server/src/server/plugins/{index,plugin-process,plugin-process-protocol,runtime}.ts"
-  - "packages/server/src/executable-resolution/**"
-  - "packages/plugin/src/server/provider.ts"
-  - "packages/app/src/!(desktop)/**"
-  - "packages/app/e2e/browser/**"
-  - "packages/app/e2e/support/**"
-  - "packages/app/assets/**"
-  - "packages/app/public/**"
-  - "packages/app/index.ts"
-  - "packages/app/*config.{cjs,js,ts}"
-  - "packages/app/package.json"
-
 relay:
   - "packages/relay/**"
 
-cli:
-  - "packages/cli/**"
+# Shared Dart, assets and package resolutions affect every native build.
+# Platform implementation changes compile on their owning host only.
+flutter:
+  - "packages/flutter_app/!(linux|windows|macos|android|ios)/**"
+  - "packages/flutter_app/*"
+  - "packages/flutter_audio/lib/**"
+  - "packages/flutter_audio/pubspec.yaml"
+  - "packages/flutter_desktop_host/integrations/pubspec.yaml"
+  - "packages/flutter_desktop_host/integrations/lib/**"
+  - "packages/flutter_desktop_host/updater/**"
+
+flutter_linux:
+  - "packages/flutter_app/linux/**"
+  - "packages/flutter_desktop_host/integrations/linux/**"
+
+flutter_windows:
+  - "packages/flutter_app/windows/**"
+  - "packages/flutter_desktop_host/integrations/windows/**"
+
+flutter_macos:
+  - "packages/flutter_app/macos/**"
+  - "packages/flutter_desktop_host/integrations/macos/**"
+
+flutter_android:
+  - "packages/flutter_app/android/**"
+  - "packages/flutter_audio/android/**"
+
+flutter_ios:
+  - "packages/flutter_app/ios/**"
+  - "packages/flutter_audio/ios/**"

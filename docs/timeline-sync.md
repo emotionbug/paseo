@@ -54,7 +54,7 @@ reconnect, delivery-mode change, and visibility change, so recovery is still imm
 condition clears. Republishing the same visibility set is a no-op and never bypasses backoff.
 
 Background retries are silent. The retry the user presses in the sync-error callout is a fallible
-user action and owns its pending state: `retrying` is a status the sync model publishes, not a React
+user action and owns its pending state: `retrying` is a status the sync model publishes, not a view-local
 boolean, so the button reports in-flight and the callout returns to `error` when the attempt fails.
 
 Reaching the history-start threshold loads one older page and preserves the visible content anchor.
@@ -132,7 +132,7 @@ projected items.
 
 The session projection remains host-scoped for as long as the host is registered. The viewed-timeline
 owner wraps cached preparation, network catch-up, accepted timeline application, and persistence
-behind one interface. React supplies transport and projection operations without selecting a cache
+behind one interface. The client supplies transport and projection operations without selecting a cache
 path or issuing a separate persistence notification.
 
 Active-agent list reconciliation does not own transcript lifetime. An archived agent's fresh
@@ -175,7 +175,7 @@ The app chooses one delivery policy from `server_info.features.selectiveAgentTim
 
 - Selective daemons receive the chats this session has opened, plus any visible agent pane. A chat
   enters that set the first time the user opens it and leaves when its tab closes or the session
-  ends, independently of mounted or retained React views: switching workspaces, evicting a retained
+  ends, independently of mounted or retained native views: switching workspaces, evicting a retained
   view, app backgrounding, and reconnect all preserve the demand. There is no recent-agent limit.
   Restored workspace layout is a release signal, never a source. It carries a tab for every chat the
   user has ever opened on the host, and a catch-up fetch resumes its agent on the daemon, so
@@ -235,7 +235,7 @@ identified turn; an unnamed legacy terminal can close the current turn. Snapshot
 cancellation requests, and every visible surface update the same per-agent record. The snapshot covers
 both user-started foreground turns and autonomous provider turns;
 foreground control ownership remains a separate daemon concern. Cancellation request identity is stored
-with that record rather than in a React component, so an old request cannot clear a newer one. Submissions
+with that record rather than in a widget, so an old request cannot clear a newer one. Submissions
 remain a separate pre-turn registry and retire on canonical acknowledgement.
 
 Canonical turns and visible responses are different boundaries. Agent-originated prompts and lifecycle
@@ -293,8 +293,7 @@ canonical assistant prefix, it stays in the head lane. No row may be returned in
 
 ## Relevant code
 
-- Server live stream forwarding: `packages/server/src/server/session.ts`
-- App sync planning: `packages/app/src/timeline/timeline-sync-plan.ts`
-- App viewed-agent synchronization: `packages/app/src/timeline/viewed-timeline-sync.ts`
-- App stream/timeline reducer: `packages/app/src/timeline/session-stream-reducers.ts`
-- Session wiring: `packages/app/src/contexts/session-context.tsx`
+- Rust canonical timeline, persistence and forwarding: `packages/daemon/src/agent/timeline.rs`, `timeline_storage.rs`, `timeline_stream.rs`, and `transport/`
+- Dart protocol and reconciliation: `packages/flutter_app/lib/core/client.dart`
+- Flutter viewed-session/controller and timeline presentation: `packages/flutter_app/lib/features/chat/chat_controller.dart`, `agent_panel.dart`, and `timeline_item.dart`
+- External TypeScript SDK: `packages/client`

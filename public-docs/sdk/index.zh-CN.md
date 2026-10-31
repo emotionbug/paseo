@@ -19,11 +19,16 @@ nav: 概览
 
 ## 启动 daemon {#start-a-daemon}
 
+SDK 仍是 **Rust** daemon 的 JavaScript/TypeScript 客户端。按照[快速上手](/docs)构建或安装原生运行时，再使用其可执行文件：
+
 ```bash
-npx @getpaseo/cli
+paseo onboard
+paseo daemon start
 ```
 
-它监听 `ws://127.0.0.1:6767/ws`。
+默认端点为 `ws://127.0.0.1:6767/ws`。直接运行 `paseo` 打开 CLI 聊天，不会安装或启动 daemon。此次原生迁移尚未发布，旧 npm CLI 包不是它的安装方式；可从迁移后的源码检出构建。请将全部运行时资源与可执行文件一起保留。
+
+外部 SDK 仍使用 `@getpaseo/client`（仓库中的 `packages/client`）。集成程序使用 Node 不代表默认安装的 Paseo 运行时包含 Node。
 
 ## 运行 Agent {#run-an-agent}
 

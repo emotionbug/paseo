@@ -1,82 +1,22 @@
 ---
-title: Browser automation
-description: Give agents a real browser inside Paseo to open pages, click, type, and verify their work.
-nav: Overview
+title: External browser workflow
+description: Test web projects outside the native Paseo client.
+nav: External browser
 order: 35
-category: Browser
+category: Native scope
 ---
 
-# Browser automation
+# External browser workflow
 
-Agents in Paseo can drive real browser tabs — the same tabs you see in the Paseo desktop app. An agent can open your dev server, read the page, click through a flow, fill a form, and take a screenshot, all without leaving your machine.
+The native Flutter client does **not** embed a browser or browser automation. It does not ship Electron, Chromium, webview tabs, a shared browser profile, or an agent-controlled browser surface. There is no setting that enables the former Paseo browser tools in this client.
 
-This closes the loop on frontend work: instead of telling you "the change should work," an agent opens the page and checks.
+You can still develop and test web projects:
 
-Typical uses:
+1. Start the project's development service through a [workspace script](/docs/worktrees#scripts-and-services) or your own host terminal.
+2. Inspect its read-only output in Paseo and use its reachable service URL.
+3. Open that URL in an external browser, or run an independently installed browser-testing tool in your project/CI environment.
+4. Review the resulting files, test output and screenshots alongside the agent conversation and diff.
 
-- **Verify its own changes.** After editing a component, the agent opens the dev server, snapshots the page, and confirms the new text or layout is actually there.
-- **Reproduce and diagnose bugs.** Click the exact sequence from a bug report, then read the console and network logs.
-- **Exercise full flows.** Forms, multi-step wizards, hover menus, drag and drop, file uploads.
-- **Work in logged-in sessions.** Tabs keep their session state. Log in once yourself, and the agent can work behind the login.
+An external testing tool owns its own installation, processes, credentials, cookies and permissions. It is not bundled with Paseo, does not inherit a Paseo browser login, and must not be advertised as a built-in capability. If an agent uses such a tool through its own CLI or MCP configuration, authorize its consequential actions at that tool's boundary.
 
-Because you share the browser with the agent, you can watch it work — and step in at any point.
-
-## Enabling
-
-Browser tools are off by default. Turn them on per host:
-
-- **In the app:** open **Settings → your host → Agents** and turn on **Browser tools**.
-- **In `config.json`** (`~/.paseo/config.json`):
-
-```json
-{
-  "daemon": {
-    "browserTools": {
-      "enabled": true
-    }
-  }
-}
-```
-
-The tools are part of the [Paseo MCP toolset](/docs/mcp), so **Enable Paseo tools** on the same page must also be on for agents to receive them. Existing agents may need a reload to pick up new tools.
-
-> Browser tools let agents access and control Paseo browser tabs, including logged-in browser state. Only enable this for agents you trust.
-
-## Desktop only, for now
-
-Browser tabs are hosted by the Paseo desktop app. The daemon itself doesn't run a browser — it routes tool calls to a connected desktop app, and returns an error when none is connected. The wire contract is host-neutral, so other hosts can carry the same tools later.
-
-## How an agent sees a page
-
-The primary tool is `browser_snapshot`, which returns the page as an accessibility tree — headings, text, form state, and hierarchy — instead of raw HTML:
-
-```yaml
-- document "Settings"
-  - heading "Workspace" [level=1]
-  - text: "Connected as Maya"
-  - textbox "Display name" [ref=@e2]
-  - button "Save changes" [ref=@e3]
-```
-
-Interactive elements carry refs like `@e3`. The agent passes a ref to `browser_click`, `browser_fill`, and the other action tools. Refs come from the latest snapshot of that tab and expire when the page changes — a stale ref returns an error instead of acting on the wrong element.
-
-For anything the tree can't capture, agents fall back to `browser_screenshot`, and `browser_logs` exposes console messages and network timing.
-
-## Architecture
-
-```
-agent ──MCP──▶ daemon (broker) ──▶ browser host (desktop app) ──▶ webview
-```
-
-- **Workspace-scoped tabs.** An agent only sees and controls tabs in its own workspace. New tabs open in the background without stealing your focus.
-- **Tab-to-host routing.** The daemon remembers which host owns each tab and routes tab commands there. `browser_list_tabs` aggregates all connected hosts.
-- **Trusted input.** Clicks, keys, hovers, and drags are dispatched as real browser input events — CSS `:hover` triggers, and pages can't tell an agent's click from a user's. Every action first waits for its target to be visible, enabled, and stable.
-- **Dialogs never block.** `alert` is accepted; `confirm`, `prompt`, and `beforeunload` are dismissed. Every handled dialog is reported in the tool result so the agent knows the page flow changed.
-
-## Security
-
-- Navigation is restricted to `http(s)` URLs.
-- File uploads can only reference files inside the agent's workspace.
-- Tabs share the browser profile you use in Paseo, including cookies and logins — that's what makes logged-in testing work, and why the feature is opt-in per host.
-
-See the [tools reference](/docs/browser-tools) for the full tool list.
+Paseo retains native Markdown/source editing, summary-first diffs, remote folder selection, and script/setup PTYs with read-only logs. See [parallel tasks](/docs/parallel-development), [MCP](/docs/mcp), and [native setup](/docs).

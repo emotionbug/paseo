@@ -1,25 +1,15 @@
+> The native Paseo client does not run client UI plugins. This example only exercises the SDK's client types; it does not add anything to the native app.
+
 # Markdown file panel example
 
-Requires Paseo 0.13.0 or later. Install the editor dependencies, then install this directory:
+The server entry is empty, so installing this directory on a native daemon loads a plugin that does
+nothing. The native client does not run file panels; it has its own Markdown view.
 
-```sh
-cd plugin-examples/markdown-panel
-npm install
-paseo plugin install "$PWD"
-```
+`index.client.tsx` registers a file panel for `.md` and `.markdown` files. The panel in `client/`
+is a CodeMirror editor that reads the file with `readText`, saves with `writeText` 500 ms after the
+last edit, reports unsaved edits with `tab.setModified`, and offers **Reload** and **Overwrite**
+when the file changes on disk or a write rejects with `PluginFileConflictError`. DOM integration
+lives in `client/web.ts`.
 
-Open a `.md` or `.markdown` file in Files. Choose **Rich Markdown — markdown-panel** in the
-picker. Check **Don't ask me again** to remember the choice on this device.
-
-The panel is a CodeMirror editor with Markdown highlighting, line numbers, undo, redo, and line
-wrapping. It reads the file once with `readText`, saves 500 ms after the last edit with
-`writeText`, and reports unsaved edits with `tab.setModified`. When the file changes on disk with
-nothing unsaved, it reads again; with unsaved edits, or when a write rejects with
-`PluginFileConflictError`, it offers **Reload** and **Overwrite**. **Open with…** in the tab menu
-switches the tab back to Paseo's Markdown panel. Native shows selectable, read-only text through
-`useFileText`.
-
-Paseo bundles the editor dependencies into this plugin. They are loaded only on web; the native
-path uses React Native primitives. DOM integration lives in `client/web.ts`.
-
-See the [file panel reference](https://paseo.sh/docs/plugins/reference#file-panels).
+The editor dependencies are in `package.json`. Run `npm install` in this directory before
+typechecking it from the repository root with `npm run typecheck --workspace=@getpaseo/plugin`.

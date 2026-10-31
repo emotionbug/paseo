@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Fix Linux AppImage launch errors, missing providers, and environment mismatches.
+description: Diagnose native runtime launch errors, missing providers, and environment mismatches.
 nav: Common problems
 order: 90
 category: Troubleshooting
@@ -8,22 +8,13 @@ category: Troubleshooting
 
 # Troubleshooting
 
-## AppImage won't open on Linux
+## Native client or daemon will not start
 
-Make the downloaded AppImage executable, then launch it from a terminal to see any error:
+The 0.13.0 Rust/Flutter cutover is unpublished. Do not use an older Electron AppImage, npm CLI package, or store download as evidence of this native runtime. Build from the migration checkout as described in [Updates](/docs/updates).
 
-```bash
-chmod +x Paseo-x86_64.AppImage
-./Paseo-x86_64.AppImage
-```
+Keep the complete Flutter bundle and generated Rust runtime assets together. Copying only `paseo` omits required libraries and skills. Inspect startup output and `paseo daemon status`; for foreground diagnostics use `paseo daemon run`. Bare `paseo` opens chat, not daemon setup or startup.
 
-If it reports `error loading libfuse.so.2`, run without FUSE:
-
-```bash
-./Paseo-x86_64.AppImage --appimage-extract-and-run
-```
-
-The Paseo window should open. You can also install the `.deb` on Debian/Ubuntu or the `.rpm` on Fedora from the [download page](https://paseo.sh/download).
+Development defaults to `.dev/paseo-home` and port `6768`; normal operation uses `~/.paseo` and `6767`. Select the intended `--home` or `--host` before diagnosing a different instance. Mobile apps are remote clients and cannot start a local daemon.
 
 ## Paseo can't find my provider
 
@@ -52,7 +43,7 @@ Use the global `--host` option when the affected daemon is not the CLI's default
 
 ### Fix it
 
-The durable fix is to make sure the command is on `PATH` for a normal login shell, then restart Paseo, see [why Paseo's environment can differ](#why-paseos-environment-can-differ-from-your-terminal) for why that's the test that matters.
+Make the provider command available on the daemon's launch `PATH`, then stop and relaunch its supervisor; see [why Paseo's environment can differ](#why-paseos-environment-can-differ-from-your-terminal).
 
 If you'd rather pin it directly, set the binary path in `~/.paseo/config.json`:
 
@@ -74,28 +65,17 @@ For alternative endpoints, multiple profiles, custom binaries, and ACP agents, s
 
 ## Why Paseo's environment can differ from your terminal
 
-The same mismatch shows up anywhere Paseo runs your tools, an agent, or a terminal, reporting `command not found` for something you use every day.
+An OS launcher, service manager, container, or remote host can supply a different environment from your terminal. This affects agent providers and script/setup PTYs as well as other host tools.
 
-When you open the **desktop app** from the Dock or Finder, the OS hands it a stripped-down environment, not your terminal's `PATH`. To compensate, Paseo runs your login shell once at startup (`$SHELL -i -l -c`), captures its environment, and hands that to the daemon and everything it spawns. The rule of thumb: **if a brand-new terminal can run the command, Paseo should too.** That's also the test, open a fresh terminal and try it there.
+Use the affected daemon's provider diagnostic rather than assuming the Flutter app imports your interactive shell configuration. Start a foreground instance with `paseo daemon run` to use your terminal's launch environment. Managed `paseo daemon start` intentionally removes daemon-setting overrides; save those settings in `config.json`.
 
-When you start the daemon yourself from a terminal (`paseo`), there's no login-shell step, it simply inherits that terminal's environment.
-
-Either way, the fix for a missing tool lives in your shell config (`.zshrc`, `.zprofile`, …), not in Paseo. Tools installed through version managers (asdf, mise, nvm, …) are the usual offenders, make sure they initialize for a clean login shell, not only inside one you've already opened.
-
-This login-shell step runs on macOS and Linux. On Windows, Paseo uses the environment it was launched with.
+Ensure provider binaries are on the daemon's launch `PATH`, or configure an absolute provider `command`. If you change the launch environment, stop and relaunch the owning supervisor; a worker restart retains its original environment. Optional JavaScript backend plugins need external Node 20+ (`PASEO_PLUGIN_NODE`), not a bundled Node runtime.
 
 ## Reading the logs
 
-- **Desktop app** — the login-shell resolution is logged here. Look for `[login-shell-env]`: `applied` means it worked (it logs the `PATH` before and after); `failed; keeping inherited env` means it fell back to the stripped-down environment, with a `reason` (a timeout, a non-zero exit from your shell config, no output, …). A slow or erroring `.zshrc`/`.zprofile` is the usual cause.
-- **Daemon** — `~/.paseo/daemon.log` (`$PASEO_HOME/daemon.log` if you've set a custom home).
-
-Desktop app log location:
-
-| Platform | Path                            |
-| -------- | ------------------------------- |
-| macOS    | `~/Library/Logs/Paseo/main.log` |
-| Linux    | `~/.config/Paseo/logs/main.log` |
-| Windows  | `%APPDATA%\Paseo\logs\main.log` |
+- **Daemon** — `~/.paseo/daemon.log` (`$PASEO_HOME/daemon.log` for a custom home).
+- **Flutter desktop** — use the native settings diagnostics' **Application logs** and **Daemon logs** actions. Application logs are per-window `desktop-<windowId>.log` files in the app support directory; use the returned `logPath` rather than old Electron log locations.
+- **Script/setup tasks** — inspect their read-only logs. The native client has no interactive terminal UI.
 
 ## I changed config.json but nothing happened
 
@@ -113,5 +93,5 @@ Run `paseo daemon restart` only when reload requests it. In the app, open **Sett
 
 - [Custom providers](/docs/custom-providers) — endpoints, profiles, binaries, ACP agents.
 - [Configuration](/docs/configuration) — `config.json`, environment variables, logging.
-- [How Paseo resolves your login shell](https://github.com/getpaseo/paseo/blob/main/packages/desktop/src/login-shell-env.ts) — the exact code that loads your shell environment.
+- [Native desktop host](https://github.com/getpaseo/paseo/tree/main/packages/flutter_app/lib/platform/desktop) — Flutter host launch and diagnostics implementation.
 - [Report an issue](https://github.com/getpaseo/paseo/issues).

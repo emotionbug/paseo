@@ -17,7 +17,7 @@ curl -fsSL https://dev.meta.ai/install.sh | sh
 muse login
 ```
 
-请使用 Muse 1.3.0 或更高版本。此集成已在 1.4.1 上验证。如需 API 访问，请在 daemon 的环境中设置 `META_API_KEY`，而不是登录。参见 [Provider 环境变量覆盖](/docs/custom-providers)。
+请使用 Muse 1.3.0 或更高版本。旧集成记录过与 1.4.1 的兼容结果，但该历史记录不代表此次原生迁移已实际验证 Muse。当前适配器使用 Rust。如需 API 访问，请在 daemon 环境中设置 `META_API_KEY`，而不是登录。参见 [Provider 环境变量覆盖](/docs/custom-providers)。
 
 在 Paseo 中选择 **Muse Code**，然后选择模型、审批模式和推理强度。Paseo 运行 `muse serve`，并通过 Muse Session Protocol（MSP）通信。可用的模型由你的 Muse 配置决定。
 

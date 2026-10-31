@@ -1,0 +1,151 @@
+{
+  "models": [
+    {
+      "provider": "mock",
+      "id": "five-minute-stream",
+      "aliases": ["legacy-five-minute-stream"],
+      "label": "Five minute stream",
+      "description": "Realistic agent flow streamed as sub-word tokens for five minutes (good for scroll/coalesce debugging).",
+      "isDefault": true,
+      "thinkingOptions": [
+        {
+          "id": "low",
+          "label": "Low",
+          "isDefault": true
+        },
+        {
+          "id": "medium",
+          "label": "Medium"
+        },
+        {
+          "id": "high",
+          "label": "High"
+        }
+      ],
+      "defaultThinkingOptionId": "low",
+      "metadata": {
+        "durationMs": 300000,
+        "intervalMs": 40
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "thirty-minute-stream",
+      "label": "Thirty minute stream",
+      "description": "Long-running realistic stream for extended scroll-anchor debugging.",
+      "metadata": {
+        "durationMs": 1800000,
+        "intervalMs": 50
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "legacy-five-minute-stream",
+      "label": "Legacy five minute stream",
+      "isSelectable": false,
+      "thinkingOptions": [
+        {
+          "id": "low",
+          "label": "Low",
+          "isDefault": true
+        },
+        {
+          "id": "medium",
+          "label": "Medium"
+        },
+        {
+          "id": "high",
+          "label": "High"
+        }
+      ],
+      "defaultThinkingOptionId": "low",
+      "metadata": {
+        "durationMs": 300000,
+        "intervalMs": 40
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "one-minute-stream",
+      "label": "One minute stream",
+      "description": "Shorter realistic stream for quick manual checks.",
+      "metadata": {
+        "durationMs": 60000,
+        "intervalMs": 40
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "bursty-stream",
+      "label": "Bursty stream",
+      "description": "Emits tokens in uneven bursts separated by idle gaps, reproducing the lumpy arrival pattern real models produce. Use this to measure streaming smoothness.",
+      "metadata": {
+        "durationMs": 60000,
+        "intervalMs": 0,
+        "burstMinTokens": 1,
+        "burstMaxTokens": 40,
+        "burstGapMs": 90
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "ten-second-stream",
+      "label": "Ten second stream",
+      "description": "Fast realistic stream for tests and smoke checks.",
+      "thinkingOptions": [
+        {
+          "id": "low",
+          "label": "Low",
+          "isDefault": true
+        },
+        {
+          "id": "medium",
+          "label": "Medium"
+        },
+        {
+          "id": "high",
+          "label": "High"
+        }
+      ],
+      "defaultThinkingOptionId": "low",
+      "metadata": {
+        "durationMs": 10000,
+        "intervalMs": 5
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "max-only-thinking-stream",
+      "label": "Max-only thinking stream",
+      "description": "Fast realistic stream with one supported thinking level.",
+      "thinkingOptions": [
+        {
+          "id": "max",
+          "label": "Max",
+          "isDefault": true
+        }
+      ],
+      "defaultThinkingOptionId": "max",
+      "metadata": {
+        "durationMs": 10000,
+        "intervalMs": 5
+      }
+    },
+    {
+      "provider": "mock",
+      "id": "e2e-fast-stream",
+      "label": "E2E fast stream",
+      "description": "Short deterministic stream for browser tests.",
+      "isSelectable": false,
+      "metadata": {
+        "durationMs": 2000,
+        "intervalMs": 20
+      }
+    }
+  ],
+  "IntroParagraph": "## Cycle ${cycle}\n\nI'll take a look at the scroll anchor behavior you described. Let me start by walking through how the conversation list currently handles streaming updates and where the auto-scroll logic actually lives. My instinct is that the anchor is supposed to pin to the bottom only when the user is already there, but I want to confirm that against the code rather than guess. This kind of behavior is usually a thin layout effect over a ref, and the bugs tend to come from event ordering rather than the math itself, so the first useful step is to read the relevant files.",
+  "ReasoningText": "Need to find the scroll container, the layout effect that watches for new messages, and any gesture handler that might fight with programmatic scrolling. Probably a ref on the FlatList plus a near-bottom threshold.",
+  "MidParagraph": "Now I have a clearer picture. The auto-scroll uses a ref on the FlatList and tracks whether the user has scrolled away from the bottom by comparing the offset against the content size. There are a few subtle issues worth flagging before we change anything:\n\n- The threshold for 'near the bottom' is hardcoded at 80px, which feels too tight on dense content where headers and tool calls take up a lot of vertical space.\n- We rely on `onContentSizeChange` to detect new content, but that fires after layout, not as the streaming delta arrives, so we end up scrolling one frame late on fast streams.\n- The gesture handler does not pause scroll-to-bottom while the user is actively dragging, which means a drag in progress can be visually overridden mid-frame.\n- Coalescing happens upstream, so the FlatList sees fewer updates than the wire \u2014 but each batch can still cause a relayout.\n\nLet me make a small adjustment to the threshold and add a flag for active gestures, then run a quick command to confirm the order of events when streaming is fast.",
+  "ClosingParagraph": "The change should keep scroll-to-bottom working when the user is at the bottom while not yanking the viewport when they are reading earlier messages. The bash output confirms the `userIsAtBottom` flag flips correctly during a simulated streaming burst, and the gesture flag suppresses scroll while a drag is active. If you want, I can follow up with a regression test that drives the FlatList with synthetic deltas at high frequency to lock in the behavior. For now, I'll stop here so you can take a look.",
+  "EditDiff": "diff --git a/${filePath} b/${filePath}\n--- a/${filePath}\n+++ b/${filePath}\n@@ -42,7 +42,9 @@\n   const ref = useRef<FlatList>(null);\n   const [userIsAtBottom, setUserIsAtBottom] = useState(true);\n-  const NEAR_BOTTOM_PX = 80;\n+  const NEAR_BOTTOM_PX = 160;\n+  const isDraggingRef = useRef(false);\n\n-  if (userIsAtBottom) ref.current?.scrollToEnd({ animated: true });\n+  if (userIsAtBottom && !isDraggingRef.current) {\n+    ref.current?.scrollToEnd({ animated: true });\n+  }"
+}

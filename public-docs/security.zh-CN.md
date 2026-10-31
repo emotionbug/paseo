@@ -85,7 +85,7 @@ Paseo 使用主机白名单校验传入请求的 `Host` 请求头。主机无法
 
 配置密码后，所有 HTTP 请求都必须包含 `Authorization: Bearer <password>` 请求头，所有 WebSocket 客户端（包括中继客户端）都必须在连接时发送密码。中继客户端在端到端加密通道内发送密码，中继无法看到它。未经验证的 HTTP 请求会收到 `401 Unauthorized` 响应。只有 `/api/health` 存活检查端点例外，以便进程管理器和负载均衡器无需凭据即可探测。
 
-如果你启用了[内置的 Web UI](/docs/web-ui)，它的静态文件同样无需密码即可提供，以便显示登录界面。这是有意设计的：API 和 WebSocket 在返回任何 Agent 数据或执行任何命令之前仍然需要验证。在把 daemon 绑定到网络之前请设置密码，让页面背后的数据受到保护。
+原生 daemon 不提供内置 Web 产品客户端。Flutter 客户端和 Rust CLI 通过 API 认证，不需要公开的静态登录页。
 
 密码以 bcrypt 哈希的形式保存在 `config.json` 中，daemon 从不以明文保存它。设置说明见[配置](/docs/configuration#password-authentication)。
 
@@ -104,12 +104,12 @@ Paseo 使用主机白名单校验传入请求的 `Host` 请求头。主机无法
 
 ## 用 Docker 自托管 {#docker-self-hosting}
 
-官方 Docker 镜像在一个容器中运行 daemon 和内置的 Web UI。它在容器内绑定 `0.0.0.0:6767`，以便 Docker 端口发布和反向代理可以正常工作。
+原生 Docker 定义运行 Rust daemon，不包含 Web UI 或 Node 运行时。容器内监听 `0.0.0.0:6767`。此次迁移尚未发布，请按 [Docker](/docs/docker) 构建本地镜像，不要假定已发布镜像包含它。
 
 对于 Docker 部署：
 
 - 在把端口发布到局域网、VPN 或公网地址之前，设置 `PASEO_PASSWORD`。
-- 在 localhost 之外通过浏览器访问时，在反向代理上使用 HTTPS。
+- 在可信本地连接之外，在反向代理使用 HTTPS/WSS。
 - 为你用来访问容器的所有 DNS 名称设置 `PASEO_HOSTNAMES`。
 - 让 `/workspace` 挂载只包含 Agent 应该能读写的仓库。
 - 把 `/home/paseo` 视为敏感目录，它可能包含 daemon 状态和 Provider 凭据。
@@ -118,13 +118,11 @@ Paseo 使用主机白名单校验传入请求的 `Host` 请求头。主机无法
 
 Compose 和反向代理的示例见 [Docker](/docs/docker)。
 
-## Linux 桌面沙盒 {#linux-desktop-sandbox}
+## 原生桌面信任边界 {#native-desktop-trust-boundary}
 
-每次在 Linux 上启动桌面应用时，Paseo 都会检查 Chromium 沙盒是否可用。当用户命名空间可用，或已安装的沙盒辅助程序可用时，它会保持沙盒启用。`.deb` 和 `.rpm` 安装包会配置这个辅助程序。
+Flutter 桌面客户端不包含 Electron 或 Chromium，Chromium 沙盒参数及辅助程序安装说明不适用。这并不隔离 Agent：Provider 和脚本/设置任务 PTY 拥有 daemon 用户的文件系统与凭据访问权限。客户端提供只读任务日志，不提供交互式终端 UI。
 
-当两者都不可用时，AppImage 和解压后的 tar 包会在禁用 Chromium 沙盒的情况下启动。如果你需要 Chromium 进程隔离，请使用 `.deb` 或 `.rpm` 软件包。显式传入 `--no-sandbox` 会禁用沙盒。
-
-打开 **设置 → 诊断 → App diagnostic** 查看沙盒状态及原因。[桌面日志](/docs/troubleshooting#reading-the-logs)也会记录同样的决定。
+内置集成在 Rust 中运行。可选 JavaScript 后端插件通过外部安装的 Node 20+ 执行受信任代码（可用 `PASEO_PLUGIN_NODE` 选择）。独立 worker 进程不是安全沙盒，只安装可信插件。原生产品不包含可执行 React UI 插件或内嵌浏览器自动化。
 
 ## Agent 身份验证 {#agent-authentication}
 
@@ -134,7 +132,7 @@ Paseo 封装了 Agent CLI（Claude Code、Codex、OpenCode、Muse Code），但�
 - **Codex**：使用你的 OpenAI API 密钥或 OAuth 会话
 - **OpenCode**：通过各 Provider 专用的 API 密钥配置
 
-Paseo 从不保存或传输 Provider API 密钥。Agent 在你的用户上下文中运行，使用你现有的凭据。
+Agent 在你的用户上下文中使用现有凭据运行。Paseo 也会读取显式配置的 Provider 凭据，包括 OpenAI 语音密钥，因此应将 `config.json`、daemon 环境和备份视为敏感状态保护。这些凭据与中继配对及 Hub 注册不同。
 
 ## Hub 身份与凭据 {#hub-identities-and-credentials}
 

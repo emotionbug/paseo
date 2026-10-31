@@ -1,0 +1,23 @@
+{
+  "name": "@getpaseo/plugin-worker",
+  "version": "0.13.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../../../scripts/build-plugin-worker.mjs",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@getpaseo/client": "0.13.0",
+    "@getpaseo/plugin": "0.13.0",
+    "@getpaseo/protocol": "0.13.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  }
+}

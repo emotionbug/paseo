@@ -60,7 +60,7 @@ nav: MCP 参考
 
 省略 `paseoTools` 会启用完整的工具目录。把 `enabled` 设为 `false` 会移除整个目录，在 `disabledTools` 中列出确切的工具 ID 则只移除所选的工具。自定义配置不会从 `extends` 继承这一策略；请为每个自定义 Provider ID 分别配置。
 
-浏览器工具仍然需要启用浏览器工具并连接一个浏览器主机。仅用于语音的 `speak` 工具不受此策略控制。
+仅用于语音的 `speak` 工具不受此策略控制。原生运行时没有内嵌浏览器自动化工具或浏览器主机。
 
 这项设置限制的是呈现给 Agent 的工具目录。对于可以通过 shell 访问主机的 Agent，它不是安全边界。
 
@@ -118,6 +118,8 @@ Paseo Agent 默认会收到完成、错误和权限通知；设置 `notifyOnFini
 `paseo.json` 的配置见 [Git worktree](/docs/worktrees#scripts-and-services)。
 
 ### 终端 {#terminals}
+
+这些是为脚本/设置自动化保留的 daemon 端 PTY API。Flutter 客户端显示只读日志，不提供交互式终端 UI。
 
 | 工具                 | 功能                                       |
 | -------------------- | ------------------------------------------ |
@@ -183,10 +185,6 @@ MCP heartbeat 是临时的：只能创建或删除。要修改一个 heartbeat�
 | -------------------------- | ----------------------------------- |
 | `list_pending_permissions` | 返回所有 Agent 中待处理的权限请求。 |
 | `respond_to_permission`    | 批准或拒绝一个待处理的权限请求。    |
-
-### 浏览器 {#browser}
-
-浏览器自动化需要主动开启，它会添加用于打开标签页、读取页面、点击、输入和截图的工具。见[浏览器工具参考](/docs/browser-tools)。
 
 ### 语音 {#voice}
 

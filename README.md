@@ -1,329 +1,106 @@
-# Paseo Sessions fork
+# Paseo Sessions
 
-This fork organizes the Android and Linux desktop sidebar as **host → directory → session**.
-Each host has an expandable row, even when only one host is configured. Its project
-directories remain separate, including empty directories, with sessions ordered by recent
-activity inside each directory. Host and directory rows collapse independently; directory
-collapse survives reloads. Identical paths on different hosts remain separate.
+Paseo Sessions is a native environment for running and reviewing coding-agent work. The client is Flutter on **Linux, macOS, Windows, Android, and iOS**. The daemon and `paseo` CLI are Rust. Desktop clients can manage a local daemon; Android and iOS connect to a daemon on another machine.
 
-Search matches hosts, directory names and paths, session titles and providers, temporarily
-expanding matching ancestors without changing your collapsed sections. A directory's plus
-button creates a session in that exact local checkout on its host.
+This checkout is version **0.13.0**. The native cutover is not a published release. See [release requirements](docs/release.md), including unresolved distribution obligations for the bundled speech libraries, before distributing binaries.
 
-Workspace rows and grouping-mode controls are removed from the sidebar, not directory
-grouping. Command Center still opens workspaces, and host, project and label filters
-still narrow the session tree.
-Existing session IDs, history, files and daemon storage are unchanged. Closing a chat tab
-does not archive its session.
+## Work across hosts
 
-On compact Android screens, Back returns from a session to the sidebar; Back from
-the sidebar closes the app window without stopping the host's sessions. If the file
-explorer is open, Back first returns to the session. Settings and other pushed screens
-keep their own navigation.
+The sidebar is **host → directory → session**. Every host has its own expandable row, including a single configured host. Directories remain separate, including empty directories; sessions are ordered by recent activity. Host and directory rows collapse independently, directory collapse is persisted, and identical paths on different hosts remain distinct.
 
-On Windows, Linux, and macOS, closing the last desktop window hides it in the
-system tray (menu bar on macOS), preserving its open workspace and renderer state.
-Additional windows close normally. Click the tray icon or choose **Open Paseo
-Sessions** to restore the window; launching the app again also restores a hidden
-window instead of opening a duplicate.
+Search matches hosts, directory names and paths, session titles, and providers. Matching ancestors expand without replacing saved collapse preferences. A directory's plus action creates a session in that checkout on that host. Add Project includes a host-side folder browser: a remote host's path is never selected with a local OS file dialog.
 
-Choose **Quit Paseo Sessions** in the tray menu to exit the app, or use the
-application menu's **Quit** command. Explicit quit still follows **Settings →
-local host → Overview → Daemon → Keep daemon running after quit**; hiding the
-window does not stop the daemon.
+Workspace grouping controls are not part of this sidebar. Workspaces still exist for orchestration, worktrees, scripts, and Command Center navigation. Existing session IDs, history, files, configuration, and daemon storage remain in place. Closing a chat tab does not archive the session.
 
-Linux close-to-tray requires a registered StatusNotifier/AppIndicator host and
-`dbus-send` on `PATH`. GNOME may need an AppIndicator extension. If the host is
-unavailable when closing, or the tray icon cannot be created, closing retains the
-normal platform behavior rather than leaving an inaccessible hidden window.
+## Native application scope
 
-Android builds use the name **Paseo Sessions** and package `sh.paseo.sessions`, so the
-official app can stay installed. Connect the fork to your existing Paseo host using the
-same Tailscale address and password. Google Play signing and push credentials are not
-included in this source fork.
+- Agent chat, permissions, provider/model selection, profiles, session import, and history.
+- Markdown rendering, file browsing and source editing, and summary-first Git diffs with patch bodies loaded on demand.
+- Workspace setup and service scripts run in daemon-owned PTYs. The app shows **read-only logs**, not an interactive terminal emulator.
+- Schedules, MCP tools and servers, speech, connected hosts, and remote directory selection.
+- Native desktop integration and local-daemon lifecycle, with remote-only mobile clients.
 
-Build with Node 24 and npm, plus JDK 21 / Android SDK for Android:
+There is **no web client, Electron or Chromium runtime, embedded browser, browser automation, or executable React UI-plugin compatibility**. External links open outside the app. The website is a separate documentation/marketing project, not a product web client. No Node executable is bundled in the default installed runtime. Agent CLIs are external programs and may have their own runtime requirements.
+
+Built-in provider and usage integrations execute in Rust. Optional JavaScript **backend** extensions use an externally installed Node runtime; their compiler/SDK assets do not constitute a bundled Node daemon. See [plugins](docs/plugins.md).
+
+## Build and run from this checkout
+
+Install Rust/Cargo, the Flutter SDK and the native toolchain for your target, plus **Node 24 and npm for build tooling**. See [development](docs/development.md) for prerequisites and isolated development state.
 
 ```sh
 npm ci
-npm run build:sessions:android
-npm run build:desktop -- --publish never --linux AppImage --x64
-```
-
-The APK is `artifacts/paseo-sessions-arm64.apk`; desktop artifacts are in
-`packages/desktop/release/`. Desktop updates point to this fork instead of upstream.
-Linux DEB/RPM packages use the identifier `paseo-sessions`, separate from the
-**Paseo Sessions** display name.
-
-Bare `paseo` opens CLI chat. Run `paseo onboard` explicitly for daemon setup.
-Explicit conflicting provider/model options are rejected before connecting, including
-when the host is unavailable. Chat and run commands otherwise use the GUI's CLI-default
-agent profile.
-The upstream project's documentation follows below.
-
-### Session titles
-
-Use the pencil beside a session, or long-press its row, to rename it on desktop or Android.
-The host-side `node scripts/sync-codex-session-titles.mjs` command synchronizes names
-with the local Codex profile. The installed user timer runs this command once an hour. Paseo title edits appear
-immediately; Codex synchronization can take up to an hour. Run the command manually
-for immediate sync. An optional `node scripts/watch-codex-session-titles.mjs` watcher
-is available for users who prefer sync on title changes. It reads Codex's `session_index.jsonl` and uses the official
-`thread/name/set` app-server API to write names; it never resumes a thread or starts a turn.
-The first sync imports existing Codex names. Subsequent edits flow both ways; a Codex
-edit wins if both names changed since the last sync. Sessions without a Codex name
-keep their Paseo title until renamed. Sync state is persisted in
-`$PASEO_HOME/session-title-sync.json`.
-
-The command uses `PASEO_HOME` and `CODEX_HOME` (defaulting to their usual home folders),
-the daemon's configured listen address, and `PASEO_PASSWORD` or
-`$PASEO_HOME/connection-password.txt`. `PASEO_TITLE_SYNC_URL` and `CODEX_BIN` can override
-the endpoint and Codex executable. Both clients must use the same Codex profile.
-
----
-
-<p align="center">
-  <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
-</p>
-
-<h1 align="center">Paseo</h1>
-
-<p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ko.md">한국어</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/getpaseo/paseo/stargazers">
-    <img src="https://img.shields.io/github/stars/getpaseo/paseo?style=flat&logo=github" alt="GitHub stars">
-  </a>
-  <a href="https://github.com/getpaseo/paseo/releases">
-    <img src="https://img.shields.io/github/v/release/getpaseo/paseo?style=flat&logo=github" alt="GitHub release">
-  </a>
-  <a href="https://x.com/moboudra">
-    <img src="https://img.shields.io/badge/%40moboudra-555?logo=x" alt="X">
-  </a>
-  <a href="https://discord.gg/jz8T2uahpH">
-    <img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord">
-  </a>
-  <a href="https://www.reddit.com/r/PaseoAI/">
-    <img src="https://img.shields.io/badge/Reddit-555?logo=reddit" alt="Reddit">
-  </a>
-</p>
-
-<p align="center">One interface for Claude Code, Codex, Copilot, OpenCode, Pi, Antigravity, and Muse Code agents.</p>
-
-<p align="center">
-  <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
-</p>
-
-<p align="center">
-  <img src="https://paseo.sh/mobile-mockup.png" alt="Paseo mobile app" width="100%">
-</p>
-
-Paseo is an open source agentic development environment for desktop, mobile, web, and CLI. Open the desktop app and work: agents, editor, terminals, diffs, pull requests, and a browser in one window. Run many agents at once, each in its own worktree, on one machine or several. The mobile app is the full app, native on iOS and Android.
-
-- **Parallel agents:** Run many agents at once, each in its own worktree.
-- **Built-in orchestration:** Agents in Paseo can create worktrees, launch other agents, and talk to them, across providers.
-- **Complete development workflow:** Edit files, review diffs, open pull requests, and run terminals, in split panes you arrange how you want.
-- **Self-hosted:** Agents run on your machine with your full dev environment. Use your tools, your configs, and your skills.
-- **Multi-provider:** Claude Code, Codex, Copilot, OpenCode, Pi, Antigravity, and Muse Code through the same interface. Pick the right model for each job.
-- **Voice control:** Dictate tasks or talk through problems in voice mode. Hands-free when you need it.
-- **Cross-device:** iOS, Android, desktop, web, and CLI. Start work at your desk, check in from your phone, script it from the terminal.
-- **Privacy-first:** Paseo doesn't have any telemetry, tracking, or forced log-ins.
-
-[Run parallel tasks in Paseo](https://paseo.sh/docs/parallel-development): start agents in separate worktrees, review their diffs, run each app, and check it in the built-in browser.
-
-## Sponsors
-
-<!-- Sponsors: one cell per sponsor in the order of packages/website/src/data/sponsors.ts, then "become a sponsor" cells up to three. -->
-<table>
-  <tr>
-    <td align="center" width="33%"><a href="https://hoplite.sh/?utm_source=paseo&utm_medium=readme&utm_campaign=sponsor"><picture><source media="(prefers-color-scheme: dark)" srcset="packages/website/public/sponsors/hoplite-on-dark.svg"><img src="packages/website/public/sponsors/hoplite-on-light.svg" alt="Hoplite" height="56"></picture></a><br><sub>Cloud coding agents</sub></td>
-    <td align="center" width="33%"><a href="https://paseo.sh/sponsor">Become a sponsor</a></td>
-    <td align="center" width="33%"><a href="https://paseo.sh/sponsor">Become a sponsor</a></td>
-  </tr>
-</table>
-
-## Plugins
-
-Plugins run on the daemon and show up in every client you connect, with the same UI on desktop, web,
-iOS, and Android. Write a plugin once and it is on your phone.
-
-- **UI:** screens, sidebar items, workspace panels, Command Center items, slash commands, composer pills, attachment sources, timeline items, themes.
-- **Agent lifecycle:** change configuration, environment, and MCP servers, answer permissions, follow up when a turn ends.
-- **Providers:** add a coding agent as a provider.
-
-Install from the registry with `paseo plugin add owner/slug`, or from Git or a local directory.
-
-**[Browse plugins](https://paseo.sh/plugins)** · **[Plugin docs](https://paseo.sh/docs/plugins)**
-
-Plugins run with access to your daemon machine and inside connected clients; install only code you trust.
-
-## Getting Started
-
-Paseo runs a local server called the daemon that manages your coding agents. Clients like the desktop app, mobile app, web app, and CLI connect to it.
-
-### Prerequisites
-
-You need at least one agent CLI installed and configured with your credentials:
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- [Codex](https://github.com/openai/codex)
-- [GitHub Copilot](https://github.com/features/copilot/cli/)
-- [OpenCode](https://github.com/anomalyco/opencode)
-- [Pi](https://pi.dev)
-- [Antigravity](https://paseo.sh/docs/supported-providers#antigravity)
-- [Muse Code](https://paseo.sh/docs/muse-code)
-
-### Desktop app (recommended)
-
-Download it from [paseo.sh/download](https://paseo.sh/download) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases). Open the app and the daemon starts automatically. Nothing else to install.
-
-To connect from your phone, open **Settings → your host → Pair Device**.
-
-### Server
-
-For a server, a VM, or any machine without the desktop app. Install the CLI and start the daemon:
-
-```bash
-npm install -g @getpaseo/cli
-paseo
-```
-
-Paseo starts, then asks whether to enable the end-to-end encrypted relay for device pairing. If you decline, connect directly over TCP, Tailscale, or another VPN. The desktop, mobile, and web apps connect to this daemon like any other host.
-
-For full setup and configuration, see:
-
-- [Docs](https://paseo.sh/docs)
-- [Connectivity guide](https://paseo.sh/docs/connectivity)
-- [Configuration reference](https://paseo.sh/docs/configuration)
-
-### Docker
-
-Run the Paseo daemon and self-hosted web UI in Docker:
-
-```bash
-docker run -d --name paseo \
-  -p 6767:6767 \
-  -e PASEO_PASSWORD=change-me \
-  -v "$PWD/paseo-home:/home/paseo" \
-  -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
-```
-
-Open `http://localhost:6767` after it starts. Extend the base image with the agent CLIs you use, then provide credentials through environment variables or the persistent `/home/paseo` volume. See the [Docker documentation](docs/docker.md) for full setup details.
-
-## CLI
-
-Everything you can do in the app, you can do from the terminal.
-
-In Paseo Sessions, open a host's **Agent profiles** settings, save your provider,
-model, mode and thinking level, then choose **Use for CLI** on that profile.
-`paseo` opens a terminal conversation using that host's saved profile. Sessions
-appear in the GUI too; `paseo --resume <id>` continues one and `/exit` detaches.
-To bring in an external agent session, close its original CLI and run `paseo import`.
-Choose from sessions in the current directory (or use `--cwd` / `--provider` to filter).
-Import keeps the session's original provider and opens its conversation in Paseo.
-With a known native ID, use `paseo import --provider pi <id>`.
-`paseo run "your task"` uses the same defaults for a single task. Explicit CLI options take
-priority. Selecting another provider skips the saved provider's options; selecting
-another model skips its saved thinking level. The default is shared by clients
-connected to that host and can be cleared by clicking **CLI default** again.
-
-```bash
-paseo run --provider claude/opus-4.6 "implement user authentication"
-paseo run --provider codex/gpt-5.5 --worktree feature-x "implement feature X"
-
-paseo ls                           # list running agents
-paseo attach abc123                # stream live output
-paseo send abc123 "also add tests" # follow-up task
-
-# run on a remote daemon; --cwd is a path on that host
-paseo run --host workstation.local:6767 --cwd /workspace "run the full test suite"
-```
-
-See the [full CLI reference](https://paseo.sh/docs/cli) for more.
-
-## TypeScript SDK
-
-Build issue integrations, dashboards, and orchestration services with `@getpaseo/client`:
-
-```ts
-import { createPaseoClient } from "@getpaseo/client";
-
-const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
-await client.connect();
-
-const agent = await client.agents.create({
-  config: { provider: "codex/gpt-5.5" },
-  cwd: "/Users/me/dev/storefront",
-  prompt: "Review the current diff and name the riskiest change.",
-});
-
-const result = await agent.waitForFinish();
-console.log(result.lastMessage);
-
-await client.close();
-```
-
-See the [SDK quickstart](https://paseo.sh/docs/sdk/quickstart), [recipes](https://paseo.sh/docs/sdk/recipes), and [API reference](https://paseo.sh/docs/sdk/reference).
-
-## Skills
-
-Skills teach your agent to use Paseo to orchestrate other agents.
-
-```bash
-npx skills add getpaseo/paseo
-```
-
-Then use them in any agent conversation:
-
-- `/paseo-handoff` — hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
-- `/paseo-advisor` — spin up a single agent as an advisor for a second opinion, without delegating the work itself.
-- `/paseo-committee` — form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
-
-## Development
-
-Quick monorepo package map:
-
-- `packages/server`: Paseo daemon (agent process orchestration, WebSocket API, MCP server)
-- `packages/app`: Expo client (iOS, Android, web)
-- `packages/cli`: `paseo` CLI for daemon and agent workflows
-- `packages/desktop`: Electron desktop app
-- `packages/relay`: Relay transport and encryption used by the daemon and clients
-- `packages/website`: Marketing site and documentation (`paseo.sh`)
-
-Common commands:
-
-```bash
-# run all local dev services
-npm run dev
-
-# run individual surfaces
-npm run dev:server
-npm run dev:app
+npm run build:daemon
 npm run dev:desktop
-npm run dev:website
-
-# build the server stack
-npm run build:server
-
-# repo-wide checks
-npm run typecheck
 ```
 
-## Support Paseo
+For a standalone development daemon and a native client:
 
-Paseo is an independent project used by tens of thousands of developers daily, built by one person and funded by the people who use it. Support the work on [GitHub Sponsors](https://github.com/sponsors/boudra). Companies can [sponsor Paseo](https://paseo.sh/sponsor#spot) monthly and have their logo shown at the top of this README and on the paseo.sh homepage and docs.
+```sh
+npm run dev:daemon
+# In another terminal:
+npm run dev:app
+```
 
-## Related projects
+Both development commands target the checkout's `.dev/paseo-home` and port `6768`; keep the installed daemon's home and port separate. Build wrappers use Node tooling to launch Rust, not a Node server.
 
-- [getpaseo/paseo-relay](https://github.com/getpaseo/paseo-relay) — official distributed relay, written in Elixir
-- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code extension
+Build a client on a suitable host:
 
-## License
+```sh
+npm run build:flutter -- linux
+npm run build:flutter -- macos
+npm run build:flutter -- windows
+npm run build:apk:arm64
+npm run build:ios
+```
 
-Apache-2.0
+Desktop builds require their target OS; iOS requires macOS/Xcode. Android/iOS builds contain no daemon. Artifacts and build descriptors are written under `artifacts/flutter/`. Android uses **Paseo Sessions**, package `sh.paseo.sessions`; unsigned/debug-signed output is not a store-ready release. See [Android](docs/android.md) and [release](docs/release.md) for signing and packaging.
+
+For a headless host, the native build produces `target/debug/paseo` (`paseo.exe` on Windows), or the corresponding directory under `CARGO_TARGET_DIR`. Keep its generated runtime assets alongside it. No npm-global CLI install is needed:
+
+```sh
+./target/debug/paseo onboard
+./target/debug/paseo daemon start
+./target/debug/paseo daemon status
+```
+
+`paseo onboard` is explicit setup. Bare `paseo` opens CLI chat; it is not an installer or onboarding command. The normal runtime home is `~/.paseo`, overridable with `PASEO_HOME` or `--home`; `config.json`, agent history, project/workspace metadata, and connection credentials keep their existing persistence contracts. Use `--host` for a remote daemon and `PASEO_PASSWORD` when required. SSH transport connects to an existing daemon; it does not install one.
+
+The [Docker guide](docs/docker.md) builds a native daemon-only container. It does not serve an app at the HTTP root.
+
+## CLI and SDK
+
+Choose **Use for CLI** on an agent profile in host settings to set the default provider, model, mode, and thinking level. Explicit CLI options take priority. Conflicting provider/model arguments fail before connecting.
+
+```sh
+paseo
+paseo --resume <session-id>
+paseo run --provider codex "review this checkout"
+paseo ls
+paseo attach <session-id>
+paseo send <session-id> "also add tests"
+paseo import --provider pi <native-session-id>
+paseo run --host workstation.local:6767 --cwd /workspace --provider codex "review the diff"
+```
+
+The TypeScript SDK remains available in `packages/client` for external integrations. Shared TypeScript protocol definitions live in `packages/protocol`; the Rust daemon and Dart client implement the same wire contract. SDK usage is not a dependency on a Node product runtime.
+
+## Development map
+
+| Area                                                          | Source                                 |
+| ------------------------------------------------------------- | -------------------------------------- |
+| Daemon, CLI, providers, storage, supervisor, desktop-host IPC | `packages/daemon`                      |
+| Five-platform native client                                   | `packages/flutter_app`                 |
+| Desktop packaging and runtime assets                          | `packages/flutter_desktop_host`        |
+| Native audio integration                                      | `packages/flutter_audio`               |
+| TypeScript SDK and protocol                                   | `packages/client`, `packages/protocol` |
+| Optional extension SDK                                        | `packages/plugin`                      |
+| Documentation website                                         | `packages/website`                     |
+
+Read [architecture](docs/architecture.md), [development](docs/development.md), [testing](docs/testing.md), and [release](docs/release.md) before changing runtime boundaries.
+
+Linux has actual native daemon/client and desktop-host lifecycle execution coverage. Cross-platform CI definitions are not evidence that Windows, macOS, Android, or iOS have been executed in this migration. The current evidence and outstanding checks are recorded in [testing](docs/testing.md).
+
+## License and distribution
+
+Paseo source is Apache-2.0; dependency licenses remain their own. Packaging generates Cargo, optional-worker, and speech attributions. Those notices are **not** a compliance certification or corresponding-source offer. Official Sherpa 1.12.28 TTS-enabled prebuilts statically include GPL espeak-ng; source delivery, combined-work, MPL/LGPL, CRT, and Rust-toolchain obligations remain unresolved release-distribution requirements. Speech model weights are not bundled and are downloaded on demand. See [release](docs/release.md#distribution-requirements).

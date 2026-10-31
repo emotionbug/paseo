@@ -11,7 +11,7 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import type * as React from "react";
-import finderIconUrl from "../../../../app/assets/images/editor-apps/finder.png";
+import finderIconUrl from "./assets/finder.png";
 import { TABBAR_H, TITLEBAR_H } from "./geometry";
 import { ClaudeIcon, CodexIcon, GithubGlyph } from "./icons";
 import { hasRightPanel, type MockupStateId } from "./states";

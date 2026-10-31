@@ -1,206 +1,21 @@
-# Expo Router
+# Native navigation
 
-Paseo's mobile route tree is fragile because Expo Router and React Navigation do
-not fail loudly when a nested native route is mounted under the wrong layout. The
-usual symptom is a white or blank native screen with no JavaScript crash.
+Navigation is owned by the Flutter client; Expo Router and React Navigation are not runtime dependencies. This existing filename is retained for links, not as an instruction to recreate the retired router.
 
-Read this before changing `packages/app/src/app`, startup routing, remembered
-workspace restore, or active workspace selection.
+The current ownership is `packages/flutter_app/lib/ui/shell.dart`, `core/app_store.dart`, and `features/navigation`. Native platform services pass host/session targets into this application state rather than constructing routes in a separate JavaScript app.
 
-## Ownership
+## Identity and selection
 
-Each layout owns only the routes directly inside its directory.
+The primary tree is **host → directory → session**. A path is only meaningful together with its host. Preserve independent host and directory collapse state, including empty directories. Search can reveal matching ancestors without overwriting the saved collapse choices.
 
-- The root layout registers `h/[serverId]`.
-- The root layout does not register host leaf routes such as
-  `h/[serverId]/workspace/[workspaceId]`, `h/[serverId]/open-project`, or
-  `h/[serverId]/index`.
-- `packages/app/src/app/h/[serverId]/_layout.tsx` owns the host leaves with
-  relative screen names: `index`, `workspace/[workspaceId]/index`,
-  `agent/[agentId]`, `sessions`, `open-project`, `settings`,
-  `plugin/[pluginId]/[surfaceId]`, and
-  `plugin/[pluginId]/[contributionKind]/[contributionId]`.
+Workspaces remain durable daemon entities and Command Center targets, but they are not sidebar grouping rows. Closing a chat tab is navigation, not archive. Reopening a session must select its actual host and current persisted identity instead of inventing a new session.
 
-Expo Router warns with `[Layout children]: No route named ...` when a layout
-registers grandchildren. Treat that warning as a route-tree bug. On native, that
-shape can leave a nested index route mounted without its local dynamic params and
-render a blank screen.
+## Compact behavior
 
-## Startup
+Back returns from file explorer to the session, then from session to sidebar. Leaving the mobile client does not stop a remote daemon or its sessions. Settings and modal workflows retain their own navigation state. Width changes must not change host/session identity or duplicate provider connections.
 
-The root `/` route chooses a host boundary. It does not jump directly into a host
-leaf.
+## Startup and external targets
 
-- Good: `/` -> `/h/[serverId]`
-- Bad: `/` -> `/h/[serverId]/workspace/[workspaceId]`
+Restore saved connections and reconcile host/session state before opening a notification or deep-link target. Handle stale or unavailable targets visibly. Do not discard a user's saved host list or drafts merely because connection startup failed.
 
-`/h/[serverId]` is the host home route. The host index restores the last
-remembered workspace for that host after the remembered selection has hydrated
-and the workspace has not been proven missing. If there is no restorable
-workspace, it goes to global `/open-project`.
-
-This restore is based on the last navigated workspace, not current connection
-status. Do not redirect to another online host just because the remembered host
-is still connecting or offline; the workspace screen owns that offline/loading
-state.
-
-This split is deliberate. The host layout must mount first so native local
-dynamic params exist before any nested workspace leaf is selected.
-
-## Error Recovery
-
-The root error boundary lives above `ExpoRoot` in `src/root-app.tsx`. Reload
-remounts the router at `/open-project`, preserving saved workspace layouts and
-the remembered selection. Do not move the boundary inside the root layout:
-catching a render error there unmounts the navigator, so the recovery button
-cannot reliably dispatch a navigation reset. Starting recovery at `/` would
-restore the same workspace and could repeat the crash.
-
-## App-Wide Route Hops
-
-When app-wide routes such as `/new`, `/settings`, or `/sessions` navigate back
-into a host workspace, use `navigateToWorkspace()`. Do not make the caller
-branch on its current route.
-
-Pass only `serverId` and `workspaceId` for normal attention-aware navigation.
-When the action names a specific tab, pass it as `target`; that explicit choice
-is authoritative. Callers should not choose between separate route and tab
-navigation APIs.
-
-The root stack owns `h/[serverId]`; the host stack owns
-`workspace/[workspaceId]/index`. Repeated global-route hops must `POP_TO` the
-root host route and pass the nested workspace screen when a host route is
-already mounted, or Expo Router can append extra hidden workspace deck entries.
-The workspace navigation helper inspects the mounted navigation state to make
-that decision; if no host route is mounted yet, it falls back to ordinary route
-navigation. Both paths wait for the root navigation container to be ready. The
-workspace navigation owner keeps the latest pending intent across ref
-re-registration and applies it on the container's `ready` event; routes must not
-add their own readiness retries.
-
-Those hidden entries are not harmless: composer floating panels can measure
-against the wrong deck and disappear offscreen. Follow the
-[retained panel measurement rules](coding-standards.md#retained-panel-measurements)
-for components that intentionally remain mounted while hidden.
-
-Hidden host routes may keep their local params while an app-wide route is
-foregrounded. Active-workspace observers must prefer the current pathname and
-only use local param fallback during cold mount (`/` or empty pathname), or a
-hidden workspace can overwrite the remembered workspace before Settings or
-History returns.
-
-Plugin settings use the distinct `settings/hosts/[serverId]/plugins/[pluginId]/[screenId]` leaf;
-Back returns to that host's Plugins page.
-
-Settings detail routes are separate siblings on purpose. Keep
-`settings/[section]`, the host routes, the projects index, and project detail as
-distinct route names. `router.dismissTo()` ultimately matches stack entries by
-route name. A single catch-all Settings route would make project detail and the
-projects index the same route; Back would update params in place and leave a
-phantom detail entry underneath. The host routes also stay outside the
-store-ready protected group so a cold host deep link can survive daemon startup.
-Do not collapse this topology with a catch-all, `getId`, or
-`dangerouslySingular` workaround.
-
-## Agent Targets
-
-Notifications and agent URLs name a host and agent. Both use
-`navigateToAgent()`, which reads the agent's current workspace from the store
-or routes through `/h/[serverId]/agent/[agentId]`. The agent route waits for
-the named host, demands its directory, and waits for workspace and layout
-hydration before opening the tab. Keep the stable agent URL free of a workspace
-hint. [Notifications](notifications.md) owns tap delivery and native lifecycle
-constraints.
-
-When a workspace target cannot open yet, `navigateToWorkspace()` records a
-pending open in the layout model under that host and workspace key. The owning
-workspace screen consumes it once after hydration. Archived-workspace recovery
-reads the same pending target, so startup redirects cannot discard it and a
-retained screen cannot consume another workspace's request.
-
-Legacy `?open=` links seed this model state at the matched route boundary and
-then lose the query parameter. Internal navigation does not use the query as a
-handoff. Read matched route params locally; global search params let retained
-workspace screens observe requests for other workspaces.
-
-## Params
-
-Required dynamic params belong to the matched route.
-
-Do not paper over missing required params by reading global params in the leaf.
-If `useLocalSearchParams()` misses a required param, fix layout ownership or the
-startup route shape.
-
-Use the host route context for host-owned leaves that need the host id after
-`h/[serverId]/_layout.tsx` has matched. Do not make a leaf recover from an
-unmatched tree by guessing from global state.
-
-## App Directory
-
-Keep non-route modules out of `src/app`. Expo Router treats ordinary `.ts` and
-`.tsx` files there as routes, which produces `missing the required default
-export` warnings and pollutes the route tree.
-
-Put shared route policy in `src/navigation`, `src/utils`, stores, or another
-non-route directory.
-
-## Native Stack
-
-Keep workspace identity and retention outside native-stack `getId` and
-`dangerouslySingular`. Expo Router maps `dangerouslySingular` to React
-Navigation `getId`, and `getId` has broken Android native-stack/Fabric by
-reordering an already-mounted workspace screen.
-
-Use `ThemedStack` from `packages/app/src/navigation/themed-stack.tsx` for every
-Expo Router stack. React Navigation otherwise paints each native stack screen
-with its light default background. A screen-level wrapper can hide that surface
-while settled, but Android may expose it for one frame when navigation crosses
-from a nested stack to its parent stack. This is especially visible when an
-app-wide route such as `/new` opens from a dark workspace.
-
-Do not read the active theme with `useUnistyles()` in a layout to build
-`screenOptions`. `ThemedStack` keeps that third-party prop theme-reactive through
-a small `withUnistyles` boundary without subscribing the route tree itself to
-every Unistyles runtime update.
-
-Navigators keep their identity across appearance changes. `ThemedStack` remounts
-each ordinary screen's content below the native stack when appearance tokens change.
-Workspace screens own retained panel lifetimes and update appearance at their
-leaves through `screenOwnedAppearance` ([Explorer](explorer-sidebar.md)). A
-keyed wrapper above a stack remounts the stack itself, and Android crashes when
-that happens while a FragmentManager transaction is running, which settings
-hydration at startup makes likely. A screen that mounts a nested navigator (the
-root stack's `h/[serverId]`) is passed in `nestedNavigatorScreens` so the nested
-stack owns its own screens. See [unistyles.md](unistyles.md).
-
-## Regression Shape
-
-Pure helper tests are useful but not enough. The failure mode here is native
-route-tree state, so a real regression should launch native with seeded persisted
-state:
-
-1. Seed `paseo:last-workspace-route-selection` with a valid
-   `{ serverId, workspaceId }`.
-2. Launch the native app cold.
-3. Assert a real screen is visible, not the blank tree.
-4. Assert no `[Layout children]` warning appears.
-
-The pure policy tests should still enforce the boundary split:
-
-- root startup with a saved workspace returns `/h/[serverId]`;
-- host index with the same saved workspace returns
-  `/h/[serverId]/workspace/[workspaceId]`;
-- host index with no restorable workspace returns `/open-project`.
-
-## Checklist
-
-Before landing route changes:
-
-- [ ] Did you change `packages/app/src/app`? Re-read this file.
-- [ ] Did you touch remembered workspace restore? Keep root on `/h/[serverId]`.
-- [ ] Did a route return to a workspace? Use `navigateToWorkspace()` and pass a
-      `target` when the action names a specific tab.
-- [ ] Did you add a route? Register it in the layout that directly owns it.
-- [ ] Did `useLocalSearchParams()` lose a required param? Fix the route tree.
-- [ ] Did native show a blank screen without a crash? Suspect route ownership
-      before stores, themes, or rendering.
+Verify navigation through actual Flutter startup, reconnect, resize and restart. Pure state tests do not establish Android/iOS lifecycle behavior. See [mobile testing](mobile-testing.md) and [testing](testing.md).

@@ -81,7 +81,13 @@ For testing rules, see [testing.md](testing.md).
 - Have a verification plan _before_ refactoring — name the invariants, confirm a test holds them, write one if not. See [testing.md](testing.md).
 - Migrate all callers and remove old paths in the same refactor. No fallback behavior unless explicitly designed.
 
-## React
+## Native runtime
+
+Rust owns daemon/CLI execution and Flutter/Dart owns the native client. Keep process/PTY/storage authority on the daemon, protocol validation at each language boundary, and UI lifecycle separate from provider lifetime. Avoid avoidable allocations and whole-history work on hot paths. Do not introduce Node, Electron, Chromium, a webview or a React UI-plugin host as a fallback.
+
+## React website
+
+These React rules apply to the retained website, not the native product client:
 
 - `useEffect` is for synchronizing with external systems (DOM, network, timers, subscriptions). Not for transforming React state. Derived state → compute in render or `useMemo`.
 - No effect cascades — chains of effects setting state that triggers more effects almost always want React Query or a reducer.
@@ -92,15 +98,13 @@ For testing rules, see [testing.md](testing.md).
 - Subscribe narrowly: select primitives from stores, pass `status` not `agent`, use `useShallow` / deep-equal when returning derived arrays/objects.
 - Collection rows do not independently subscribe to a high-frequency global store. The collection owner selects structurally shared indexes once, derives a keyed row model with `useMemo`, and passes entries to rows. This keeps retained hidden collections current without running one selector per row on every store update.
 - Equality functions prevent React renders; they do not prevent selector callbacks from running. A selector attached to a hot store must be O(1) when its relevant source references have not changed.
-- Retained native panels use `RetainedPanel`. If an existing gesture/layout wrapper must own visibility, wrap its contents in `RetainedPanelActivity` instead. Keep keyed panel roots in a stable sibling order, include the newly active panel in the same render, centralize subscriptions, and gate genuine effects through `useRetainedPanelActive`. Follow the [native ownership constraints and chat suspension boundary](mobile-panels.md) when stopping hidden rendering.
-- Infinite animations are subscriptions. Start them only while their retained panel is active, and cancel a shared clock when its final active consumer leaves. Synchronized animations use one clock per animation family and feed active instances through local shared values; retained hidden instances stay mounted but unsubscribed. Match state updates to the actual visual cadence; do not run every style worklet at 60 fps when the rendered value changes only a few times per second.
 - Stable references for props that cross `memo` boundaries or feed dependency arrays. Static literals at module scope `as const`; derived with `useMemo`; handlers with `useCallback` only when there's a memoized beneficiary.
 - Use stable ids for `key`, never array index for reorderable/filterable lists.
 - Context for stable values (theme, auth). Store with selectors for state that changes.
 
-### Retained panel measurements
+### Hidden website measurements
 
-Inactive retained panels use `display: none`, so DOM and layout APIs report zero width and height. A non-positive measurement means the surface is not rendered; it is never a valid compact layout.
+A hidden DOM surface can report zero width/height. A non-positive measurement is not a valid compact layout. This website rule does not prescribe Flutter widget retention:
 
 - Suspend geometry-derived updates while either measured dimension is non-positive. Preserve the last valid state until the surface reports positive geometry again.
 - Enforce the rule at the measurement boundary shared by every trigger. Guarding only an `onLayout` or `ResizeObserver` callback still lets effects, content changes, and imperative remeasurement publish hidden geometry.

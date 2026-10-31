@@ -17,7 +17,7 @@ Paseo orchestrates many coding-agent harnesses from desktop, mobile, web, and th
 
 OpenChamber builds its agent workflow around OpenCode. Paseo runs OpenCode alongside Claude Code, Codex, Pi, ACP agents, and custom providers.
 
-OpenChamber packages its web interface for iOS and Android with Capacitor. The interface runs inside WKWebView or Android WebView, with native integrations for notifications, secure storage, QR pairing, and widgets. Paseo's mobile client is built with React Native and distributed through the App Store and Google Play.
+OpenChamber packages its web interface for iOS and Android with Capacitor. The interface runs inside WKWebView or Android WebView, with native integrations for notifications, secure storage, QR pairing, and widgets. Paseo's mobile client is a native Flutter app distributed through the App Store and Google Play.
 
 ## Architecture
 

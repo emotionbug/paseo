@@ -1,241 +1,46 @@
-# Running Paseo in Docker
+# Running the native daemon in Docker
 
-Paseo publishes a container image for running the daemon on a server, VM, NAS,
-or homelab box. The image also serves the bundled browser web UI, so one
-container gives you both the daemon API and a self-hosted UI.
+The Dockerfile builds the **Rust daemon/CLI** and stages its native runtime assets. The final image has no Node executable, Electron, Chromium, bundled web UI, or speech model weights. Connect with a native Flutter client or the CLI; the HTTP root is not an application page.
 
-The image source lives in [`docker/`](../docker/).
+This cutover has not been published as a new container release. Do not assume an existing registry `latest` image contains this implementation. Native speech-library distribution requirements remain unresolved; see [release](release.md#distribution-requirements) before publishing an image.
 
-## How it works
+## Build locally
 
-The official image:
+From the repository root:
 
-- builds `@getpaseo/server` and `@getpaseo/cli` from source-built workspace tarballs
-- runs the daemon as the non-root `paseo` user
-- listens on `0.0.0.0:6767` inside the container
-- enables the bundled daemon web UI with `PASEO_WEB_UI_ENABLED=true`
-- stores daemon state and agent credentials under `/home/paseo`
-- leaves agent CLIs out of the base image
-
-Open the container's HTTP origin, for example `http://localhost:6767`, to load
-the web UI. The served app receives a same-origin connection hint and connects
-back to that daemon. Static UI files load without daemon auth; API and
-WebSocket requests still require `PASEO_PASSWORD` when one is configured.
-
-Host-side CLI commands select the container explicitly, for example `paseo project ls --host 127.0.0.1:6767`. Without an endpoint selector the CLI looks for a local home’s supervisor. Container environment settings are deployment overrides; worker restart preserves them. Your container manager owns full supervisor replacement.
-
-## Quick Start
-
-```bash
-docker run -d --name paseo \
-  -p 6767:6767 \
-  -e PASEO_PASSWORD=change-me \
-  -v "$PWD/paseo-home:/home/paseo" \
-  -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
-```
-
-Then open:
-
-```text
-http://localhost:6767
-```
-
-If you set `PASEO_PASSWORD`, enter the same password when adding the direct
-daemon connection in the web UI or another Paseo client.
-
-## Docker Compose
-
-Use [`docker/docker-compose.example.yml`](../docker/docker-compose.example.yml):
-
-```bash
-cp docker/docker-compose.example.yml docker-compose.yml
-$EDITOR docker-compose.yml
-docker compose up -d
-```
-
-Minimal example:
-
-```yaml
-services:
-  paseo:
-    image: ghcr.io/getpaseo/paseo:latest
-    restart: unless-stopped
-    ports:
-      - "6767:6767"
-    environment:
-      PASEO_PASSWORD: "change-me"
-    volumes:
-      - ./paseo-home:/home/paseo
-      - ./workspace:/workspace
-```
-
-## Installing Agents
-
-The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
-other agent CLIs. That keeps the default image small and avoids coupling Paseo
-releases to third-party agent release cycles.
-
-Create a child image for the agents you use:
-
-```Dockerfile
-FROM ghcr.io/getpaseo/paseo:latest
-
-USER root
-RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
-```
-
-Build it:
-
-```bash
-docker build -f Dockerfile -t paseo-with-agents .
-```
-
-Then use `image: paseo-with-agents` in Compose.
-
-Leave the child image user as root. The base entrypoint uses root only for
-first-run directory setup, then drops the daemon and launched agents to the
-non-root `paseo` user.
-
-An example child image is in
-[`docker/Dockerfile.agents.example`](../docker/Dockerfile.agents.example).
-
-You can also mount credentials from the host or run agent login once inside the
-container:
-
-```bash
-docker exec -it --user paseo paseo codex
-docker exec -it --user paseo paseo claude
-```
-
-Agent credentials and config persist in `/home/paseo`, alongside daemon state.
-Provider environment variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`OPENAI_BASE_URL`, or `ANTHROPIC_BASE_URL` can be passed through `docker run -e`
-or `compose.environment`; Paseo passes them to launched agents.
-
-## Volumes
-
-| Mount         | Purpose                                                                  |
-| ------------- | ------------------------------------------------------------------------ |
-| `/home/paseo` | Paseo state under `.paseo` plus agent config such as `.codex`, `.claude` |
-| `/workspace`  | Code that Paseo and launched agents can read and write                   |
-
-The image defaults:
-
-| Variable       | Default              |
-| -------------- | -------------------- |
-| `HOME`         | `/home/paseo`        |
-| `PASEO_HOME`   | `/home/paseo/.paseo` |
-| `PASEO_LISTEN` | `0.0.0.0:6767`       |
-
-If you bind-mount host directories on Linux, make sure the container user can
-write them. The built-in `paseo` user has uid/gid `1000:1000`. For a different
-host uid/gid, either adjust ownership on the mounted directories or run the
-container with Docker's `--user` / Compose `user:` option.
-
-## Reverse Proxies
-
-When serving Paseo behind a reverse proxy, forward normal HTTP requests and
-WebSocket upgrades to the same daemon port.
-
-Caddy example:
-
-```caddy
-paseo.example.com {
-  reverse_proxy 127.0.0.1:6767
-}
-```
-
-Nginx example:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name paseo.example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:6767;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-If you reach the daemon by DNS name, set `PASEO_HOSTNAMES` so host-header
-validation allows that name:
-
-```yaml
-environment:
-  PASEO_HOSTNAMES: "paseo.example.com,.lan"
-```
-
-IPs and `localhost` are allowed by default.
-
-## Security
-
-- Set `PASEO_PASSWORD` for any published port or network-reachable deployment.
-- Prefer HTTPS at the reverse proxy for direct browser access.
-- Use the [official Paseo relay](https://github.com/getpaseo/paseo-relay) for
-  untrusted networks or mobile access when you do not want to expose the daemon
-  port directly.
-- The container is the isolation boundary for agents. Agents can read and write
-  whatever you mount into `/workspace` and whatever credentials you place in
-  `/home/paseo`.
-- The bundled web UI static files are public on the daemon origin. The daemon
-  API and WebSocket remain protected by password auth when configured.
-
-See [SECURITY.md](../SECURITY.md) for the daemon trust model.
-
-## Building Locally
-
-```bash
+```sh
 docker build -f docker/base/Dockerfile -t paseo:local .
 ```
 
-To assert the source tree version while building:
+The multi-stage build uses Node 24 only in the build stage for compiler/SDK assets and packaging, and Rust for the daemon. Build stages target the final platform so the executable, optional extension compiler and native libraries agree on architecture. The final image is Debian-based and includes shell, Git, SSH, certificates and process-management utilities.
 
-```bash
-docker build \
-  --build-arg PASEO_VERSION=0.1.102 \
-  -t paseo:0.1.102 \
-  -f docker/base/Dockerfile \
-  .
+## Run an isolated instance
+
+```sh
+docker run -d --name paseo-native \
+  -p 6767:6767 \
+  -e PASEO_PASSWORD=change-me \
+  -v "$PWD/paseo-home:/home/paseo" \
+  -v "$PWD/workspace:/workspace" \
+  paseo:local
 ```
 
-The Docker workflow builds the image on pull requests and on `main` as a
-non-publishing check. Stable `vX.Y.Z` tag pushes publish
-`ghcr.io/getpaseo/paseo:X.Y.Z` and `ghcr.io/getpaseo/paseo:latest`. Beta tags
-publish only the exact prerelease tag, such as
-`ghcr.io/getpaseo/paseo:0.1.102-beta.1`, and do not update `latest`.
+Choose a real secret before exposing a port. The default container listen address is `0.0.0.0:6767`; the persistent daemon home is `/home/paseo/.paseo`. The example maps a separate workspace directory rather than the whole host filesystem. Connect the native client to the machine's address and port with the same password.
 
-To replace a Docker image in place without rebuilding desktop, APK, or EAS
-mobile release artifacts, dispatch the Docker workflow manually instead of
-pushing a `v*` release tag:
+For local-only access bind the published port to loopback (`-p 127.0.0.1:6767:6767`). For remote access use a trusted VPN, encrypted relay, or a correctly secured TLS reverse proxy. A proxy must forward WebSocket upgrades, not just ordinary HTTP. No static web-app configuration is needed.
 
-```bash
-gh workflow run docker.yml \
-  --ref main \
-  -f paseo_version=0.1.102-beta.1 \
-  -f publish=true
-```
+## Persistence and agents
 
-Manual Docker publishes require an explicit `paseo_version`. The workflow builds
-from the checked-out source tree and publishes only the exact prerelease image
-tag for prerelease versions.
+The `/home/paseo` volume holds `.paseo` state plus provider credential/config directories such as `.claude`, `.codex` and XDG directories. The `/workspace` mount contains project files. Preserve these separately from the image; recreating a container must not reset session history or credentials.
 
-The published image is multi-arch for `linux/amd64` and `linux/arm64`.
+Install and authenticate the agent CLIs you need in an explicitly extended image or controlled runtime environment. The base runtime is not a bundled set of provider executables. A provider CLI may itself require Node; that is an opt-in provider dependency, not a requirement of the Rust daemon.
 
-## Troubleshooting
+JavaScript backend extensions similarly need an **externally supplied Node** executable. Their worker/compiler assets can be present without starting Node; built-in integrations run in Rust. Do not add Node to the default image merely to launch built-ins.
 
-- **The web UI loads but cannot connect**: if `PASEO_PASSWORD` is set, add a
-  direct connection with the same password.
-- **403 Host not allowed**: set `PASEO_HOSTNAMES` to the DNS names you use.
-- **Provider not available**: install that agent CLI in a child image or mount a
-  runtime where the binary is on `PATH`.
-- **Permission errors in `/workspace`**: make the mounted directory writable by
-  uid/gid `1000:1000`, or run the container as the host uid/gid.
-- **Logs**: inspect `docker logs paseo` or
-  `/home/paseo/.paseo/daemon.log` inside the container.
+The daemon retains workspace setup/service PTYs. Native clients show their read-only logs; there is no interactive terminal emulator or embedded browser in the app.
+
+## Diagnostics
+
+Use container logs and `paseo daemon status` against the selected instance. The Docker health check checks daemon health, not page rendering. Check the listen address, published port, password, provider installation, mount permissions and retained home when connection or startup fails. A browser page failing to load at `/` is not evidence that a web UI needs to be rebuilt: this runtime does not serve one.
+
+The files under `docker/` contain build/compose examples, not proof that the native image has been published or executed on every architecture. See [testing](testing.md) for actual evidence boundaries.

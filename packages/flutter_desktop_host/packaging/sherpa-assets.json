@@ -1,0 +1,26 @@
+{
+  "linux-x64": [
+    "sherpa-onnx-v1.12.28-linux-x64-shared.tar.bz2",
+    "4bcfb780c5e45fbaec81ff7b656b0c9c19bff2b3c65de7434b7918dcfcac3e90"
+  ],
+  "linux-arm64": [
+    "sherpa-onnx-v1.12.28-linux-aarch64-shared-cpu.tar.bz2",
+    "2ccdf69f6d58c154dd44f559876133172b69e1525a0ae59b71e2436a1508273c"
+  ],
+  "darwin-x64": [
+    "sherpa-onnx-v1.12.28-osx-universal2-shared.tar.bz2",
+    "6ca38b9819db003be96facefe3ec5daac1256f3336ce8874d08ee3da1edfa867"
+  ],
+  "darwin-arm64": [
+    "sherpa-onnx-v1.12.28-osx-universal2-shared.tar.bz2",
+    "6ca38b9819db003be96facefe3ec5daac1256f3336ce8874d08ee3da1edfa867"
+  ],
+  "win32-x64": [
+    "sherpa-onnx-v1.12.28-win-x64-shared-MT-Release.tar.bz2",
+    "cf3c1e0e61a37e87fd92a828cc6dc4b0ed8afbbd1c1d77ad369063a00205be74"
+  ],
+  "win32-arm64": [
+    "sherpa-onnx-v1.12.28-win-arm64-shared-MT-Release.tar.bz2",
+    "13abadf0d9e97c7ba0bdffff6350120661e41c3758d60032f4bf99c24f797967"
+  ]
+}

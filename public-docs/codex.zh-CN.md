@@ -71,9 +71,9 @@ where.exe codex
 
 当 Paseo 能找到并启动 `codex` 命令后，这个 Provider 就会变为可用。
 
-## 在 Paseo 终端中使用 Codex {#use-codex-in-the-paseo-terminal}
+## 在外部终端中使用 Codex {#use-codex-in-an-external-terminal}
 
-Codex 在 Paseo 终端里同样可用。在工作区中打开终端并运行 `codex`，即可获得标准的 CLI 体验，同时保留对工作区、git 改动和其他 Paseo 工具的访问。
+如需标准 Codex CLI 体验，在 daemon 主机上打开自己的终端，进入检出目录并运行 `codex`。原生 Paseo 应用没有交互式终端 UI；工作区脚本/设置 PTY 仍受支持，并以只读日志呈现。
 
 ## 另请参阅 {#see-also}
 

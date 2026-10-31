@@ -10,7 +10,7 @@ category: Hub
 
 Run Hub on your machine, connect it to Slack without a public server, and answer a mention with an agent in your repository. Hub's browser setup hands off to your terminal, and `paseo hub init` writes and deploys a starter trigger for you.
 
-You need [Paseo installed and running](/docs), Node.js, and a Slack workspace where you can create an app.
+You need the [native Rust Paseo daemon installed/built and running](/docs), Node.js for the separately installed **Hub service** below, and a Slack workspace where you can create an app. Hub's web interface and Node runtime are independent of the Flutter client and are not bundled in Paseo's default installed runtime.
 
 ## 1. Start Hub
 

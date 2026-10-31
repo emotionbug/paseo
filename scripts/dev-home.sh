@@ -123,6 +123,7 @@ configure_dev_paseo_home() {
 }
 
 configure_dev_command_env() {
+  export PASEO_NODE_ENV=development
   if [ -z "${PASEO_LISTEN:-}" ]; then
     if [ -n "${PASEO_SERVICE_DAEMON_PORT:-}" ]; then
       export PASEO_LISTEN="0.0.0.0:${PASEO_SERVICE_DAEMON_PORT}"

@@ -6,7 +6,9 @@ nav: 连接
 
 # 连接 {#connectivity}
 
-你的 Paseo 应用连接的是运行在你电脑或服务器上的 daemon。Paseo 桌面端和 CLI 可以通过 SSH 隧道连接。移动客户端可以通过 Paseo 中继连接，或者用 Tailscale 直接连接。
+Flutter 客户端连接桌面电脑或服务器上的 Rust daemon。Linux、macOS、Windows 客户端可使用本地 daemon 或远程主机；Android、iOS 仅作为远程客户端。桌面端和 Rust CLI 可通过 SSH 隧道连接；移动端可使用加密中继或 Tailscale 直连。daemon 不提供 Web 产品客户端。
+
+在 daemon 主机使用 `paseo onboard` 显式设置，然后运行 `paseo daemon start` 和 `paseo daemon status`。直接运行 `paseo` 打开聊天。普通运行端口为 `6767`；仓库开发默认使用 `.dev/paseo-home` 和 `6768`。此次原生迁移尚未发布，本地构建说明见[更新](/docs/updates)。
 
 这里说的是客户端到 daemon 的传输。如果你要找的是由 GitHub、Slack 和 Discord 事件启动 Agent 的服务，那是 [Hub](/docs/hub)。
 

@@ -4,6 +4,7 @@ import {
   ProviderSnapshotEntrySchema,
   ProvidersSnapshotUpdateMessageSchema,
 } from "./messages.js";
+import { validateWSOutboundMessage } from "./validation/ws-outbound.js";
 
 describe("provider snapshot message schemas", () => {
   test("defaults missing provider snapshot entry enabled state to true", () => {
@@ -95,8 +96,7 @@ describe("provider snapshot message schemas", () => {
   });
 });
 
-test("accepts a bodyless announcement with separate discovery freshness", async () => {
-  const { validateWSOutboundMessage } = await import("./validation/ws-outbound.js");
+test("accepts a bodyless announcement with separate discovery freshness", () => {
   const message = {
     type: "providers_snapshot_update",
     payload: {

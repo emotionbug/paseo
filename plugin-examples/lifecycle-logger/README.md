@@ -1,8 +1,9 @@
 # Lifecycle logger
 
-Registers all eleven server lifecycle hooks and logs their data as JSON. It observes agent creation,
-session opening, turns, permissions, archive, and workspace creation/archive. Before hooks return
-the request unchanged. Environment values are redacted; prompts and timeline content are logged.
+Registers every server lifecycle hook (nine events and three before hooks) and logs their data as
+JSON. It observes workspace creation and archive, agent creation, session opening, turns,
+permissions, closing, and archive. Before hooks return the request unchanged. Environment values
+are redacted; prompts and timeline content are logged.
 
 Install it on a daemon where plugins are enabled:
 
@@ -11,21 +12,10 @@ paseo plugin install /absolute/path/to/plugin-examples/lifecycle-logger
 paseo plugin logs lifecycle-logger
 ```
 
-The same entries appear in the target daemon's `daemon.log`. The plugin log viewer retains a bounded
-tail; use the daemon log for longer captures. Log lines are capped at 16 KiB, so a large timeline can
-be truncated.
+`paseo plugin logs` shows a recent in-memory tail of the plugin's output. Log lines are capped at
+16 KiB, so a large timeline can be truncated. The output is not copied to the daemon log, and
+removing the plugin or restarting the daemon clears it.
 
 See the [lifecycle reference](../../public-docs/plugins/reference.md#lifecycle-hooks) for callback
-shapes and delivery rules. The real-provider test in
-`packages/server/src/server/plugins/lifecycle.real.e2e.test.ts` runs both examples on an isolated daemon
-and saves evidence under `.dev/lifecycle-proof/`.
-
-Run it from `packages/server` on Linux with Claude configured:
-
-```bash
-npx vitest run src/server/plugins/lifecycle.real.e2e.test.ts --bail=1
-```
-
-The test uses real provider calls and a temporary daemon home. Its failure check uses Linux `/proc`
-to identify and terminate only its own Claude subprocess. The credits check asks the real agent to
-emit the matching phrase; it does not exhaust an account's credits.
+shapes and delivery rules. Install it alongside [lifecycle-actions](../lifecycle-actions) on a test
+daemon to watch those callbacks run.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 // Worktree setup runs through a stable script shell: bash on macOS/Linux, but PowerShell
 // on Windows. POSIX-only command strings (`VAR=1 cmd` env prefixes, `$VAR` expansion, `cp`,
@@ -15,7 +15,6 @@ if (!sourceRoot || sourceRoot === targetRoot) {
 }
 
 seedPaseoHome();
-copyServerEnv();
 
 function seedPaseoHome() {
   const source = process.env.PASEO_DEV_SEED_HOME || join(sourceRoot, ".dev/paseo-home");
@@ -61,21 +60,6 @@ function copyJsonTree(source, target) {
     recursive: true,
     filter: (path) => isDirectory(path) || path.endsWith(".json"),
   });
-}
-
-function copyServerEnv() {
-  const source = join(sourceRoot, "packages/server/.env");
-  const target = join(targetRoot, "packages/server/.env");
-
-  // Untracked local config. A checkout without one is normal, so this is not a setup failure.
-  if (!existsSync(source)) {
-    console.log(`  Env:     skipped (${source} missing)`);
-    return;
-  }
-
-  mkdirSync(dirname(target), { recursive: true });
-  cpSync(source, target);
-  console.log(`  Env:     copied ${source}`);
 }
 
 function hasEntries(path) {

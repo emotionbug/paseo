@@ -17,7 +17,7 @@ Paseo 可以从桌面端、移动端、Web 和 CLI 编排多种编码 Agent harn
 
 OpenChamber 围绕 OpenCode 构建 Agent 工作流。Paseo 在运行 OpenCode 的同时，还运行 Claude Code、Codex、Pi、ACP Agent 和自定义 Provider。
 
-OpenChamber 用 Capacitor 把它的 Web 界面打包到 iOS 和 Android 上。界面运行在 WKWebView 或 Android WebView 中，并带有通知、安全存储、二维码配对和小组件等原生集成。Paseo 的移动客户端使用 React Native 构建，并通过 App Store 和 Google Play 发布。
+OpenChamber 用 Capacitor 把它的 Web 界面打包到 iOS 和 Android 上。界面运行在 WKWebView 或 Android WebView 中，并带有通知、安全存储、二维码配对和小组件等原生集成。Paseo 的移动客户端是原生 Flutter 应用，并通过 App Store 和 Google Play 发布。
 
 ## 架构 {#architecture}
 

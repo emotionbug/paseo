@@ -10,6 +10,8 @@ nav: Provider 插件
 
 Provider 插件把一个编程 Agent 接入 Paseo，而无需把它加入 Paseo 核心。在 npm 或 Git 仓库中[发布插件](/docs/plugins/publishing)，用户就可以用 `paseo plugin install` 安装它。
 
+本指南针对 0.13.0 源码检出中尚未发布的原生迁移。内置 Provider 由 Rust 实现；此作者 API 用于可选第三方 JavaScript 后端。它们通过 `packages/daemon/plugin-worker/src` 的 worker 在 daemon 主机上运行，需要另行安装 Node.js 20+（用 `PASEO_PLUGIN_NODE` 选择可执行文件）。公共 SDK 仍位于 `packages/plugin`。Flutter 渲染协议数据，不执行插件 React 组件。移动端只远程连接，不运行 Provider worker。资源和主机准备见快速上手。
+
 选择一种实现方式：
 
 | Agent                                              | 方式                                                       |
@@ -17,11 +19,7 @@ Provider 插件把一个编程 Agent 接入 Paseo，而无需把它加入 Paseo 
 | 已经实现了 ACP                                     | 用 `runAcpProvider()` 注册它，只添加少量针对厂商的转换器。 |
 | 提供 TypeScript SDK、JSON-RPC API 或自定义进程协议 | 直接实现 `ProviderRegistration`。                          |
 
-示例有：
-
-- [`provider-direct`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-direct)：会话、设置、提示词、持久化、子会话，以及一个由 Provider 拥有的时间线渲染器；
-- [`provider-acp-transformer`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-acp-transformer)：一个 ACP 命令模板，带有一个用 Zod 校验的厂商编辑转换器。加载之前，请把 `example-acp --stdio` 替换为一个已安装的 ACP Agent；
-- [`inline-thinking`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/inline-thinking)：一个只包含渲染器、不实现 Provider 的插件。
+[`provider-direct`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-direct) 的后端部分展示会话、设置、提示词、持久化和子会话。示例中的历史客户端渲染器不属于原生契约，不应包含在面向原生的插件中。[`provider-acp-transformer`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-acp-transformer) 展示用 Zod 校验的供应商编辑转换器；加载前把 `example-acp --stdio` 替换为已安装的 ACP Agent。仅渲染器示例不是受支持的原生扩展。
 
 ## 注册直接实现的 Provider {#register-a-direct-provider}
 
@@ -127,7 +125,7 @@ if (input.type === "catalog") {
 
 `session.open` 包含完整的启动配置：工作目录、环境变量、系统提示词、MCP 服务器、工具策略、模型、模式、设置、不透明的 Provider 选项以及持久化偏好。
 
-对于持久化的、作用于主机的插件设置，请使用 `server.registerSettings()` 返回的句柄。在目录和会话回调中读取它；当 Provider 在内存中保留配置时，订阅它。`read()` 和 `subscribe()` 的契约见[设置](./reference.md#persisted-values)。
+对于持久化的、作用于主机的插件设置，请使用 `server.registerSettings()` 返回的句柄。在目录和会话回调中读取它；当 Provider 在内存中保留配置时，订阅它。`read()` 和 `subscribe()` 的契约见[设置](./reference.md#settings-screens)。
 
 用选中的目录值创建原生会话，然后发布它实际生效的状态：
 
@@ -273,47 +271,23 @@ Paseo 刷新 Agent 的方式是关闭它当前的 Provider 会话，然后用当
 
 通过 `timeline.item` 发布完整的快照。更新流式文本、运行中的工具或待办列表时，复用条目的 `id`。Paseo 会推导出实时增量，并保持正常的时间线。
 
-内置的条目类型涵盖用户和助手消息、推理、工具、待办事项、错误、通知和上下文压缩。当你的 Provider 有这些类型无法表达的展示方式时，使用插件条目：
+标准条目类型涵盖用户/助手消息、推理、工具、待办、错误、通知和上下文压缩。用这些协议类型表达关键输出，让原生客户端无需执行扩展代码即可渲染。
+
+例如，将审查结果发布为普通助手文本：
 
 ```ts
 emit({
   type: "timeline.item",
   sessionId,
   item: {
-    type: "plugin",
+    type: "assistant_message",
     id: "review-42",
-    pluginId: "my-provider-plugin",
-    kind: "review-verdict",
-    version: 1,
-    data: { verdict: "ship", summary: "All checks passed" },
+    text: "Review verdict: ship. All checks passed.",
   },
 });
 ```
 
-在 `index.client.tsx` 中单独注册渲染器：
-
-```tsx
-import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { z } from "zod";
-import { ReviewVerdict } from "./client/review-verdict";
-
-const reviewVerdictSchema = z.object({
-  verdict: z.enum(["ship", "hold"]),
-  summary: z.string(),
-});
-
-export default function contribute(client: PluginClientContext) {
-  client.addTimelineRenderer({
-    kind: "review-verdict",
-    version: 1,
-    schema: reviewVerdictSchema,
-    Component: ReviewVerdict,
-  });
-  return () => {};
-}
-```
-
-同一个渲染器可以显示由 Provider、客户端时间线转换器或 daemon 时间线追加发出的条目。渲染器并不需要 Provider 实现。
+精确条目结构以所用 SDK 版本的 `@getpaseo/plugin/server/provider` 为准。历史 `type: "plugin"` 数据和自定义 React 渲染器不是原生展示 API。不要注册 `index.client.tsx` 或时间线转换器使其显示。配置描述符和时间线数据是后端贡献，原生渲染由 Flutter 负责。
 
 ## 适配 ACP Agent {#adapt-an-acp-agent}
 
@@ -376,9 +350,11 @@ export const vendorEdits: AcpTransformer = {
 2. 确认它的 SVG、模型、模式和设置都会显示；
 3. 创建会话并完成一段真实的提示词；
 4. 在支持的情况下，试用权限、引导、取消、持久化和重放；
-5. 在桌面和移动端宽度的布局中渲染每一种自定义时间线条目；
+5. 在声称支持的实际原生桌面和移动客户端中确认标准时间线条目正常渲染；
 6. 在会话处于活动状态时重新加载和移除插件，并确认会话随之终止。
 
 按照[发布插件](/docs/plugins/publishing)通过 npm 或 Git 分发 Provider。把 Agent 兼容性和版本发布保留在插件项目中。
+
+只声明实际运行过的平台。CI 定义和历史 JavaScript 客户端测试不能证明原生执行；此检出的迁移尚未发布。
 
 确切的运行时和 SVG 规则见[插件参考](/docs/plugins/reference#providers)。

@@ -13,6 +13,13 @@ Start with the [plugin quickstart](/docs/plugins) if you have not built a Paseo 
 A provider plugin connects a coding agent to Paseo without adding it to Paseo core. [Publish the plugin](/docs/plugins/publishing) on npm or in a Git repository so users can
 install it with `paseo plugin install`.
 
+This guide targets the unpublished native cutover in the 0.13.0 checkout. Built-in providers
+are Rust; this author API is for optional third-party JavaScript backends. They run in
+`packages/daemon/plugin-worker/src` with externally installed Node.js 20+ on the daemon host
+(`PASEO_PLUGIN_NODE` selects the executable). The public SDK remains `packages/plugin`.
+Flutter renders protocol data but never executes plugin React components. Mobile connects remotely
+and does not run the provider worker. See the quickstart for worker assets and host preparation.
+
 Choose one implementation path:
 
 | Agent                                                             | Path                                                                         |
@@ -20,11 +27,13 @@ Choose one implementation path:
 | It already implements ACP                                         | Register it with `runAcpProvider()` and add only narrow vendor transformers. |
 | It has a TypeScript SDK, JSON-RPC API, or custom process protocol | Implement `ProviderRegistration` directly.                                   |
 
-The examples are:
-
-- [`provider-direct`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-direct): sessions, settings, prompts, persistence, child sessions, and a provider-owned timeline renderer;
-- [`provider-acp-transformer`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-acp-transformer): an ACP command template with a Zod-validated vendor edit transformer. Replace `example-acp --stdio` with an installed ACP agent before loading it;
-- [`inline-thinking`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/inline-thinking): a renderer-only plugin that does not implement a provider.
+The backend parts of
+[`provider-direct`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-direct)
+illustrate sessions, settings, prompts, persistence, and child sessions. Any historical client
+renderer in an example is outside the native contract; do not include it in a native-targeted plugin.
+[`provider-acp-transformer`](https://github.com/getpaseo/paseo/tree/main/plugin-examples/provider-acp-transformer)
+illustrates a Zod-validated vendor edit transformer. Replace `example-acp --stdio` with an installed
+ACP agent before loading it. Renderer-only examples are not supported native extensions.
 
 ## Register a direct provider
 
@@ -143,7 +152,7 @@ preference.
 
 For persisted host-scoped plugin settings, use the handle returned by `server.registerSettings()`.
 Read it in catalog and session callbacks, and subscribe when the provider keeps in-memory
-configuration. See [settings](./reference.md#persisted-values) for the `read()` and `subscribe()`
+configuration. See [settings](./reference.md#settings-screens) for the `read()` and `subscribe()`
 contract.
 
 Create the native session with the selected catalog values, then publish its effective state:
@@ -311,50 +320,29 @@ can replace the active turn instead.
 Publish complete snapshots through `timeline.item`. Reuse an item `id` when updating streamed text,
 a running tool, or a todo list. Paseo derives the live delta and keeps the normal timeline.
 
-Built-in item types cover user and assistant messages, reasoning, tools, todos, errors,
-notifications, and compaction. Use a plugin item when your provider has a presentation that those
-types cannot express:
+Standard item types cover user and assistant messages, reasoning, tools, todos, errors,
+notifications, and compaction. Represent essential provider output with these protocol types so
+the native client can render it without executing extension code.
+
+For example, publish a review result as ordinary assistant text:
 
 ```ts
 emit({
   type: "timeline.item",
   sessionId,
   item: {
-    type: "plugin",
+    type: "assistant_message",
     id: "review-42",
-    pluginId: "my-provider-plugin",
-    kind: "review-verdict",
-    version: 1,
-    data: { verdict: "ship", summary: "All checks passed" },
+    text: "Review verdict: ship. All checks passed.",
   },
 });
 ```
 
-Register the renderer independently in `index.client.tsx`:
-
-```tsx
-import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { z } from "zod";
-import { ReviewVerdict } from "./client/review-verdict";
-
-const reviewVerdictSchema = z.object({
-  verdict: z.enum(["ship", "hold"]),
-  summary: z.string(),
-});
-
-export default function contribute(client: PluginClientContext) {
-  client.addTimelineRenderer({
-    kind: "review-verdict",
-    version: 1,
-    schema: reviewVerdictSchema,
-    Component: ReviewVerdict,
-  });
-  return () => {};
-}
-```
-
-The same renderer can display items emitted by a provider, a client timeline transformer, or a
-daemon timeline append. A renderer does not require a provider implementation.
+Use the precise item shape from `@getpaseo/plugin/server/provider` for your SDK version.
+Historical `type: "plugin"` payloads and custom React renderers are not a native presentation API.
+Do not register `index.client.tsx` or a timeline transformer to make them visible. Protocol
+configuration descriptors and timeline data are backend contributions; native rendering belongs
+to Flutter.
 
 ## Adapt an ACP agent
 
@@ -419,11 +407,13 @@ Test the provider against the real agent, not only mocked frames:
 2. confirm its SVG, models, modes, and settings appear;
 3. create a session and complete a real prompt;
 4. exercise permissions, steering, cancellation, persistence, and replay when supported;
-5. render every custom timeline item on desktop and mobile-width layouts;
+5. confirm standard timeline items render in the actual native desktop and mobile clients you support;
 6. reload and remove the plugin while a session is active and confirm the session terminates.
 
 Follow [Publish a plugin](/docs/plugins/publishing) to distribute the provider through npm or Git.
 Keep agent compatibility and releases in the plugin project.
+Describe only platforms you have actually exercised. CI definitions and historical JavaScript-client
+tests do not establish native execution, and this checkout's migration is not a published release.
 
 See the [plugin reference](/docs/plugins/reference#providers) for the exact runtime and SVG
 rules.

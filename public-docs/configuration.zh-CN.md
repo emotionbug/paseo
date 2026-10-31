@@ -49,7 +49,7 @@ Paseo 默认使用 `~/.paseo` 作为主目录。配置文件是：
 ```bash
 paseo daemon config get daemon.listen --home ~/paseo-test
 paseo daemon config set daemon.listen 127.0.0.1:6800 --home ~/paseo-test
-paseo daemon config unset features.webUi.enabled --home ~/paseo-test
+paseo daemon config unset daemon.hostnames --home ~/paseo-test
 ```
 
 `get [path]` 报告已配置的值，并把缺失的字段标记为 unset。它不会创建主目录。`set` 会把输入解析为 JSON，否则当作字符串；`--string` 强制作为字面字符串。`--json` 选择输出格式。对于包含点号的动态键，请使用整个对象的 JSON。未知路径、无效值和无效的现有文件都会被拒绝，不会写入。密码使用 `set-password`。
@@ -68,13 +68,13 @@ daemon 会在应用任何内容之前校验整个文件。它会应用运行时�
 paseo daemon restart
 ```
 
-运行时安全的设置包括：中继启用、MCP 设置、浏览器工具、主机名、CORS 来源、受信任的代理、Git 进程限制、Agent 和终端配置、Provider 定义、元数据生成、应用基础 URL、Provider 目录超时，以及全局插件开关。删除其中某个设置会应用该字段缺省时的行为；删除某个 Provider 会把它从之后的启动中移除。
+运行时安全的设置包括：中继启用、MCP 设置、主机名、CORS 来源、受信任的代理、Git 进程限制、Agent 和脚本/设置任务终端配置、Provider 定义、元数据生成、应用基础 URL、Provider 目录超时，以及全局插件开关。删除其中某个设置会应用该字段缺省时的行为；删除某个 Provider 会把它从之后的启动中移除。
 
 当你删除 `daemon.relay.enabled` 时，新的主目录会保持中继关闭。如果 daemon 启动时其配置就已经省略了这个字段，它会为了兼容而保持旧版的中继开启行为。编辑较旧的配置时，请显式设置 `daemon.relay.enabled`。
 
-监听地址、身份验证、中继端点和 TLS、worktree 分配、服务代理地址、内置的 Web UI、日志、语音合成与识别、语音、凭据以及本地模型设置都需要重启。重新加载会先应用同一文件中的其他有效编辑，再报告这些路径。
+监听地址、身份验证、中继端点和 TLS、worktree 分配、服务代理地址、日志、语音、凭据以及本地模型设置需要重启。重新加载会先应用同一文件中的其他有效编辑，再报告这些路径。
 
-部署环境变量和旧版进程管理器参数仍然具有最终决定权。当某个启动覆盖项阻止了文件中已更改的设置生效时，重新加载会在 `overrideControlledPaths` 下报告它。这包括启动设置，例如监听地址、密码、中继端点和 TLS、服务代理和 Web UI 设置、日志、语音合成与识别以及语音配置。主机名和 CORS 来源等列表设置仍然在各个来源之间追加，因此 `config.json` 中的值继续生效。要让文件中的值具有决定权，请停止该部署并在不带覆盖项的情况下重新启动。
+部署环境变量仍然具有最终决定权。当启动覆盖项阻止文件设置生效时，重新加载会在 `overrideControlledPaths` 中报告。主机名和 CORS 来源等列表仍会跨来源追加。要让文件值生效，请停止部署并在不带覆盖项的情况下重新启动。
 
 ## Agent Provider {#agent-providers}
 
@@ -102,36 +102,11 @@ Agent Provider，包括 Paseo 自带的一等 Provider 和你在 `agents.provide
 
 语音的设计理念、架构以及完整的本地和 OpenAI 设置示例，见[语音文档](/docs/voice)。
 
-## 内置的 Web UI {#bundled-web-ui}
+## 原生客户端 {#native-clients}
 
-daemon 可以在同一个 HTTP 服务器上提供浏览器 Web 客户端。官方 Docker 镜像中默认启用此功能，普通 CLI 和由桌面应用管理的 daemon 默认关闭。
+Rust daemon 提供 API，不提供内置 Web 产品客户端。请使用 Flutter 桌面/移动应用或 Rust CLI 连接。移动端只连接远程桌面/服务器 daemon，不在本地运行 daemon。
 
-从 CLI 启用它：
-
-```bash
-paseo daemon config set features.webUi.enabled true
-paseo daemon start
-```
-
-或者设置环境变量：
-
-```bash
-PASEO_WEB_UI_ENABLED=true paseo daemon run
-```
-
-或者把它持久化到 `config.json` 中：
-
-```json
-{
-  "features": {
-    "webUi": {
-      "enabled": true
-    }
-  }
-}
-```
-
-启用后，打开 daemon 的 HTTP 地址（例如 `http://localhost:6767/`）即可加载 Web 应用。静态 UI 文件无需 daemon 身份验证即可加载；API 和 WebSocket 请求仍然需要配置的密码。
+已移除的 `features.webUi` 和 `daemon.browserTools` 设置会在规范化时丢弃。没有可启用的 Web UI 或内嵌浏览器自动化。daemon 保留脚本/设置任务的 PTY，客户端提供只读日志，而非交互式终端 UI。
 
 ## 日志 {#logging}
 
@@ -177,7 +152,7 @@ paseo daemon set-password
 或者设置 `PASEO_PASSWORD` 环境变量（明文，启动时自动哈希）：
 
 ```bash
-PASEO_PASSWORD=my-secret paseo daemon start
+PASEO_PASSWORD=my-secret paseo daemon run
 ```
 
 或者直接把哈希写入 `config.json`：
@@ -242,8 +217,6 @@ URI 中的 `password=` 总是优先于环境变量，因此你可以全局设置
 - `PASEO_RELAY_ENABLED`，为本次 daemon 启动启用或关闭出站中继
 - `PASEO_HOSTNAMES`，覆盖或扩展 `daemon.hostnames`
 - `PASEO_ALLOWED_HOSTS`，`PASEO_HOSTNAMES` 的已弃用别名
-- `PASEO_WEB_UI_ENABLED`，启用或关闭由 daemon 提供的 Web UI
-- `PASEO_WEB_UI_DIST_DIR`，覆盖 daemon Web UI 的构建目录
 - `PASEO_TRUSTED_PROXIES`，为 `X-Forwarded-*` 请求头配置受信任的反向代理范围
 - `PASEO_LOG_CONSOLE_LEVEL`，覆盖 `log.console.level`
 - `PASEO_LOG_FILE_LEVEL`，覆盖 `log.file.level`

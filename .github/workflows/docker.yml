@@ -45,6 +45,8 @@ jobs:
       publish: ${{ steps.values.outputs.publish }}
       check_tag: ${{ steps.values.outputs.check_tag }}
       publish_tags: ${{ steps.values.outputs.publish_tags }}
+      release_channel: ${{ steps.values.outputs.release_channel }}
+      native_release: ${{ steps.values.outputs.native_release }}
     steps:
       - uses: actions/checkout@v6
 
@@ -91,6 +93,10 @@ jobs:
               publish_latest=true
             fi
           fi
+          release_channel=stable
+          if [[ "${prerelease}" == "true" ]]; then release_channel=beta; fi
+          native_release=0
+          if [[ "${publish}" == "true" ]]; then native_release=1; fi
 
           check_tag="${image}:check-${GITHUB_SHA::12}"
           publish_tags="${image}:${install_version}"
@@ -103,6 +109,8 @@ jobs:
             echo "install_version=${install_version}"
             echo "publish=${publish}"
             echo "check_tag=${check_tag}"
+            echo "release_channel=${release_channel}"
+            echo "native_release=${native_release}"
             echo "publish_tags<<EOF"
             echo "${publish_tags}"
             echo "EOF"
@@ -112,31 +120,49 @@ jobs:
 
   build:
     needs: setup
-    if: needs.setup.outputs.publish != 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
 
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/base/Dockerfile
-          platforms: ${{ env.PLATFORMS }}
+          platforms: ${{ matrix.platform }}
           build-args: |
             PASEO_VERSION=${{ needs.setup.outputs.install_version }}
+            PASEO_BUILD_SOURCE_SHA=${{ github.sha }}
+            PASEO_NATIVE_RELEASE=${{ needs.setup.outputs.native_release }}
+            PASEO_UPDATE_REPOSITORY=${{ github.repository }}
+            PASEO_RELEASE_CHANNEL=${{ needs.setup.outputs.release_channel }}
           tags: ${{ needs.setup.outputs.check_tag }}
           push: false
+          load: true
           provenance: false
-          cache-from: type=gha,scope=paseo
-          cache-to: type=gha,scope=paseo,mode=max
+          cache-from: type=gha,scope=paseo-${{ matrix.arch }}
+          cache-to: type=gha,scope=paseo-${{ matrix.arch }},mode=max
+
+      - name: Check isolated native runtime
+        env:
+          PASEO_TEST_IMAGE: ${{ needs.setup.outputs.check_tag }}
+        run: bash docker/base/test-runtime.sh
 
   publish:
-    needs: setup
+    needs: [setup, build]
     if: needs.setup.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -162,8 +188,15 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             PASEO_VERSION=${{ needs.setup.outputs.install_version }}
+            PASEO_BUILD_SOURCE_SHA=${{ github.sha }}
+            PASEO_NATIVE_RELEASE=${{ needs.setup.outputs.native_release }}
+            PASEO_UPDATE_REPOSITORY=${{ github.repository }}
+            PASEO_RELEASE_CHANNEL=${{ needs.setup.outputs.release_channel }}
           tags: ${{ needs.setup.outputs.publish_tags }}
           push: true
           provenance: false
-          cache-from: type=gha,scope=paseo
+          cache-from: |
+            type=gha,scope=paseo-amd64
+            type=gha,scope=paseo-arm64
+            type=gha,scope=paseo
           cache-to: type=gha,scope=paseo,mode=max

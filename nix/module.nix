@@ -82,9 +82,9 @@ in
         type = lib.types.bool;
         default = true;
         description = ''
-          Whether to enable relay-based remote access. When false, the daemon
-          runs with `--no-relay` and only accepts direct (LAN/loopback)
-          connections.
+          Whether to enable relay-based remote access. When false, sets
+          `PASEO_RELAY_ENABLED=false` so the daemon only accepts direct
+          (LAN/loopback) connections.
         '';
       };
 
@@ -188,8 +188,8 @@ in
         overwritten on the next restart. Pick one: manage via this option, or
         manage via the CLI — not both.
 
-        The full schema is defined by `PersistedConfigSchema` in
-        `packages/server/src/server/persisted-config.ts`.
+        Native configuration loading and validation live in
+        `packages/daemon/src/config.rs` and `packages/daemon/src/config/`.
       '';
     };
   };
@@ -232,6 +232,7 @@ in
       environment = {
         PASEO_HOME = cfg.dataDir;
         PASEO_LISTEN = "${cfg.listenAddress}:${toString cfg.port}";
+        PASEO_RELAY_ENABLED = if cfg.relay.enable then "true" else "false";
       } // lib.optionalAttrs cfg.inheritUserEnvironment (
         let
           # Match dataDir's convention. We can't read users.users.<name>.home
@@ -272,9 +273,7 @@ in
         User = cfg.user;
         Group = cfg.group;
 
-        ExecStart =
-          "${cfg.package}/bin/paseo-server"
-          + lib.optionalString (!cfg.relay.enable) " --no-relay";
+        ExecStart = "${cfg.package}/bin/paseo daemon run";
 
         Restart = "on-failure";
         RestartSec = 5;

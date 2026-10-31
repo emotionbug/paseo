@@ -1,0 +1,15 @@
+pub mod acp;
+pub mod antigravity;
+pub mod api;
+pub mod claude;
+pub mod codex;
+pub mod create_config;
+pub mod development;
+pub mod hoplite;
+pub mod manifest;
+pub mod muse;
+pub mod opencode;
+pub mod options;
+pub mod pi_omp;
+pub mod prompt;
+pub mod registry;

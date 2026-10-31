@@ -1,16 +1,21 @@
+> The native Paseo client does not run client UI plugins. The attachment source in
+> `index.client.ts` only exercises the SDK's client types; the native app does not show it.
+
 # Linear plugin example
 
-This example adds `Attach Linear issue` to the composer. Search by issue identifier
-or title, then send a stable issue snapshot to the agent.
+The backend part works on a native daemon: `index.server.ts` registers the `issues.search` RPC,
+which searches Linear by issue identifier or title and returns issue snapshots. The client entry
+registers an **Attach Linear issue** composer attachment source that calls that RPC; the native
+client does not run it.
 
-Set a personal API key in the daemon environment:
+Set a personal API key in the daemon environment before starting the daemon:
 
 ```bash
 export LINEAR_API_KEY="lin_api_..."
 ```
 
-Start your daemon with that environment variable set. Then turn on **Enable plugins** in
-**Settings → Plugins** and install the example:
+With plugins enabled on the daemon (`paseo daemon config set pluginsEnabled true`), install the
+example:
 
 ```bash
 paseo plugin add /absolute/path/to/paseo/plugin-examples/linear
@@ -20,9 +25,8 @@ paseo plugin ls linear
 Use `paseo plugin reload linear` after source edits. Changing the API key requires restarting the
 daemon with the new environment; installing or reloading plugin source does not.
 
-The split entry point demonstrates the complete attachment-source pattern:
+The layout shows how to keep credentials on the daemon:
 
-- define the validated search RPC and attachment metadata in `shared/issues.ts`;
-- handle it in the daemon subprocess from `server/issues.ts` and `index.server.ts`;
-- register the attachment source from `index.client.ts`;
-- keep credentials and vendor API calls out of the client bundle.
+- the validated search RPC and attachment metadata are in `shared/issues.ts`;
+- the daemon-side handler is in `server/issues.ts` and `index.server.ts`;
+- credentials and Linear API calls stay in `server/`.

@@ -84,5 +84,5 @@ While a daemon accepts legacy clients, a transcript recorded from any legacy ses
 - `packages/relay/src/noise/noise.test.ts`: vendored vectors, replay and out-of-order rejection at the cipher-state level.
 - `packages/relay/src/protected-records.test.ts`: framing round trips and every malformed-record rule.
 - `packages/relay/src/secure-channel.test.ts`: both modes, mixed versions, policy rejection, retries, recorded-transcript replay, downgrade attempts.
-- `packages/server/src/server/websocket/secure-relay-ingress.test.ts`: daemon admission and the flag.
-- `packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts`: real daemon through the wrangler relay. Set `PASEO_RELAY_E2E_PORT` to run the same cases against an already-running relay such as the Elixir relay in Docker.
+- `packages/daemon/src/relay_crypto/tests.rs` and `transport/relay/`: native framing, handshake, transport and admission behavior.
+- Real relay integration requires the Rust daemon and a real relay endpoint, with isolated home/credentials and retained handshake/reconnect evidence. The former TypeScript daemon test paths are not native acceptance commands. See [testing](testing.md).

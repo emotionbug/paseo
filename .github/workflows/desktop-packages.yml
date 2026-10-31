@@ -1,15 +1,28 @@
-name: Desktop Packages
+name: Native Desktop Packages
 
 on:
   push:
     branches: [main]
-  # Packaging leaves ordinary PR CI, but a PR that changes what gets packaged
-  # or how it is smoked still proves the real artifacts before merge.
   pull_request:
     paths:
-      - "packages/desktop/**"
+      - "packages/flutter_app/**"
+      - "packages/flutter_audio/**"
+      - "packages/flutter_desktop_host/**"
+      - "packages/daemon/**"
+      - "skills/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "packages/protocol/**"
+      - "packages/plugin/**"
       - "plugins/**"
-      - "nix/**"
+      - "scripts/build-flutter.mjs"
+      - "scripts/build-native-daemon.mjs"
+      - "scripts/package-native-daemon.mjs"
+      - "scripts/package-flutter-desktop.mjs"
+      - "scripts/generate-flutter-update-manifests.mjs"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/desktop-packages.yml"
 
 concurrency:
@@ -18,73 +31,69 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 env:
   ONNXRUNTIME_NODE_INSTALL: skip
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  PASEO_NATIVE_RELEASE: "1"
+  PASEO_UPDATE_REPOSITORY: ${{ github.repository }}
+  PASEO_BUILD_SOURCE_SHA: ${{ github.sha }}
+  SOURCE_SHA: ${{ github.sha }}
 
 jobs:
   linux:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: "npm"
-
+          node-version: "24.15.0"
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@boudra"
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
-
-      - name: Install package smoke dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb xauth rpm
-
-      - name: Build Linux desktop artifacts
-        # Smoke package contents and installation without spending minutes on xz compression.
-        run: |
-          printf '{"extends":"%s/packages/desktop/electron-builder.yml","deb":{"compression":"gz"},"rpm":{"fpm":["--rpm-compression=gzip"]}}' "$GITHUB_WORKSPACE" > "$RUNNER_TEMP/desktop-smoke-builder.json"
-          npm run build:desktop -- --publish never --linux --x64 --config "$RUNNER_TEMP/desktop-smoke-builder.json"
         env:
-          EP_GH_IGNORE_TIME: true
-          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
-
-      - name: Smoke installed artifacts with restricted user namespaces
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
-          if unshare --user --map-root-user --net true; then
-            echo "Expected the launching user's namespace probe to be denied"
-            exit 1
-          fi
-          sudo apt-get install -y ./packages/desktop/release/*.deb
-          node packages/desktop/e2e/linux-artifact-smoke.js packages/desktop/release disabled
-        env:
-          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke/restricted
-
-      - name: Smoke sandbox-preserving portable launches
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          unshare --user --map-root-user --net true
-          node packages/desktop/e2e/linux-artifact-smoke.js packages/desktop/release enabled
-        env:
-          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke/userns
-
-      - name: Smoke installed RPM with restricted user namespaces
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
-          sudo dpkg --remove paseo-sessions
-          # Ubuntu supplies the runtime libraries under Debian package names.
-          # RPM still performs the real payload installation and postinstall.
-          sudo rpm --install --nodeps packages/desktop/release/*.rpm
-          node packages/desktop/e2e/linux-artifact-smoke.js packages/desktop/release disabled --installed-only
-        env:
-          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke/rpm
-
-      - name: Upload packaged smoke diagnostics
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: ${{ !cancelled() }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: desktop-packaged-smoke-linux-x64
-          path: ${{ runner.temp }}/desktop-smoke
-          if-no-files-found: ignore
+          shared-key: native-packages-linux-x64
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.5"
+          channel: stable
+          cache: true
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev libayatana-appindicator3-dev libasound2-dev libpulse-dev libsm-dev dpkg-dev ffmpeg pulseaudio-utils xdg-utils patchelf
+      - name: Provision pinned AppImage tools
+        run: node packages/flutter_desktop_host/packaging/appimage-tools.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Select candidate release channel
+        run: |
+          node -e "require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'PASEO_RELEASE_CHANNEL=' + (require('./package.json').version.includes('-') ? 'beta' : 'stable') + '\n')"
+      - name: Build native Linux app and bundled daemon
+        run: node scripts/build-flutter.mjs linux
+      - name: Package native Linux installers
+        run: node scripts/package-flutter-desktop.mjs linux
+      - name: Package complete standalone native daemon and separate feed
+        run: node scripts/package-native-daemon.mjs
+      - name: Generate manifests from actual packaged artifacts
+        run: node scripts/generate-flutter-update-manifests.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-packages-linux-x64
+          path: |
+            artifacts/flutter/Paseo-Sessions-Flutter-*
+            artifacts/flutter/Paseo-Daemon-*
+            artifacts/flutter/daemon-*.json
+            artifacts/flutter/flutter-*.json
+            artifacts/flutter/packages-*.json
+          if-no-files-found: error
           retention-days: 7

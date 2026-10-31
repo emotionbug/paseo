@@ -8,7 +8,9 @@ category: Orchestration
 
 # CLI reference
 
-The Paseo CLI lets you manage agents from your terminal. It's the same interface exposed by the daemon's API, so anything you can do in the app you can do from the command line.
+The Rust Paseo CLI manages agents and daemon operations from your terminal. The 0.13.0 native migration is unpublished; build the native runtime from the checkout as described in [Updates](/docs/updates), not an old npm CLI package. Keep the executable with its generated adjacent assets.
+
+Bare `paseo` opens CLI chat. Use `paseo onboard` for explicit setup, then `paseo daemon start` and `paseo daemon status` for managed operation. The default home remains `~/.paseo`.
 
 > **Agent orchestration:** You can tell coding agents to use the Paseo CLI to spawn and manage other agents. Paseo recognizes the calling agent, so CLI-created workers get the same workspace and parent defaults as MCP-created workers.
 
@@ -215,6 +217,8 @@ Add `--forge <name>` to PR checkout when Paseo cannot infer the forge from the s
 
 ## Terminals
 
+These commands control retained daemon-side PTYs for scripts and setup automation. They do not open an interactive terminal UI in Flutter; the native client presents read-only logs.
+
 Use the workspace ID when multiple workspaces share a directory:
 
 ```bash
@@ -248,7 +252,7 @@ The output includes each script's lifecycle and supervised terminal ID. Services
 
 ## Plugins
 
-> **Trust every plugin you add.** `paseo plugin add` and `paseo plugin install` mean “I trust this codebase.” Plugin server code and Git preparation commands run unsandboxed with the daemon user's access on the daemon host; client contributions run inside Paseo. Dependencies and future updates are part of that decision. With the global `--host` option, commands run on the remote daemon host.
+> **Trust every plugin you add.** `paseo plugin add` and `paseo plugin install` mean “I trust this codebase.” Backend plugin code and Git preparation commands run unsandboxed with the daemon user's access on the daemon host. Optional JavaScript backend plugins require external Node 20+ (`PASEO_PLUGIN_NODE`); built-ins run in Rust. Executable React UI contributions are not supported by the Flutter client. Dependencies and future updates are part of the trust decision. With global `--host`, commands run on the remote daemon host.
 
 Create and manage trusted plugins on a daemon:
 
@@ -408,7 +412,7 @@ PASEO_LISTEN=127.0.0.1:6799 PASEO_RELAY_ENABLED=false paseo daemon run --home ~/
 
 It stays attached until the supervisor exits or you cancel, without a readiness timeout. Worker restart retains these launch inputs. Stop and relaunch the deployment to change them. If the home already has a live supervisor, `run` returns `already_running` without owning or launching a foreground process.
 
-Managed `start` ignores inherited daemon-setting overrides, including `PORT`, `PASEO_LISTEN`, relay, voice, and web UI settings. It preserves provider credentials and executable/runtime controls. `start --foreground` is removed; use `daemon run`. Former start/restart configuration flags such as `--port`, `--no-relay`, and `--web-ui` fail before side effects, with the corresponding `config set` migration. See [configuration edits](/docs/configuration#apply-changes).
+Managed `start` ignores inherited daemon-setting overrides, including `PORT`, `PASEO_LISTEN`, relay, and voice settings. It preserves provider credentials and executable/runtime controls. `start --foreground` is removed; use `daemon run`. Former start/restart configuration flags such as `--port` and `--no-relay` fail before side effects; use the corresponding persisted setting. `--web-ui` is obsolete and has no native replacement. See [configuration edits](/docs/configuration#apply-changes).
 
 ### Select one daemon
 

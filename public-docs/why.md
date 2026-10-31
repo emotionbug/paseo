@@ -8,13 +8,13 @@ category: Getting started
 
 # Why Paseo?
 
-Paseo is a full agentic development environment. Run coding agents, edit files, review diffs and pull requests, and test your app with terminals and a built-in desktop browser. For agent-driven development, Paseo replaces your IDE: take a task from the first prompt through review and testing in one app.
+Paseo is a native environment for agent-driven development: run coding agents, edit source, read Markdown, review diffs and pull requests, and inspect script output. Flutter clients connect to a Rust daemon that owns the work and preserves it across devices.
 
 ## Develop in one workspace
 
-Open the desktop app, choose a project and an agent, and start working. Keep the conversation, editor, terminal, diffs, and browser together in split panes. Run your app, inspect the result, and ask the agent for changes without leaving the workspace.
+Open the native desktop client, choose a host and directory, and start a session. Keep the conversation, editor, summary-first diff and read-only script logs together. The sidebar is host → directory → session; workspaces still organize worktrees and orchestration.
 
-The desktop app is available on macOS, Windows, and Linux. It starts and manages its local daemon automatically.
+The client targets Linux, macOS, Windows, Android and iOS. Desktop can manage a local Rust daemon; mobile connects remotely. This native cutover is not yet published; use the [source-build setup](/docs) rather than assuming existing upstream downloads contain it.
 
 ## Run tasks in parallel
 
@@ -26,18 +26,18 @@ Configure [workspace scripts](/docs/worktrees#scripts-and-services) to start dev
 
 Paseo runs the coding agents you already use, with your subscriptions, credentials, configuration, skills, and MCP servers. Your agents work with the files and tools on your machine. See [supported providers](/docs/supported-providers).
 
-Dictate tasks or use [voice mode](/docs/voice). Speech-to-text and text-to-speech run locally by default, with cloud providers available in settings.
+Agents can speak to you through [text-to-speech](/docs/voice) that runs locally by default, with cloud providers available in settings. The native clients do not capture microphone input.
 
 ## Continue from another device
 
-The daemon owns the running agents and workspaces. The desktop app connects to it locally; mobile, web, and CLI clients connect to the same environment. That separation lets you continue working from another device or run your environment on a server.
+The daemon owns running agents and workspaces. Native desktop/mobile clients and the Rust CLI connect to the same environment. Existing IDs, history, configuration and host-side files are preserved.
 
-Use Paseo entirely on your laptop, or connect to another machine when you need it. The native iOS and Android app gives you agents, files, terminals, and diffs on your phone. The built-in browser runs in the desktop app. [Connect your devices](/docs/connectivity) directly or through the optional end-to-end encrypted relay.
+Use Paseo on your laptop or connect to another machine. Android and iOS provide remote chat, files, diffs and read-only script logs, without running a daemon. [Connect your devices](/docs/connectivity) directly or through the optional end-to-end encrypted relay. There is no product web client, embedded browser/automation or interactive terminal UI; use your own external browser/terminal when needed.
 
 ## Automate and extend your workflow
 
 Give agents [Paseo tools](/docs/orchestration) to create worktrees, launch other agents, send prompts, and collect results. Use the [CLI](/docs/cli) or [TypeScript SDK](/docs/sdk) to automate agent and workspace operations.
 
-[Plugins](/docs/plugins) add providers, workspace panels, commands, and workflows. [Hub](/docs/hub) connects external events to agents running on your machines.
+[Backend extensions](/docs/plugins) add providers, RPCs, lifecycle behavior and usage integrations through an optional external-Node worker. Built-ins run in Rust; executable React UI plugins are not supported. The default installed runtime includes neither Node, Electron nor Chromium. [Hub](/docs/hub) connects external events to agents running on your machines.
 
-Paseo is open source under Apache-2.0, with no telemetry, tracking, or required Paseo account.
+Paseo source is Apache-2.0, with no telemetry, tracking or required Paseo account. Dependency licenses remain their own. Generated notices do not resolve the native speech libraries' source/licensing distribution requirements; consult the checkout's `docs/release.md` before distributing binaries. Model weights are downloaded on demand, not bundled.

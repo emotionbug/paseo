@@ -39,3 +39,6 @@ packages/desktop/release
 plan.*.log
 *.log
 CLAUDE.local.md
+**/target
+.tmp
+packages/app/test-results-archive-warning

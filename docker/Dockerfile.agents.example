@@ -1,17 +1,23 @@
-# Example child image that adds agent CLIs to the official Paseo image.
-#
-# Build:
-#   docker build -f docker/Dockerfile.agents.example -t paseo-with-agents .
-#
-# Then set `image: paseo-with-agents` in docker/docker-compose.example.yml.
-
+# Optional child image: agent CLIs and JavaScript extensions, NOT daemon needs.
+# Build: docker build -f docker/Dockerfile.agents.example -t paseo-with-agents .
+# Then set image: paseo-with-agents in docker/docker-compose.example.yml.
+# Node 24 is installed explicitly because the selected npm-distributed provider
+# CLIs need it. The default Paseo image contains neither Node nor npm.
+ARG NODE_IMAGE=node:24-bookworm-slim
+FROM ${NODE_IMAGE} AS provider-node
 FROM ghcr.io/getpaseo/paseo:latest
 
 USER root
-RUN npm install -g \
-  @anthropic-ai/claude-code \
-  @openai/codex \
-  opencode-ai
+COPY --from=provider-node /usr/local/bin/node /usr/local/bin/node
+COPY --from=provider-node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && npm install -g @anthropic-ai/claude-code @openai/codex opencode-ai \
+    && npm cache clean --force
 
-# Leave the image user as root. The base entrypoint prepares mounted volumes,
-# then drops the daemon and launched agents to the non-root `paseo` user.
+# Optional JS backend extensions use the base image's worker/compiler assets.
+# For an extensions-only image, omit the npm install above, retain the Node COPY,
+# and set this executable path. React/UI extensions are not supported.
+ENV PASEO_PLUGIN_NODE=/usr/local/bin/node
+
+# Keep root here: the base entrypoint prepares mounted directories without
+# recursive chown, then drops the daemon and launched agents to user paseo.

@@ -8,7 +8,7 @@ nav: 概览
 
 Paseo 让你的编程 Agent 协调其他 Agent，把工作分配到不同的 Provider 和机器上，并自动推进任务。
 
-你也可以在桌面应用中亲自启动并监督每个任务。[在不同的 worktree 中运行并行任务](/docs/parallel-development)，检查它们的 diff，并在终端和浏览器中测试每个应用，再决定合并哪个。
+也可在原生应用亲自监督任务：[在不同 worktree 中运行并行任务](/docs/parallel-development)，检查 diff 和只读脚本日志，再使用项目工具或外部浏览器/终端测试，决定合并内容。
 
 ## 你的 Agent 能做什么 {#what-your-agents-can-do}
 

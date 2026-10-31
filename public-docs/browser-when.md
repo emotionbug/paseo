@@ -1,21 +1,20 @@
 ---
-title: When to use the Paseo browser
-description: When to reach for Paseo's built-in browser instead of Playwright or agent-browser.
-nav: When to use
+title: Choosing external test tools
+description: Use separately installed tools for browser testing of your projects.
+nav: External test tools
 order: 36
-category: Browser
+category: Native scope
 ---
 
-# When to use
+# Choosing external test tools
 
-Paseo gives agents a [real browser inside Paseo](/docs/browser). Standalone tools like Playwright or agent-browser give an agent its own browser in a separate process. They overlap, so which one?
+There is no built-in Paseo browser in the native Flutter application. Use your normal external browser for manual web-project checks, or separately installed tools such as Playwright for automated browser tests. A project's existing test suite remains the first place to reuse coverage.
 
-Use the Paseo browser when:
+Keep these distinctions clear:
 
-- **You're running agents remotely and want to watch.** You see the same browser the agent is driving, live in the Paseo desktop app — not a headless browser on a box you can't see.
-- **You want the browser inside Paseo.** It's a tab in the same session, not a separate agent window to manage.
-- **You don't want to set up extra tools.** It's built in — no separate MCP server or CLI to install and wire up.
+- A script running a web project's tests is a host-side process. Paseo can run the script and display read-only logs without embedding a browser.
+- External automation tools may install browser binaries and use their own profiles. That is an opt-in project/tool dependency, not part of Paseo's default installed runtime.
+- A remote service URL must be reachable from the machine running the browser. `localhost` on your phone is not the daemon host.
+- Browser tests of a project or the documentation website are not tests of the native Flutter client.
 
-Reach for Playwright or agent-browser when the browser work stands on its own — headless CI runs, an existing test suite, or automation that isn't tied to an agent session in Paseo.
-
-The Paseo browser is [desktop only for now](/docs/browser).
+See [external browser workflow](/docs/browser), [workspace scripts](/docs/worktrees#scripts-and-services), and [connectivity](/docs/connectivity).

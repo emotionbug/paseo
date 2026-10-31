@@ -1,12 +1,12 @@
 # Product
 
-Paseo is an environment for running, monitoring, and interacting with coding agents across desktop, mobile, web, and the command line.
+Paseo is an environment for running, monitoring, and interacting with coding agents through native Flutter clients on Linux, macOS, Windows, Android and iOS, and a Rust command-line client. The Rust daemon runs on desktop/server hosts; Android and iOS are remote clients.
 
 **Paseo has a lean, opinionated core built to be extended.** It should be easy to start using and leave room for people to build far beyond the default experience.
 
 ## Agents are the focus
 
-The central workflow is giving an agent a task, understanding what it is doing, providing direction, and reviewing the result. Files, terminals, diffs, and other supporting tools help you do that.
+The central workflow is giving an agent a task, understanding what it is doing, providing direction, and reviewing the result. Markdown, source editing, summary-first diffs, remote folder selection, and read-only script/setup logs support that work. The sidebar is host → directory → session; workspaces remain orchestration entities rather than sidebar groups.
 
 Paseo should make this workflow coherent across providers and devices. You should be able to use the agent that fits a task and keep working from another device without rebuilding your environment around it.
 
@@ -42,9 +42,9 @@ Paseo's flexibility depends on keeping control with the user:
 
 - **Self-hosted:** Run agents on your own machines, with your own environment, files, and credentials.
 - **Provider choice:** Use supported agent harnesses and extend provider support through plugins. Your workflow should be able to evolve as your choice of provider changes.
-- **Cross-device:** Use desktop, mobile, web, and CLI clients according to the situation.
+- **Cross-device:** Use native desktop/mobile clients and the CLI according to the situation. There is no product web client.
 - **Privacy:** No Paseo telemetry, tracking, or forced account. The relay is optional and end-to-end encrypted.
-- **Open source:** Paseo is Apache-2.0 licensed. You can inspect it, modify it, and build on it.
+- **Open source:** Paseo source is Apache-2.0 licensed. Dependency licenses remain their own; unresolved binary distribution requirements are recorded in [release](release.md#distribution-requirements).
 
 Convenience and ownership should work together. Offering a straightforward way to connect should preserve the option to operate your own setup.
 
@@ -62,11 +62,11 @@ The boundary can evolve. Some built-in capabilities may eventually make more sen
 
 ## Extensibility and composition
 
-Plugins are a central part of how Paseo gains capability.
+Built-in integrations run in Rust. Optional JavaScript backend extensions can add providers, RPCs, lifecycle behavior, usage sources and settings data using an externally installed Node runtime. Node is also repository build tooling, but is not bundled in the default installed runtime.
 
-Someone who needs a different agent provider, a specialized workspace panel, or a custom command should be able to build and share it independently. They can make the choices that fit their users and maintain the integration on their own schedule.
+Executable React UI-plugin compatibility, embedded browser/automation and interactive terminal UI are intentionally excluded. There is no Electron, Chromium or webview fallback for these surfaces. Script and setup PTYs remain daemon functionality; their native presentation is read-only logs.
 
-Paseo's role is to provide interfaces that make those contributions possible across the daemon and connected clients. The [plugin documentation](https://paseo.sh/docs/plugins) describes what each released API supports.
+Paseo's role is to preserve the backend and SDK interfaces while making the native client boundary explicit. See [backend extensions](plugins.md) for the supported runtime and contribution scope.
 
 The [SDK](https://paseo.sh/docs/sdk) lets applications and services use the daemon directly. A separate dashboard, automation service, or client can build on the same agent infrastructure. Those projects do not all need to become features of the main app.
 

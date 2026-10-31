@@ -435,6 +435,23 @@ Custom OMP profiles should extend `omp`. They inherit the OMP adapter's `rpc-ui`
 
 `options.sessionDir` is used only for importing sessions that were started outside Paseo. If `command` or XDG env vars move OMP's state directory, set `options.sessionDir` to the resulting OMP JSONL session directory; launching and resuming still go through the configured command. OMP waits 20 seconds for its initial `ready` frame and 60 seconds for later control-plane RPCs by default. `options.rpcTimeoutMs` overrides both deadlines.
 
+#### Kiro CLI through OMP
+
+The standalone [omp-kiro plugin](https://github.com/emotionbug/omp-kiro) uses your Kiro CLI login as an OMP model provider. Paseo still runs OMP: its tool loop, permissions, host tools, and subagents remain in control.
+
+Install the plugin and its optional Paseo profile:
+
+```bash
+kiro-cli login
+git clone https://github.com/emotionbug/omp-kiro.git
+node omp-kiro/setup.mjs --paseo-home "$HOME/.paseo"
+paseo daemon reload --home "$HOME/.paseo"
+```
+
+Select **Kiro (OMP)** and a discovered model for a new agent. Setup preserves existing defaults and other providers, and does not restart the daemon. The plugin works without Paseo; see its [installation guide and limitations](https://github.com/emotionbug/omp-kiro#readme).
+
+#### Other Pi-compatible forks
+
 For other providers that keep Pi's `--mode rpc` API but write sessions somewhere else, extend `pi`, replace the command, and provide the JSONL session directory:
 
 ```json

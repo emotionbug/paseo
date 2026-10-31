@@ -11,8 +11,8 @@ The bar is four questions:
 
 Every pull request needs evidence for the questions its change touches. Pull requests without evidence get closed.
 
-For plugin changes, verify the [SDK import boundaries](plugins.md#sdk-import-boundaries) before
-exercising contributions. Include the boundary tests and both runtime loaders in the evidence.
+For plugin changes, verify the [backend extension boundary](plugins.md#runtime-and-source-ownership).
+Exercise the Rust owner and optional external-Node worker; Flutter does not load React client plugins.
 
 ## Evidence
 
@@ -41,13 +41,13 @@ The two things that go wrong most often:
 
 Paseo is composable by design, which means your change sits next to features you didn't touch. Open the surfaces around it. A change to the agent list affects archive, subagents, and tabs; a change to git actions affects worktrees and the checkout flow.
 
-Performance is part of this. The app is Expo React Native, not a web app in a native shell. You are not writing CSS, styles resolve differently, and performance characteristics differ per platform. What feels instant in a desktop dev build can be visibly slow on a phone.
+Performance is part of this. The client is native Flutter on five platforms, not a browser shell. Measure native layout/frame behavior rather than React, CSS or Chromium behavior. A desktop result does not establish phone performance.
 
-If your change touches a hot path such as the terminal, the message list, or git polling, submit before and after numbers. [terminal-performance.md](terminal-performance.md) has the terminal pipeline and its benchmarks, and [development.md](development.md) covers renderer and React profiling.
+If your change touches a hot path such as script logs, the message list or Git polling, submit before/after measurements. [Script/log performance](terminal-performance.md) and [development](development.md) describe the current boundaries.
 
 ## Every platform it affects
 
-Your code does not only run on the platform you tested it on. The same app ships to iOS, Android, browser web, and Electron on macOS, Windows, and Linux, and the daemon runs on all three desktop operating systems plus Docker.
+The client targets iOS, Android, macOS, Windows and Linux. The Rust daemon runs on desktop/server operating systems and in a native container. There is no product web client.
 
 You aren't expected to own every device. You are expected to say what you covered:
 
@@ -55,14 +55,13 @@ You aren't expected to own every device. You are expected to say what you covere
 | --------------- | ------ | ----- |
 | iOS             |        |       |
 | Android         |        |       |
-| Web             |        |       |
 | Desktop macOS   |        |       |
 | Desktop Windows |        |       |
 | Desktop Linux   |        |       |
 
 Install what you reasonably can. An iOS simulator and an Android emulator cover most of the gap on a single machine, see [development.md](development.md) and [android.md](android.md).
 
-For the rules about which code runs where, read the platform gating section in [CLAUDE.md](../CLAUDE.md). The recurring traps have their own docs: [hover.md](hover.md), [unistyles.md](unistyles.md), [floating-panels.md](floating-panels.md), [mobile-panels.md](mobile-panels.md), [expo-router.md](expo-router.md).
+Use [architecture](architecture.md), [native styling](unistyles.md), [native navigation](expo-router.md), and the affected feature's current Flutter implementation. Old React/Electron source paths are not the native acceptance surface.
 
 App and daemon versions also drift, in both directions. That has its own contract: [protocol-compatibility.md](protocol-compatibility.md).
 
@@ -72,9 +71,9 @@ Tests are evidence only when they exercise the real thing.
 
 - A bug fix needs a regression test that fails on the old code for the reported reason.
 - A feature needs tests that go through the same interface a user or a caller uses.
-- Web flows need an actual Playwright run, not a mocked-out approximation of one.
+- Native client flows need actual Flutter execution. Website Playwright checks cover the separate website, not the product client.
 - Agent provider work needs manual verification against the real provider by someone who can tell that it worked. A fixture and a mock prove the fixture parses, nothing more.
 
 Tests that mock away the behavior, assert on internals, or pass against the broken code claim coverage that isn't there.
 
-[testing.md](testing.md) is the standard, including how to run suites without freezing your machine. For driving a real daemon in a test, see [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md). For mobile flows, [mobile-testing.md](mobile-testing.md). For Electron screenshots, [browser-capture-harness.md](browser-capture-harness.md).
+[testing.md](testing.md) is the standard, including exact recorded evidence and unverified platforms. For an isolated Rust daemon, see [ad-hoc daemon testing](ad-hoc-daemon-testing.md); for devices, [mobile testing](mobile-testing.md); for the removed browser capture boundary, [native capture](browser-capture-harness.md).

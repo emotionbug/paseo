@@ -66,8 +66,7 @@ Omitting `paseoTools` enables the complete catalog. Set `enabled` to `false` to 
 or list exact tool IDs in `disabledTools` to remove selected tools. Custom profiles do not inherit
 this policy from `extends`; configure each custom provider ID separately.
 
-Browser tools still require browser tools to be enabled and a connected browser host. The
-voice-only `speak` tool is separate from this policy.
+The voice-only `speak` tool is separate from this policy. The native runtime has no embedded browser automation tools or browser host.
 
 This setting limits the catalog presented to an agent. It is not a security boundary for an agent
 that can access the host through a shell.
@@ -126,6 +125,8 @@ These tools manage scripts configured in a workspace's `paseo.json`. Each requir
 See [Git worktrees](/docs/worktrees#scripts-and-services) for `paseo.json` configuration.
 
 ### Terminals
+
+These are daemon-side PTY APIs retained for script/setup automation. The Flutter client shows read-only logs, not an interactive terminal UI.
 
 | Tool                 | Function                                                                     |
 | -------------------- | ---------------------------------------------------------------------------- |
@@ -191,10 +192,6 @@ Omit absent optional settings. If no profile fits, use provider discovery to cho
 | -------------------------- | ------------------------------------------------- |
 | `list_pending_permissions` | Return pending permission requests across agents. |
 | `respond_to_permission`    | Approve or deny a pending permission request.     |
-
-### Browser
-
-Browser automation is opt-in and adds tools for opening tabs, reading pages, clicking, typing, and taking screenshots. See the [Browser tools reference](/docs/browser-tools).
 
 ### Voice
 

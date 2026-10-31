@@ -1,6 +1,6 @@
 ---
 title: Updates
-description: How Paseo releases work, the difference between stable and beta channels, and how to opt in to earlier updates.
+description: Native build identity, update channels, and migration availability.
 nav: Updates
 order: 5
 category: Getting started
@@ -8,66 +8,40 @@ category: Getting started
 
 # Updates
 
-Paseo ships updates through two channels: **Stable** and **Beta**.
+The checkout version is **0.13.0**, but the Rust/Flutter migration is **unpublished**. Existing downloads, npm CLI packages, store listings, and container `latest` tags must not be assumed to contain it.
 
-Most releases go out on the stable channel. Betas are release candidates that let you test what's coming next before it rolls out to everyone.
+## Native build identity
 
-## Version numbers
+The product client is Flutter on Linux, macOS, Windows, Android, and iOS. Desktop/server hosts run the Rust daemon and Rust `paseo` CLI; mobile clients connect remotely and do not run a daemon.
 
-Paseo follows [Semantic Versioning](https://semver.org) with prerelease tags.
+For a local source build, use Node 24, Rust/Cargo, Flutter, and the target platform's native tools:
 
-A stable release looks like this:
-
-```
-v0.1.90
-```
-
-A beta for the same release looks like this:
-
-```
-v0.1.90-beta.1
+```bash
+npm ci
+npm run build:daemon
+# Or an optimized LOCAL build, not release provenance:
+npm run build:daemon:release
+npm run build:flutter -- linux
 ```
 
-If a release needs more testing, we cut additional betas:
+Choose `linux`, `macos`, or `windows` on the matching desktop host. Flutter outputs are under `artifacts/flutter/`. The daemon is `target/debug/paseo` or `target/release/paseo` (`paseo.exe` on Windows), unless `CARGO_TARGET_DIR` overrides the root. Keep generated adjacent assets with the executable.
 
-```
-v0.1.92-beta.1
-v0.1.92-beta.2
-v0.1.92-beta.3
-```
+## Updating a local installation
 
-When the release is ready, the final stable tag is `v0.1.92` — not `v0.1.93`. The betas are checkpoints on the way to the same stable version.
+Back up your Paseo home before replacing a runtime. The default remains `~/.paseo`, including existing configuration and history. Stop the managed daemon with `paseo daemon stop`, replace the complete runtime with a build from the intended revision, then run `paseo daemon start` and `paseo daemon status`. A worker restart is not a replacement of the supervisor executable.
 
-## Stable channel
+Bare `paseo` opens CLI chat. Use `paseo onboard` for explicit setup, not as an update command.
 
-The stable channel is the default. Stable desktop releases roll out gradually over **36 hours** so that if something unexpected slips through, it doesn't hit everyone at once. Automatic update checks pick up the release as the rollout progresses; clicking **Check** in the app bypasses the rollout and installs immediately.
+## Channels and publication
 
-Stable releases are what most users should run.
+Stable and beta are release identities, not proof that this migration has shipped. Optimizing a local binary does not enable official updater provenance. Native publication requires validated source identity, channel/repository metadata, complete runtime artifacts, signing where applicable, and an authorized release.
 
-## Beta channel
+Do not rely on legacy desktop update-screen instructions for a local Flutter build. See the repository [release guide](https://github.com/getpaseo/paseo/blob/main/docs/release.md) for current update manifests, rollout controls, and packaging requirements.
 
-The beta channel gets every prerelease as soon as it's published, with no rollout delay. When a beta is promoted to stable, beta users receive that stable update immediately too.
+## Mobile and verification boundaries
 
-Betas are the best way to get fixes and features early. If you hit a bug, report it — beta feedback is what makes stable releases reliable.
+`npm run build:apk` or `npm run build:apk:arm64` builds the Android remote client. Without release signing credentials, output is explicitly debug-signed. `npm run build:ios` requires macOS/Xcode and emits an unsigned device app archive unless provisioning/export is supplied. Neither output is automatically store-ready.
 
-### How to join the beta channel
+Recorded runtime execution is on Linux. Android ARM64 release-mode compilation passed with debug signing, without APK installation or device execution. Windows/macOS/iOS execution is not claimed. See [testing evidence](https://github.com/getpaseo/paseo/blob/main/docs/testing.md) for current desktop follow-up results and limitations; workflow definitions are not successful runs.
 
-In the desktop app:
-
-1. Open **Settings**
-2. Go to **About**
-3. Under **Release channel**, select **Beta**
-
-The app will check for beta updates from then on.
-
-## App stores
-
-Desktop releases and the CLI are usually available first. App Store and Play Store releases can lag behind because they go through review.
-
-There is no beta channel in the app stores right now — only stable builds are submitted. If you want early Android builds, download the APK from the [GitHub releases page](https://github.com/getpaseo/paseo/releases).
-
-## What to do if something breaks
-
-Beta builds are expected to have rough edges. If a beta causes problems, you can switch back to the stable channel in **Settings → About → Release channel**. The next stable update will install normally.
-
-If you need a fix that hasn't shipped to stable yet, stay on beta and report the issue. Most problems found in beta are fixed before the stable release.
+Generated third-party notices do not certify distributability. The TTS-enabled Sherpa 1.12.28 prebuilts statically include GPL espeak-ng; corresponding-source/offer, combined-work, MPL/LGPL, CRT, and Rust toolchain obligations remain unresolved. The [release guide](https://github.com/getpaseo/paseo/blob/main/docs/release.md) owns these requirements. No license change or removal of local TTS is implied.

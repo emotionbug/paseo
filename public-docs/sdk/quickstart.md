@@ -12,7 +12,9 @@ category: TypeScript SDK
 npm install @getpaseo/client
 ```
 
-Requires Node.js 22 or newer.
+The external SDK requires Node.js 22 or newer. This is a requirement for your JavaScript/TypeScript integration, not the Rust daemon or Flutter client. Repository builds use Node 24.
+
+Build the unpublished native runtime from the checkout as described in [Updates](/docs/updates), then use `paseo onboard` for explicit setup and `paseo daemon start` to start it. Bare `paseo` opens chat; the SDK npm package does not install a daemon.
 
 ## Connect
 

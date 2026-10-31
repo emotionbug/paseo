@@ -10,7 +10,9 @@ nav: 快速开始
 npm install @getpaseo/client
 ```
 
-需要 Node.js 22 或更高版本。
+外部 SDK 需要 Node.js 22 或更高版本。这是 JavaScript/TypeScript 集成程序的要求，不是 Rust daemon 或 Flutter 客户端的要求。仓库构建使用 Node 24。
+
+请按[更新](/docs/updates)从检出构建尚未发布的原生运行时，然后使用 `paseo onboard` 显式设置，使用 `paseo daemon start` 启动。直接运行 `paseo` 打开聊天；SDK npm 包不会安装 daemon。
 
 ## 连接 {#connect}
 

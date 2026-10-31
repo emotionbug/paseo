@@ -1,265 +1,112 @@
 # Testing
 
-## Philosophy
+Test observable behavior at the boundary that owns it. Rust unit tests, Dart/widget tests, wire integration tests, actual provider runs, native app interaction, packaging, and signed distribution each prove different things. None is a substitute for all the others.
 
-Tests prove behavior, not structure. Every test should answer: "what user-visible or API-visible behavior does this verify?"
+## Commands and ownership
 
-## Test-driven development
+From the repository root:
 
-Work in vertical slices: one test, one implementation, repeat. Each test responds to what you learned from the previous cycle.
-
-```
-RIGHT (vertical):
-  RED→GREEN: test1→impl1
-  RED→GREEN: test2→impl2
-  RED→GREEN: test3→impl3
-
-WRONG (horizontal):
-  RED:   test1, test2, test3, test4, test5
-  GREEN: impl1, impl2, impl3, impl4, impl5
+```sh
+npm run test:daemon        # cargo test --workspace --locked
+npm run typecheck:daemon   # cargo check --workspace --all-targets --locked
+npm run test:flutter      # Flutter tests through the repository SDK wrapper
+npm run typecheck:flutter # Flutter analyze through the same wrapper
+npm run test:node          # retained SDK/extension/tooling workspace tests
+npm run typecheck:node     # retained TypeScript workspaces
 ```
 
-Writing all tests first then all implementation produces bad tests — you end up testing imagined behavior instead of actual behavior.
+The root `test` and `typecheck` commands include the native daemon as well as Flutter and retained Node tooling. Node tests do not exercise a Node product daemon: the runtime is Rust. `cargo test --workspace --locked` and `cargo check --workspace --all-targets --locked` can also be run directly.
 
-## Fallible user actions
+Rust tests are colocated in `packages/daemon/src` and its test modules. Flutter tests live in `packages/flutter_app/test`; actual app integration runs must use the Flutter client, not a browser rendering of the old UI. Optional worker and SDK checks belong to their retained TypeScript workspaces. Packaging/tooling tests under `scripts/` validate artifact contracts, not the actual behavior of every target OS.
 
-Every user action that can fail must expose the complete operation state in the UI:
+Do not run all heavy suites concurrently. Select a bounded relevant check during an explicitly authorized verification pass. Preserve errors and failing output; do not suppress a real service failure or silently relabel a mock as end-to-end.
 
-- **Pending:** show immediate progress and prevent accidental duplicate submissions.
-- **Success:** show the requested result, or a clear success acknowledgement when the result is not otherwise visible.
-- **Failure:** keep an actionable error visible in the same context until the user retries or dismisses it.
+## Required native smoke boundaries
 
-Logs, console output, and a reset button are not user feedback. Neither is a platform API unless it is verified on every supported platform: React Native Web's `Alert.alert()` is a no-op, so browser and Electron failures must use rendered app UI such as the shared alert component.
+Use a disposable `PASEO_HOME`, checkout, endpoint, and model cache where applicable. Never stop, reset, install over, or reuse the user's installed daemon/application for a migration smoke.
 
-Every fallible action needs behavioral coverage for success and failure. RPC-backed UI should use an app Playwright test with a real browser, network, and daemon whenever feasible. The failure test must assert what the user can see and do after the failure, not an internal response, state field, or log line. Add distinct timeout or disconnect cases when they produce distinct recovery behavior.
+- Launch the real Rust daemon and native Flutter client; connect, authenticate, and restore persisted host state.
+- Exercise host → directory → session navigation, independent collapse, empty directories, filtering, and same-path separation across hosts.
+- Browse a remote host's folders; create a session in the selected directory; rename and reopen it.
+- Stream provider output, answer permissions, reconnect, restore history, and verify failures remain visible.
+- Render Markdown, edit/read back source, and open a large summary-first diff without eagerly loading every patch.
+- Start/stop workspace setup and service scripts; inspect read-only logs. Verify the backend PTY survives client presentation changes.
+- Exercise schedules, MCP, connected-host forwarding, profiles, and native CLI operations at their real protocol boundaries.
+- Exercise desktop start/idempotence, worker restart, supervisor ownership, owned shutdown, keep-running policy, and preservation of an unowned daemon. A direct Rust unit test is not a Dart-to-desktop-host IPC test.
+- Exercise native tray/menu behavior on the actual desktop, and bundled Neovim editing as a real process. Compilation alone does not prove either.
+- Exercise speech model installation, native library loading, VAD, synthesis, resampling, and recognition separately from microphone capture and cloud-provider tests.
 
-## Determinism first
+The client deliberately excludes interactive terminal UI, embedded browser/automation, web, and executable React UI plugins. Do not keep obsolete Electron/Metro/browser smoke commands as the acceptance path for the native product.
 
-Tests must produce the same result every run:
+## Retained Linux desktop regression
 
-- No conditional assertions or branching paths
-- No reliance on timing, randomness, or network jitter
-- No weak assertions (`toBeTruthy`, `toBeDefined`)
-- Assert the full intended behavior, not fragments
+`packages/flutter_app/integration_test/desktop_lifecycle.dart` exercises the real native desktop coordinator, user engines, managed daemon and editor. `tools/native-desktop-smoke/run.py` and `bus.py` provide isolated Linux desktop/session services and collect results. Prerequisites are Linux, Xvfb, `dbus-run-session`, Python 3 with `python3-dbus` and `python3-gi`, Gdk 3 introspection, the Flutter Linux toolchain, and a complete built native runtime directory. Do not replace that runtime with a bare Cargo executable missing its assets.
 
-```typescript
-// Bad: conditional and weak
-it("creates a tool call", async () => {
-  const result = await createToolCall(input);
-  if (result.ok) {
-    expect(result.id).toBeDefined();
-  }
-});
+From `packages/flutter_app`, with consistent `ANDROID_HOME`/`ANDROID_SDK_ROOT` if Android tooling is also configured:
 
-// Good: deterministic and explicit
-it("returns timeout error when provider times out", async () => {
-  const result = await createToolCall(input);
-  expect(result).toEqual({
-    ok: false,
-    error: { code: "PROVIDER_TIMEOUT", waitedMs: 30000 },
-  });
-});
+```sh
+flutter build linux --debug --target=integration_test/desktop_lifecycle.dart
+python3 ../../tools/native-desktop-smoke/run.py --runtime /absolute/path/to/native-runtime-directory
 ```
 
-## Flaky tests are a bug
+The runner uses private `HOME`/`PASEO_HOME` and the default GPU path, without a Node product runtime. It waits for actual widgets before reporting case state. Its three lifecycle cases are tray hide/activate/menu Quit, last-window close with no tray panel (a real watcher without a host), and GNOME logout while the user window is hidden. Assert managed-daemon shutdown in every case. Software-renderer runs are diagnostic evidence, not a substitute for default-GPU coverage.
 
-Never remove a test because it's flaky. Find the variance source (time, randomness, race condition, shared state, non-deterministic output, environment drift) and fix it.
+Screenshot phase acknowledgements keep the user window alive until capture completes, preventing a race with Quit. The visual assertion compares the same window immediately before hiding and after restoration: matching pixels establish that hide/restore preserved its rendered contents, not conformity to a style golden.
 
-## Real dependencies over mocks
+### Vendored Linux multiwindow ownership
 
-Mocks are not the default. They require an explicit decision.
+The project vendors `desktop_multi_window` **0.3.1+paseo.1**, retaining its license and upstream macOS/Windows implementations. The Linux patch gives each Flutter engine a private `GdkDisplay`/`EGLDisplay`, scopes GL bindings during creation, unbinds EGL before GTK's before-paint phase, and keeps the display alive until engine teardown finishes. Flutter 3.47 terminates an engine's EGL display during teardown; sharing that display across live engines invalidated another window's rendering resources. A captured failure reached GTK's next-frame `gdk_gl_context_make_current` and libGLX `BadAccess` after deferred EGL teardown. The regression must cover closing and restoring actual windows, not merely engine construction or a mocked channel response.
 
-- **Database**: real test database, not a mock
-- **APIs**: real APIs with test/sandbox credentials, not request mocks
-- **File system**: temporary directory that gets cleaned up, not fs mocks
+## Recorded migration evidence
 
-Ask: "will this still hold with real dependencies at runtime?" If no, don't mock.
+The following is **local Linux evidence for this cutover**, not a release certification or a statement about another OS:
 
-### Use swappable adapters instead
+| Boundary                                | Observed result                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rust daemon checks                      | 633 unit tests and one doctest passed (634 total)                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Retained JavaScript workspaces          | `npm run test:node` passed 1,994 tests, with four skipped; repository Node script checks passed 34 tests; final retained-workspace typecheck passed, including worker, examples and SDKs                                                                                                                                                                                                                                                                                                     |
+| Native Flutter + Rust UI smoke          | Ten-flow smoke passed; four real native screenshots reviewed: host tree, Markdown, 432 KB diff, compact sidebar                                                                                                                                                                                                                                                                                                                                                                              |
+| Provider and extension interoperability | Real Rust adapters/daemon passed Claude, ACP and MCP scenarios against controlled provider-protocol boundary fixtures; these were not paid live Claude/ACP LLM executions. Optional external-Node backend-extension lifecycle was exercised separately                                                                                                                                                                                                                                       |
+| Desktop lifecycle IPC                   | Actual Dart `DesktopDaemonService` → Rust desktop-host passed managed start, idempotence, worker restart, supervisor ownership, owned stop, keep-running, and unowned-daemon preservation                                                                                                                                                                                                                                                                                                    |
+| Native runtime assets and CLI           | Normal-entry Linux release build via `node scripts/build-flutter.mjs linux` passed with a bundled native runtime and no publication identity. Packaged executable hash matched provenance; `PATH=/nonexistent` version execution returned `paseo 0.13.0`. Reserved/Unicode CLI deep-link IDs and spaced project paths passed a separate launcher-boundary check                                                                                                                              |
+| Normal-entry Linux release UI           | Actual release `paseo_sessions`, with no test Dart entry or runtime override, passed in private Xvfb/D-Bus and private homes using `/usr/bin:/bin` with Node absent. The supervisor executable resolved to bundled `runtime/paseo`; daemon status was reachable, desktop-managed and v0.13.0. Reviewed production screenshot showed the full Sessions shell and This computer Live without an error banner. Native tray Quit Paseo exited the app with status 0 and stopped its owned daemon |
+| Flutter static/unit checks              | Final Flutter analyze reported no issues; the complete Flutter test run passed 15 tests                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Native speech                           | Production Sherpa 1.12.28 loader/FFI; Silero VAD rejected all 31 digital-silence windows and accepted 48 synthesized-speech windows; transactional Kokoro/Parakeet model download/install; TTS produced 44,404 samples at 24 kHz; production PCM resampler and Parakeet recognized exactly `Hello, this is a speech test.`                                                                                                                                                                   |
+| Android compilation and payload         | Final Linux-hosted ARM64 release-mode wrapper build passed with Flutter 3.47.5, compile SDK 37.0 and AGP 9.1.1. ZIP enumeration verified only `arm64-v8a` native libraries, including `libapp.so` and `libflutter.so`; `apksigner verify` passed with Android Debug signing. The corrected APK is 37,410,467 bytes (37.4 MB decimal). No installation, device execution or publication is claimed                                                                                            |
+| Native editor                           | Actual packaged Neovim delete, undo, Korean insertion and `:w` passed                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Native desktop lifecycle                | Latest retained debug integration build and portable default-GPU regression passed all three cases after the GLES `eglBindAPI` correction, with actual `PaseoShell` readiness and no renderer overrides. Earlier phase-acknowledged captures matched the same window's pixels before hide and after restoration. Earlier software-renderer and Skia-GPU runs also passed                                                                                                                     |
 
-When you need test isolation, design code so dependencies are injectable:
+Recorded local proof locations include:
 
-```typescript
-interface EmailSender {
-  send(to: string, body: string): Promise<void>;
-}
+- `/tmp/paseo-native-smoke-proof-RQuBYN`: ten-flow native client/daemon smoke.
+- `/tmp/paseo-dart-lifecycle-proof-EGYKDJ`: final recorded Dart-to-desktop-host lifecycle run.
+- `/tmp/paseo-native-package-proof-i1Dilu/verification.json`: relocated executable hash and native version execution without Node on `PATH`. Reserved/Unicode deep-link IDs and spaced project paths were verified separately in the recorded `desktop_cli.py` stdout (job `bg108`), not by this JSON file.
+- `packages/flutter_app/build/linux/x64/release/bundle`: normal-entry local Linux release build, with packaged runtime SHA-256 `49461ebb63a8a5cebed6756e78664f36e4c557100c689e523281920382bdc256` matching provenance, native version execution with `PATH=/nonexistent`, and release identity false. These hash/version observations are build evidence; UI execution is recorded separately below.
+- `/tmp/paseo-production-bundle-proof-ifgtgr7c`: normal-entry release UI, bundled-runtime executable identity, reachable desktop-managed daemon, reviewed `production.png`, native tray Quit and owned-daemon shutdown. The run used private Xvfb/D-Bus, `HOME` and `PASEO_HOME`, no `PASEO_DESKTOP_RUNTIME` override, and `/usr/bin:/bin` with Node confirmed absent. Final artifact verification JSON is retained alongside the screenshot.
+- `/tmp/paseo-native-extension-smoke-JRISnz/attempt-1793297454710918880/evidence`: optional extension lifecycle, with a native-only default process tree.
+- `/tmp/paseo-native-desktop-proof-cvkj2q7m/tray/events.jsonl`: actual Neovim editing.
+- `/tmp/paseo-native-desktop-proof-gp71uas4`: default-GPU portable regression, three of three lifecycle cases passed; `bus.jsonl` records `restored-pixels-match-before-hide` from phase-acknowledged captures of the same window.
+- `/tmp/paseo-native-desktop-proof-yrr4uyir`: latest retained integration build and all three default-GPU lifecycle scenarios passed after the GLES `eglBindAPI` correction.
+- `/tmp/paseo-native-desktop-proof-3hw3cdv6/results.json`: all three software-renderer lifecycle cases, including real no-panel behavior.
+- `/tmp/paseo-native-speech-proof-XQQw9g/result.json` and `native-speech.wav`: native speech inference.
+- `artifacts/flutter/Paseo-Sessions-Flutter-0.13.0-android-arm64-debug-signed.apk`: verified ARM64-only native payload, SHA-256 `11a5c8ddca90e1dfa46e57474086dcf81099a10b2995a1864dc068df2f3d47b9`; verified Android Debug certificate SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
 
-// Production
-const realSender: EmailSender = { send: sendgrid.send };
+These are temporary local investigation artifacts, not published downloadable release evidence. Each proves the recorded run, not unexecuted later edits. The speech models were temporary downloads, not packaged weights.
 
-// Test: in-memory adapter
-function createTestEmailSender() {
-  const sent: Array<{ to: string; body: string }> = [];
-  return {
-    send: async (to: string, body: string) => {
-      sent.push({ to, body });
-    },
-    sent,
-  };
-}
-```
+Residual upstream GTK 3 signal-disconnect cleanup warnings and Flutter implicit-view/messenger teardown warnings were observed. They were not suppressed; none of the three recorded lifecycle flows crashed. Passing these flows does not establish warning-free teardown.
 
-## End-to-end means end-to-end
+The empty-`PATH` check covers the native CLI's version command only. A full GTK UI still needs system helpers: removing every command from `PATH` prevented the system glycin PNG loader from finding `bwrap`. For a Node-absent UI check, preserve required system paths and verify that Node is absent there; do not treat the deliberately broken system-helper environment as an application packaging failure.
 
-When a test is labeled end-to-end, it calls the real service. No environment variable gates, no conditional skipping, no mocking the external dependency.
+At the time of this record there was **no actual Windows, macOS, Android-device, iOS or Wayland execution**. Android ARM64 compilation passed, but no production signing, installation or mobile runtime test is claimed. Provider fixtures do not establish paid live LLM execution. Microphone hardware and live cloud-speech services were not tested by the native inference run. No release was published, and the user's existing app, daemon and OMP were not installed over or restarted. Do not convert an unexecuted check into a passing claim.
 
-### Packaged desktop smoke
+## CI definitions versus execution
 
-The packaged desktop smoke is an external observer of the production launch path. It must not add a smoke-only branch to Electron main or start the daemon itself.
+`.github/workflows/ci.yml` defines native-daemon Linux, Windows and macOS lanes and Flutter lanes. Native-daemon jobs build the native executable/optional worker and run `cargo test --workspace --locked`. Retired TypeScript server/integration/CLI jobs are not the product runtime acceptance path. `.github/ci-paths.yml` and CI Recovery route the retained jobs.
 
-The harness launches the packaged app with isolated user data and daemon state, connects to the real renderer over Chromium's debugging protocol, and requires all of these outcomes:
+A matrix entry proves intended routing only. Report its actual run ID, platform, revision, result and logs before calling that platform verified. The same rule applies to release/build workflows: an installer filename or generated manifest does not establish successful execution, signing, publication, or legal distribution readiness.
 
-- the `paseo://app/` renderer mounts into `#root`;
-- the sandboxed preload exposes the desktop bridge;
-- the renderer starts a fresh desktop-managed daemon through the normal startup bootstrap;
-- the bundled CLI can query that daemon and run a terminal command.
+## Failure and security expectations
 
-The Desktop Packages workflow runs the Linux x64 smoke under Xvfb on main pushes and on pull requests that change `packages/desktop/**`, `nix/**`, or the workflow itself. The Linux job is pinned to Ubuntu 24.04 and runs twice: with AppArmor user namespace restrictions enabled, then with user namespaces available. It installs the real `.deb`, launches the real AppImage via `--appimage-extract-and-run`, and launches the extracted tar archive. It also replaces the Debian installation with the generated RPM through `rpm --install --nodeps` and checks its sandboxed launch under restrictions. Ubuntu supplies the runtime libraries under Debian package names, so this verifies the RPM payload and postinstall rather than Fedora dependency resolution. Each launch verifies the reported sandbox decision; enabled renderers must also have `NoNewPrivs: 1` and `Seccomp: 2` in `/proc`. The desktop release matrix retains its host-native smokes. Linux release builds stay on Ubuntu 22.04 to preserve their native-library baseline; the restricted-host regression runs on Ubuntu 24.04 after merge.
+Every fallible action exposes pending, success, and error state. A failed save must retain the draft; a failed provider turn must retain the error; a failed directory listing must allow retry without selecting a different host. Tests should assert these transitions, not just absence of crashes.
 
-Never repair `chrome-sandbox` in the smoke harness. The old unpacked smoke set its mode to 4755 and concealed a broken package installer. Run installer tests as root and launch tests as an ordinary user: a root-run namespace probe does not reproduce Ubuntu's AppArmor policy for desktop users. Preserve both restricted and unrestricted cases; either one alone permits another sandbox regression.
-
-Smoke jobs upload renderer screenshots and desktop/daemon diagnostics, including successful Linux sandbox evidence.
-
-To exercise the smoke locally on Linux:
-
-```bash
-PASEO_DESKTOP_SMOKE=1 \
-PASEO_DESKTOP_SMOKE_ARTIFACT_DIR=/tmp/paseo-desktop-smoke \
-npm run build:desktop -- --publish never --linux --x64 --dir
-```
-
-### Undeclared peer dependencies break app.asar
-
-electron-builder packs `node_modules` by walking declared production `dependencies`. A package that imports something it only lists as a `peerDependency` resolves fine in this hoisted workspace, passes every test, and then throws `ERR_MODULE_NOT_FOUND` inside `app.asar` — killing the desktop daemon at startup. That shipped twice from `@replit/codemirror-lang-*` grammars, which are interactive editor extensions published as if they were bare parsers.
-
-The packaged smoke catches it after merge. PRs need the fast dependency-closure test below because packaging runs on main.
-
-`packages/highlight/src/__tests__/dependency-closure.test.ts` replicates the packer's traversal statically and runs with the normal unit tests. It is scoped to `@getpaseo/highlight` on purpose: that tree is small and pure, so the check is exact. Running the same walk over `@getpaseo/server` produces dozens of false positives from optional dependencies loaded behind `try`/`catch`.
-
-Prefer a `@lezer/*` grammar. When a language only ships inside an editor extension, vendor the grammar into `packages/highlight/src/<lang>/` — see `svelte/`, `nix/`, and `csharp/`.
-
-### Desktop browser regression
-
-The desktop browser E2E launches an isolated real daemon, Metro, and Electron app with an explicit English locale. It opens empty workspaces through the command center, not the removed workspace sidebar rows, and forces workspace LRU eviction while preserving the original tab's guest `WebContents`. MCP tab listing, snapshot, and click target that original browser id; a final MCP wait proves the real target page received the click. Hidden-window capture must return fresh pixels without leaving background animation running.
-
-Run it locally with the same command owned by the Ubuntu `desktop-tests` required check:
-
-```bash
-npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
-```
-
-## Test organization
-
-- Collocate tests with implementation: `thing.ts` + `thing.test.ts`
-- Extract complex setup into reusable helpers
-- Test bodies should read like plain English
-- Build a vocabulary of test helpers that make complex flows simple
-
-### File naming
-
-Vitest picks up tests by suffix. The suffix tells the runner which category it belongs to.
-
-| Suffix                | What it is                                                                                                    | Where it runs                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `*.test.ts(x)`        | Unit test — pure, fast, no daemon                                                                             | `npm run test:unit`                                                                  |
-| `*.posix.test.ts`     | Unit test that needs POSIX-only behavior                                                                      | unit, skipped on Windows                                                             |
-| `*.browser.test.ts`   | App test that needs a real browser (DOM)                                                                      | `npm run test:browser` (Vitest browser mode, Playwright provider, headless Chromium) |
-| `*.e2e.test.ts`       | End-to-end against a real daemon                                                                              | `npm run test:e2e`                                                                   |
-| `*.real.e2e.test.ts`  | E2E that hits a real provider (Claude/Codex/Copilot/OpenCode/Pi) — needs creds in `packages/server/.env.test` | `npm run test:integration:real` / `test:e2e:real`                                    |
-| `*.local.e2e.test.ts` | E2E that needs a local-only resource                                                                          | `npm run test:integration:local` / `test:e2e:local`                                  |
-
-Browser Playwright specs live in `packages/app/e2e/browser/`. Desktop Playwright and real-Electron E2E live in `packages/desktop/e2e/`. Harness code shared by both suites lives in `packages/app/e2e/support/`; neither suite may place specs there. App Playwright specs that hit real providers use `*.real.spec.ts` and run through `npm run test:e2e:real --workspace=@getpaseo/app`; the default browser project ignores that suffix so CI does not need provider credentials.
-
-Browser navigation follows the host → directory → session sidebar: wait for a host row to hydrate, then use session rows for agent-backed workspaces. Verify independent host/directory collapse, persisted directory collapse, search expansion and restoration, empty directories, same-name directories, and the same path on two real hosts. Directory creation actions must retain both the host and exact directory. Empty and terminal-only workspaces remain reachable through the command center, not removed sidebar workspace rows. Use the shared command-center helpers and a project or title query when the target falls outside the default five results. Project, background-workspace, and label filters still narrow the session tree; keep their behavioral coverage.
-
-Workspace archive shortcuts must work without a workspace sidebar row or an open command center, including while the composer is focused. Verify daemon-side archival and preservation of local Git and non-Git directories; worktree warning coverage remains separate. Retained workspace panels can contain hidden copies of controls, so interaction helpers must select the currently visible panel.
-
-New-session creation on hosts advertising `workspaceMultiplicity` uses the selected project directory. Older hosts create a worktree automatically and expose the starting-ref picker; neither path has an isolation chooser. Published-daemon compatibility tests must follow the host's advertised capabilities. Exercise explicit worktree API creation with real checkout/file assertions, rather than looking for the removed chooser on current hosts.
-
-Live provider smoke tests belong in `*.real.e2e.test.ts`, not `*.test.ts`, even when guarded by environment variables. Default unit suites must use deterministic provider adapters/fakes so missing credits, auth outages, and upstream model drift do not block normal CI.
-
-Codex MultiAgentV2 real tests use local Codex authentication rather than the OpenRouter-compatible test provider. OpenRouter does not accept Codex collaboration-history items on the parent follow-up request, so it cannot verify a complete native sub-agent turn.
-
-### Test setup
-
-- Server: `packages/server/src/test-utils/vitest-setup.ts` loads `.env.test`, sets `PASEO_SUPERVISED=0`, and disables Git/SSH prompts. Add new global env shims here, not in individual tests.
-- App: `packages/app/vitest.setup.ts` provides `expo`/`__DEV__` shims and stubs a few native-only modules (`react-native-unistyles`, `react-native-svg`, `expo-linking`, `@xterm/addon-ligatures`). Stubbing here is for modules that have no meaningful Node behavior — not a license to mock app code.
-
-## Running tests locally
-
-Test suites in this repo are heavy. Running them in bulk freezes the machine, especially with multiple agents in parallel.
-
-- Run only the file you changed: `npx vitest run <path> --bail=1`
-- Never run `npm run test` for a whole workspace unless asked.
-- For a broad sweep, redirect to a file and read it after: `npx vitest run <path> --bail=1 > /tmp/test-output.txt 2>&1`
-- Never re-run a suite another agent already reported green.
-- For full-suite confidence, push to CI and check GitHub Actions.
-- Never run the full Playwright E2E suite locally — defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.
-- App Playwright shares one warmed Metro server per run and gives every Playwright worker its own isolated daemon and `PASEO_HOME`. Spec files run concurrently without exposing one file's projects, agents, terminals, history, or provider configuration to another worker; tests within a file remain together so file-level setup is not repeated.
-- Playwright specs that exercise only the daemon import `daemonTest` from the shared fixtures so they do not create a browser context or page.
-- Helpers that create projects or workspaces own those records until cleanup. Their clients remove the daemon project on close, and an automatic fixture fails any test that still leaks a project record. Deleting only the temporary directory is not cleanup. Agent helpers pass the intended `workspaceId` through to agent creation; they never infer ownership from `cwd`.
-- Tests whose subject is daemon-global state, such as an empty history or daemon restart, start a dedicated host explicitly. Filenames and directories describe product behavior, never execution order or isolation mechanics.
-- Global setup accepts Metro as ready only when `/status` returns `packager-status:running`, then fetches the document's scripts so the cold bundle compilation finishes before Playwright's per-test timeout starts. A generic TCP listener is not sufficient readiness evidence. The browser suite uses direct local daemon connections and does not start a relay. Automated Metro launches set `EXPO_UNSTABLE_HEADLESS=1` so Expo does not download the native DevTools shell into temporary test homes; its read-only cache breaks teardown. Browser fixtures and the standalone Electron browser runner share the developer-toast dismissal helper while retaining console logs. A pointer click moves hover away from the tested control and stalls behind app modal backdrops.
-- The app Playwright harness boots on Windows as well as POSIX. Spawn Node entrypoints through `process.execPath`, not `npx` or `node_modules/.bin` shims: Node refuses to spawn `.cmd` or `.bat` without `shell: true`, and shell mode concatenates argv without escaping and sends kill signals to `cmd.exe` instead of the real child.
-- Teardown kills the process tree, because a Windows signal reaches only the direct child and leaves forked workers holding the listening port.
-- The `asdf`-backed local Elixir relay stays POSIX-only, so the `relay-deployment` Playwright project is unavailable on Windows.
-
-## Pull-request test routing
-
-PR checks are routed by the behavior each suite proves, using `.github/ci-paths.yml`. A package does not inherit every test suite of its runtime consumers: app changes do not run CLI or Electron-wrapper tests, and protocol changes do not run every package that imports the protocol. Cross-package static compatibility belongs to `typecheck`; full integration coverage runs after merge on main and in normal manual CI runs.
-
-Required matrix legs are declared as statically named jobs. Their shared steps use YAML anchors, while job-level `if` conditions let GitHub report an unaffected leg as genuinely skipped without allocating a runner or losing the exact required-check name.
-
-The smallest meaningful contract wins over package ownership. The routing job runs dependency-free checks only; daemon launch and title synchronization checks run in `quality` after dependencies are installed. Routed integration contracts use stable domain directories. Browser changes select the required Playwright shards; desktop changes select the existing required desktop jobs, with renderer and real-Electron coverage together in the Ubuntu leg. Packaging runs on main in the Desktop Packages, Docker, and Nix workflows. CLI-side Hub changes select one focused test inside the existing required server jobs. The CLI source suite runs once in the third required CLI job; only the separate local E2E runner is sharded, and that runner owns its dependency build. Repository scripts and the shared Vitest configuration run every PR contract because they are cross-cutting toolchain inputs.
-
-The fork retains these build and test jobs. The website deployment and Nix hash bot run only in the upstream repository: their Cloudflare account, domains and GitHub App belong to upstream, not the fork. Nix package builds and smoke checks still run in the fork.
-
-### Fast failure recovery
-
-For a transient failure on the same commit, use GitHub's **Re-run failed jobs**. For a code fix, push a repair branch and run **CI Recovery** against that branch, selecting the failed job or shard:
-
-```bash
-gh workflow run ci-recovery.yml --ref fix/my-failure -f job=playwright-3
-```
-
-This reuses the real CI steps but allocates runners only for change detection and the selected check. Recovery checks have a `Recover /` prefix; they do not replace normal required checks or claim that the whole commit passed. Recovery concurrency is separate from full CI and from other recovery targets. Merge/main and ordinary manual CI still run the complete suite.
-
-The recovery caller explicitly grants the read permissions needed by the reused jobs, including pull-request reads for path routing and package reads for dependency installation. A called workflow cannot elevate its caller's token; missing permissions fail validation before any runner starts.
-
-The desktop build compiles shared workspace dependencies once before exporting the renderer and packaging the daemon. Linux workflow artifacts contain distributable archives/installers and YAML metadata, not an additional unpacked copy of the same application; extract the tarball when unpacked inspection is needed. Sessions Windows artifacts keep the architecture-specific installers and ZIPs, not the unused combined installer. Already-compressed distributables are uploaded without a second compression pass.
-
-## Agent authentication in tests
-
-Agent providers handle their own auth. Do not add auth checks, environment variable gates, or conditional skips to tests. If auth fails, report it.
-
-## Debugging with tests
-
-Use the test as your debugging ground:
-
-1. Add temporary logging to the code under test
-2. Run the test, observe actual values
-3. Trace the flow end-to-end through test output
-4. Confirm each assumption with actual output
-5. Remove logging when done
-
-The test output is the source of truth, not your reading of the code.
-
-## Design for testability
-
-If code isn't testable, refactor it. Signs:
-
-- You want to reach for a mock
-- You can't inject a dependency
-- You need to test private internals
-- Setup requires too much global state
-
-Aim for deep modules: small interface, deep implementation. Fewer methods = fewer tests needed, simpler params = simpler setup.
-
-## Two test categories, no others
-
-Every test in this repo lives in exactly one of these shapes:
-
-1. **Unit tests with ports and adapters** — production code receives its real-world dependencies (DB, HTTP, CLI process, clock, randomness, filesystem, other modules) through an injected interface. Tests wire a typed in-memory fake colocated with the production module. **No `vi.mock`, `vi.hoisted`, `vi.spyOn` of own exports, JSDOM, `@testing-library` component mounting, RN test renderer, monkey-patched globals, or fake-server fixtures.** If a test needs any of those, the production module is missing a port — fix the seam, then write the test against a fake adapter.
-2. **Real end-to-end tests** — real daemon, real network, real browser (Playwright for app code) or a real isolated server instance (for daemon code). No JSDOM, no mocked transport.
-
-Anything in between — component tests in JSDOM, vitest tests that mock the module under test, tests that assert on private state — is slop on its way out.
+Use bounded waits tied to observable conditions rather than arbitrary sleeps. Retain process identity when testing shutdown so an unrelated process cannot be signalled. Redact credentials and tokens from shared logs. A missing real credential or unavailable service is an explicit test limitation, not permission to substitute a fake result.

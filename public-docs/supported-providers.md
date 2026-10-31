@@ -12,14 +12,14 @@ For the concept and how Paseo manages providers, see [Providers](/docs/providers
 
 ## Native support
 
-Work out of the box once the underlying CLI is installed and authenticated.
+Built-in adapters execute in Rust and use the underlying provider CLI installed and authenticated on the daemon host. Provider programs may have their own runtime requirements; that does not add Node to Paseo's default installed runtime.
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Anthropic's coding agent with MCP support, streaming, and deep reasoning.
 - [Codex](/docs/codex). OpenAI's workspace agent with sandbox controls and optional network access.
 - [OpenCode](https://opencode.ai/). Open-source coding assistant with multi-provider model support.
 - [Pi](https://pi.dev). Minimal terminal-based coding agent with multi-provider LLM support.
-- [Antigravity](#antigravity). Uses your installed `agy` CLI through a built-in provider plugin.
-- [Muse Code](/docs/muse-code). Meta's terminal coding agent, bundled as a provider plugin.
+- [Antigravity](#antigravity). Uses your installed `agy` CLI through a built-in Rust provider.
+- [Muse Code](/docs/muse-code). Meta's coding agent, integrated through a built-in Rust provider.
 
 ### Antigravity
 

@@ -15,10 +15,7 @@ on:
         type: string
         default: all
 
-# A newer push to the same ref cancels the run still in progress, main included.
-# A full run costs about 200 runner-minutes against the org's 20 concurrent
-# jobs, and a superseded main run only answers a question the newer commit
-# answers again.
+# A superseded run is cancelled only within the same recovery target.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.recovery_job || 'all' }}
   cancel-in-progress: true
@@ -39,14 +36,15 @@ jobs:
       full: ${{ github.event_name != 'pull_request' || steps.filter.outputs.routing != 'false' || steps.filter.outputs.workspace != 'false' || steps.filter.outputs.ci != 'false' }}
       format: ${{ steps.filter.outputs.format }}
       quality: ${{ steps.filter.outputs.quality }}
-      hub: ${{ steps.filter.outputs.hub }}
-      server: ${{ steps.filter.outputs.server }}
-      desktop: ${{ steps.filter.outputs.desktop }}
-      app: ${{ steps.filter.outputs.app }}
+      daemon: ${{ steps.filter.outputs.daemon }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+      flutter_linux: ${{ steps.filter.outputs.flutter_linux }}
+      flutter_windows: ${{ steps.filter.outputs.flutter_windows }}
+      flutter_macos: ${{ steps.filter.outputs.flutter_macos }}
+      flutter_android: ${{ steps.filter.outputs.flutter_android }}
+      flutter_ios: ${{ steps.filter.outputs.flutter_ios }}
       sdk: ${{ steps.filter.outputs.sdk }}
-      browser: ${{ steps.filter.outputs.browser }}
       relay: ${{ steps.filter.outputs.relay }}
-      cli: ${{ steps.filter.outputs.cli }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -62,7 +60,7 @@ jobs:
           RECOVERY_JOB: ${{ inputs.recovery_job }}
         run: |
           case "$RECOVERY_JOB" in
-            quality|typecheck|server-tests-ubuntu|server-tests-windows|server-integration-windows|server-tests-macos|desktop-tests-ubuntu|desktop-tests-windows|app-tests|playwright-[1-8]|cli-tests-[1-3]) ;;
+            quality|typecheck|native-daemon-linux|native-daemon-windows|native-daemon-macos|flutter-analyze|flutter-test|flutter-build-linux|flutter-build-windows|flutter-build-macos|flutter-build-android|flutter-build-ios) ;;
             *) echo "::error::Unknown CI recovery target"; exit 2 ;;
           esac
 
@@ -73,7 +71,7 @@ jobs:
           filters: .github/ci-paths.yml
 
       - name: Validate CI contracts
-        run: node --test scripts/ci-workflow.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/upload-release-assets.test.mjs
+        run: node --test scripts/ci-workflow.test.mjs scripts/flutter-release.test.mjs scripts/native-packaging.test.mjs scripts/release-version-utils.test.mjs scripts/publish-release-packages.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/upload-release-assets.test.mjs
 
   quality:
     name: quality
@@ -113,10 +111,6 @@ jobs:
       - name: Lint
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm run lint
-
-      - name: Test lint rules
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
-        run: node --test scripts/oxlint/paseo-plugin.test.mjs
 
       - name: Test daemon launch and title synchronization
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
@@ -174,17 +168,11 @@ jobs:
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
 
-      - name: Verify dependency patch recovery
-        run: node --test scripts/postinstall-patches.test.mjs
+      - name: Build SDK dependencies
+        run: npm run build:relay && npm run build:client && npm run build:plugin
 
-      - name: Build server stack
-        run: npm run build:server
-
-      - name: Verify built-in plugins from built output
-        run: node --test scripts/builtin-plugins-dist.test.mjs
-
-      - name: Typecheck all packages
-        run: npm run typecheck
+      - name: Typecheck Node packages
+        run: npm run typecheck:node
 
       - name: Run website tests
         run: npx vitest run packages/website/src --bail=1
@@ -199,440 +187,217 @@ jobs:
         run: |
           npm pack --dry-run --ignore-scripts --workspace=@getpaseo/protocol
           npm pack --dry-run --ignore-scripts --workspace=@getpaseo/client
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/server
 
-  server-tests-ubuntu:
-    name: server-tests (ubuntu-latest)
+  native-daemon-linux:
+    name: native-daemon-linux
     needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-tests-ubuntu') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
-    runs-on: ubuntu-latest
-    steps:
-      - &server_capacity
-        name: Log runner capacity
-        run: |
-          node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
-
-      - &server_checkout
-        uses: actions/checkout@v4
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'native-daemon-linux') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.daemon != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps: &native_daemon_steps
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          fetch-depth: 0
-
-      - &server_node
-        uses: actions/setup-node@v4
+          node-version: "24.15.0"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
         with:
-          node-version: "22"
-          cache: "npm"
-
-      - &server_fetch
-        name: Fetch origin/main (worktree tests)
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: git fetch --no-tags origin main:refs/remotes/origin/main
-
-      - &server_install
-        name: Install dependencies
+          shared-key: native-daemon-${{ runner.os }}-${{ runner.arch }}
+      - name: Install optional plugin worker build dependencies
         run: node scripts/npm-retry.mjs ci
-
-      - &server_agent_clis
-        name: Install agent CLIs for provider tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai
-
-      - &server_build
-        name: Build server dependencies
-        run: npm run build:server-deps
-
-      - name: Run server tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: npm run test --workspace=@getpaseo/server
-        env: &server_test_env
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-
-      - &server_plugin_tests
-        name: Run built-in plugin tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+      - name: Install Linux native runtime packaging prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y patchelf
+      - name: Build native daemon and optional plugin worker
+        run: node scripts/build-native-daemon.mjs
+      - name: Test native backend contracts
+        run: cargo test --workspace --locked
+      - name: Run built-in plugin tests
         run: npm run test --workspace=@getpaseo/builtin-plugins
 
-      - &server_hub_contract
-        name: Run Hub CLI/daemon contract
-        if: ${{ needs.changes.outputs.full == 'false' && needs.changes.outputs.server == 'false' && needs.changes.outputs.hub != 'false' }}
-        run: npm run test:hub-cli-contract --workspace=@getpaseo/server
-
-  server-tests-windows:
-    name: server-tests (windows-latest)
+  native-daemon-windows:
+    name: native-daemon-windows
     needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-tests-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'native-daemon-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.daemon != 'false') }}
     runs-on: windows-latest
-    steps:
-      - *server_capacity
-      - *server_checkout
-      - *server_node
-      - *server_fetch
-      - *server_install
-      - *server_agent_clis
-      - *server_build
+    timeout-minutes: 45
+    steps: *native_daemon_steps
 
-      - name: Run server unit tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: npm run test:unit --workspace=@getpaseo/server
-        env: *server_test_env
-
-      - *server_plugin_tests
-      - *server_hub_contract
-
-  # Keep the serial integration chain off the Windows unit critical path.
-  server-integration-windows:
-    name: server-integration (windows-latest)
+  native-daemon-macos:
+    name: native-daemon-macos
     needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-integration-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
-    runs-on: windows-latest
-    steps:
-      - *server_capacity
-      - *server_checkout
-      - *server_node
-      - *server_fetch
-      - *server_install
-      - *server_agent_clis
-      - *server_build
-
-      - name: Run server integration tests
-        run: npm run test:integration --workspace=@getpaseo/server
-        env: *server_test_env
-
-  # native-recursive.ts serves darwin and win32, but windows-latest above is the only
-  # runner that exercises it. macOS — the platform the reported watcher bug was on —
-  # otherwise has no server-test coverage. Scoped to the observer/watcher suites to
-  # bound runtime.
-  server-tests-macos:
-    name: server-tests (macos-14, file observation)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'server-tests-macos') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'native-daemon-macos') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.daemon != 'false') }}
     runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 45
+    steps: *native_daemon_steps
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Build server dependencies
-        run: npm run build:server-deps
-
-      - name: Run file observation tests
-        run: |
-          npm run test:unit --workspace=@getpaseo/server -- \
-            src/server/file-observer \
-            src/server/workspace-git-service.observation.test.ts \
-            src/server/workspace-git-service.observation.integration.test.ts \
-            --bail=1
-
-  desktop-tests-ubuntu:
-    name: desktop-tests (ubuntu-latest)
+  flutter-analyze:
+    name: flutter-analyze
     needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'desktop-tests-ubuntu') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-analyze') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     permissions:
       contents: read
-    steps: &desktop_test_steps
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies with retry
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Build server stack
-        run: npm run build:server
-
-      - name: Run desktop tests
-        run: npm run test --workspace=@getpaseo/desktop
-
-      - name: Install virtual display
-        if: ${{ runner.os == 'Linux' }}
-        run: sudo apt-get update && sudo apt-get install -y xvfb xauth xdotool
-
-      - name: Install Playwright browser
-        if: ${{ runner.os == 'Linux' }}
-        run: npx playwright install chromium
-
-      - name: Verify Windows daemon process control
-        if: ${{ runner.os == 'Windows' }}
-        run: npx vitest run packages/cli/src/commands/daemon/lifecycle.e2e.test.ts --bail=1 --maxWorkers=1 -t "Windows unbound|managed two-home"
-
-      - name: Run desktop lifecycle E2E (Linux)
-        if: ${{ runner.os == 'Linux' }}
-        run: xvfb-run -a --server-args="-screen 0 1280x800x24" npm run test:e2e:lifecycle --workspace=@getpaseo/desktop
-        env:
-          PASEO_DESKTOP_LIFECYCLE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-lifecycle
-
-      - name: Upload desktop lifecycle screenshots
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        with:
-          name: desktop-lifecycle
-          path: ${{ runner.temp }}/desktop-lifecycle
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Run desktop lifecycle E2E (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: npm run test:e2e:lifecycle --workspace=@getpaseo/desktop
-
-      - name: Run desktop renderer E2E
-        if: ${{ runner.os == 'Linux' }}
-        run: npm run test:e2e:renderer --workspace=@getpaseo/desktop
-
-      - name: Run desktop browser E2E
-        if: ${{ runner.os == 'Linux' }}
-        run: npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
-        env:
-          PASEO_DESKTOP_BROWSER_E2E_ARTIFACT_DIR: ${{ runner.temp }}/desktop-browser-e2e
-
-      - name: Upload desktop browser diagnostics
-        uses: actions/upload-artifact@v4
-        if: ${{ failure() && runner.os == 'Linux' }}
-        with:
-          name: desktop-browser-e2e
-          path: ${{ runner.temp }}/desktop-browser-e2e
-          if-no-files-found: ignore
-          retention-days: 7
-
-  desktop-tests-windows:
-    name: desktop-tests (windows-latest)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'desktop-tests-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps: *desktop_test_steps
-
-  app-tests:
-    name: app-tests
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'app-tests') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - &flutter_checkout
+        uses: actions/checkout@v4
+      - &flutter_sdk
+        uses: subosito/flutter-action@v2
         with:
-          node-version: "22"
-          cache: "npm"
+          flutter-version: "3.47.5"
+          channel: stable
+          cache: true
+          cache-key: flutter-sdk-${{ runner.os }}-${{ runner.arch }}-3.47.5
+      - &flutter_pub_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-3.47.5-${{ hashFiles('packages/flutter_app/pubspec.lock') }}
+      - &flutter_pub_get
+        name: Resolve locked Flutter packages
+        working-directory: packages/flutter_app
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze native Flutter sources
+        working-directory: packages/flutter_app
+        run: flutter analyze --no-pub
 
-      - name: Install dependencies with retry
-        run: node scripts/npm-retry.mjs ci
+  flutter-test:
+    name: flutter-test
+    needs: changes
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-test') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - *flutter_checkout
+      - *flutter_sdk
+      - *flutter_pub_cache
+      - *flutter_pub_get
+      - name: Run Flutter unit and widget tests
+        working-directory: packages/flutter_app
+        run: flutter test --no-pub --coverage
+      - name: Retain Flutter test coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-coverage
+          path: packages/flutter_app/coverage/
+          if-no-files-found: ignore
+          retention-days: 7
 
-      - name: Install Playwright browsers
-        timeout-minutes: 10
-        run: npx playwright install chromium
+  flutter-build-linux:
+    name: flutter-build-linux
+    needs: changes
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-build-linux') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false' || needs.changes.outputs.flutter_linux != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - *flutter_checkout
+      - *flutter_sdk
+      - *flutter_pub_cache
+      - name: Install Linux native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev libayatana-appindicator3-dev libasound2-dev libpulse-dev libsm-dev ffmpeg pulseaudio-utils xdg-utils
+      - *flutter_pub_get
+      - name: Compile native Linux client and plugins
+        working-directory: packages/flutter_app
+        run: flutter build linux --release --no-pub
+      - &flutter_build_diagnostics
+        name: Retain native build diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.job }}-diagnostics
+          path: |
+            packages/flutter_app/build/**/CMakeConfigureLog.yaml
+            packages/flutter_app/build/**/CMakeError.log
+            packages/flutter_app/build/**/CMakeOutput.log
+            packages/flutter_app/build/**/reports/
+          if-no-files-found: ignore
+          retention-days: 7
 
-      - name: Build app dependencies
-        run: npm run build:app-deps
+  flutter-build-windows:
+    name: flutter-build-windows
+    needs: changes
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-build-windows') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false' || needs.changes.outputs.flutter_windows != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - *flutter_checkout
+      - *flutter_sdk
+      - *flutter_pub_cache
+      - *flutter_pub_get
+      - name: Compile native Windows client and plugins
+        working-directory: packages/flutter_app
+        run: flutter build windows --release --no-pub
+      - *flutter_build_diagnostics
 
-      - name: Run app unit tests
-        run: npm run test --workspace=@getpaseo/app
+  flutter-build-macos:
+    name: flutter-build-macos
+    needs: changes
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-build-macos') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false' || needs.changes.outputs.flutter_macos != 'false') }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - *flutter_checkout
+      - *flutter_sdk
+      - *flutter_pub_cache
+      - *flutter_pub_get
+      - name: Compile native macOS client and plugins without signing
+        working-directory: packages/flutter_app
+        run: flutter build macos --release --no-pub --config-only && xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Release -derivedDataPath build/macos CODE_SIGNING_ALLOWED=NO build
+      - *flutter_build_diagnostics
 
+  flutter-build-android:
+    name: flutter-build-android
+    needs: changes
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-build-android') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false' || needs.changes.outputs.flutter_android != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - *flutter_checkout
+      - *flutter_sdk
+      - *flutter_pub_cache
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - *flutter_pub_get
+      - name: Compile native Android client and audio plugin
+        working-directory: packages/flutter_app
+        run: flutter build apk --debug --no-pub
+      - *flutter_build_diagnostics
 
-      - name: Run Android module tests
-        run: npm run test:android --workspace=@getpaseo/app
-
-  playwright-1:
-    name: playwright (shard 1/8)
+  flutter-build-ios:
+    name: flutter-build-ios
     needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-1') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "1/8"
-      PLAYWRIGHT_ARTIFACT: "1"
-    steps: &playwright_test_steps
-      - name: Log runner capacity
-        run: |
-          node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
-
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies with retry
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Install Playwright browsers
-        timeout-minutes: 10
-        run: npx playwright install chromium
-
-      - name: Build server stack
-        run: npm run build:server
-
-      - name: Build native app dependency
-        run: npm run build --workspace=@getpaseo/expo-two-way-audio
-
-      - name: Install agent CLIs for provider tests
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
-
-      - name: Run Playwright E2E tests
-        run: npm run test:e2e --workspace=@getpaseo/app -- --shard=${{ env.PLAYWRIGHT_SHARD }}
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          E2E_WORKERS: "2"
-          # File groups are weighted by observed reporter durations.
-          # Share of the test list per shard, rebalanced from the Playwright step
-          # minutes of five eight-shard runs so the slowest and fastest shards meet.
-          PWTEST_SHARD_WEIGHTS: "85:94:117:128:91:103:127:85"
-
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-results-${{ env.PLAYWRIGHT_ARTIFACT }}
-          path: |
-            packages/app/test-results/
-            packages/app/playwright-report/
-          retention-days: 7
-
-  playwright-2:
-    name: playwright (shard 2/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-2') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "2/8"
-      PLAYWRIGHT_ARTIFACT: "2"
-    steps: *playwright_test_steps
-
-  playwright-3:
-    name: playwright (shard 3/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-3') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "3/8"
-      PLAYWRIGHT_ARTIFACT: "3"
-    steps: *playwright_test_steps
-
-  playwright-4:
-    name: playwright (shard 4/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-4') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "4/8"
-      PLAYWRIGHT_ARTIFACT: "4"
-    steps: *playwright_test_steps
-
-  playwright-5:
-    name: playwright (shard 5/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-5') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "5/8"
-      PLAYWRIGHT_ARTIFACT: "5"
-    steps: *playwright_test_steps
-
-  playwright-6:
-    name: playwright (shard 6/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-6') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "6/8"
-      PLAYWRIGHT_ARTIFACT: "6"
-    steps: *playwright_test_steps
-
-  playwright-7:
-    name: playwright (shard 7/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-7') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "7/8"
-      PLAYWRIGHT_ARTIFACT: "7"
-    steps: *playwright_test_steps
-
-  playwright-8:
-    name: playwright (shard 8/8)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'playwright-8') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PLAYWRIGHT_SHARD: "8/8"
-      PLAYWRIGHT_ARTIFACT: "8"
-    steps: *playwright_test_steps
-
-  cli-tests-1:
-    name: cli-tests (shard 1/3)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'cli-tests-1') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
-      PASEO_DICTATION_ENABLED: "0"
-      PASEO_VOICE_MODE_ENABLED: "0"
-      PASEO_CLI_TEST_SHARD: "1"
-      PASEO_CLI_TEST_SHARD_TOTAL: "3"
-    steps: &cli_test_steps
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Install agent CLIs for provider tests
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
-
-      # The local runner builds its dependencies and shards its own E2E files.
-      - name: Run CLI E2E tests
-        run: npm run test:local --workspace=@getpaseo/cli
-
-      # Source tests do not read PASEO_CLI_TEST_SHARD. Run them once, on the
-      # shortest E2E shard, after its runner has built the server stack.
-      - name: Run CLI source tests
-        if: ${{ env.PASEO_CLI_TEST_SHARD == '3' }}
-        run: npm run test:unit --workspace=@getpaseo/cli
-
-  cli-tests-2:
-    name: cli-tests (shard 2/3)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'cli-tests-2') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
-      PASEO_DICTATION_ENABLED: "0"
-      PASEO_VOICE_MODE_ENABLED: "0"
-      PASEO_CLI_TEST_SHARD: "2"
-      PASEO_CLI_TEST_SHARD_TOTAL: "3"
-    steps: *cli_test_steps
-
-  cli-tests-3:
-    name: cli-tests (shard 3/3)
-    needs: changes
-    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'cli-tests-3') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
-    runs-on: ubuntu-latest
-    env:
-      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
-      PASEO_DICTATION_ENABLED: "0"
-      PASEO_VOICE_MODE_ENABLED: "0"
-      PASEO_CLI_TEST_SHARD: "3"
-      PASEO_CLI_TEST_SHARD_TOTAL: "3"
-    steps: *cli_test_steps
+    if: ${{ !cancelled() && (!inputs.recovery_job || inputs.recovery_job == 'all' || inputs.recovery_job == 'flutter-build-ios') && (needs.changes.outputs.full != 'false' || needs.changes.outputs.flutter != 'false' || needs.changes.outputs.flutter_ios != 'false') }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - *flutter_checkout
+      - *flutter_sdk
+      - *flutter_pub_cache
+      - *flutter_pub_get
+      - name: Compile native iOS client and audio plugin without signing
+        working-directory: packages/flutter_app
+        run: flutter build ios --release --no-codesign --no-pub
+      - *flutter_build_diagnostics

@@ -1,187 +1,109 @@
-<p align="center">
-  <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo 로고">
-</p>
+# Paseo Sessions
 
-<h1 align="center">Paseo</h1>
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-<p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ko.md">한국어</a>
-</p>
+Paseo Sessions는 코딩 에이전트 작업을 실행하고 검토하는 네이티브 환경입니다. **Linux, macOS, Windows, Android, iOS** 클라이언트는 Flutter, 데몬과 `paseo` CLI는 Rust로 구현됩니다. 데스크톱은 로컬 데몬을 관리할 수 있으며, 모바일은 다른 컴퓨터의 데몬에 원격으로 연결하는 전용 클라이언트입니다.
 
-<p align="center">
-  <a href="https://github.com/getpaseo/paseo/stargazers">
-    <img src="https://img.shields.io/github/stars/getpaseo/paseo?style=flat&logo=github" alt="GitHub stars">
-  </a>
-  <a href="https://github.com/getpaseo/paseo/releases">
-    <img src="https://img.shields.io/github/v/release/getpaseo/paseo?style=flat&logo=github" alt="GitHub release">
-  </a>
-  <a href="https://x.com/moboudra">
-    <img src="https://img.shields.io/badge/%40moboudra-555?logo=x" alt="X">
-  </a>
-  <a href="https://discord.gg/jz8T2uahpH">
-    <img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord">
-  </a>
-  <a href="https://www.reddit.com/r/PaseoAI/">
-    <img src="https://img.shields.io/badge/Reddit-555?logo=reddit" alt="Reddit">
-  </a>
-</p>
+현재 체크아웃 버전은 **0.13.0**이며 네이티브 전환 버전은 **아직 출시되지 않았습니다**. [업스트림 다운로드 페이지](https://paseo.sh/download)와 [기존 GitHub releases](https://github.com/getpaseo/paseo/releases)는 이번 전환의 빌드 산출물이 아닙니다. 이 체크아웃의 소스로 빌드하고, 바이너리를 배포하기 전에 [출시 요구 사항](docs/release.md)을 확인하세요.
 
-<p align="center">Claude Code, Codex, Copilot, OpenCode, Pi 에이전트를 위한 하나의 인터페이스</p>
+## 여러 호스트에서 작업하기와 기능 범위
 
-<p align="center">
-  <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
-</p>
+사이드바는 **호스트 → 디렉터리 → 세션** 구조입니다. 호스트가 하나여도 별도 행으로 표시하며 빈 디렉터리도 유지합니다. 세션은 최근 활동순으로 정렬됩니다. 호스트와 디렉터리는 각각 접을 수 있고 디렉터리의 접힘 상태는 저장됩니다. 서로 다른 호스트의 같은 경로는 별개로 취급합니다.
 
-<p align="center">
-  <img src="https://paseo.sh/mobile-mockup.png" alt="Paseo mobile app" width="100%">
-</p>
+검색은 호스트, 디렉터리 이름과 경로, 세션 제목, 제공자를 대상으로 하며, 저장된 접힘 설정을 덮어쓰지 않고 일치 항목의 상위 노드를 펼칩니다. 디렉터리의 추가 버튼은 해당 호스트의 체크아웃에서 세션을 만듭니다. 프로젝트 추가에서는 호스트 측 폴더 탐색기를 사용하며 원격 경로를 로컬 OS 파일 대화 상자로 선택하지 않습니다. 워크스페이스는 오케스트레이션, worktree, 스크립트, Command Center 탐색에 계속 사용되지만 사이드바 그룹화 컨트롤은 아닙니다. 기존 세션 ID, 기록, 파일, 설정과 저장 데이터는 유지됩니다. 채팅 탭을 닫아도 세션이 보관 처리되지는 않습니다.
 
-내 컴퓨터에서 에이전트를 병렬로 실행하세요. 데스크톱이나 휴대폰에서 배포하세요.
+- 에이전트 채팅, 권한, 제공자/모델 선택, 프로필, 세션 가져오기와 기록.
+- Markdown 표시, 파일 탐색과 소스 편집. Git diff는 요약부터 보여 주고 패치 본문은 필요할 때 불러옵니다.
+- 워크스페이스 설정 및 서비스 스크립트는 데몬이 소유한 PTY에서 실행합니다. 앱은 **읽기 전용 로그**만 표시하며 대화형 터미널 에뮬레이터를 제공하지 않습니다.
+- 예약 작업, MCP 도구와 서버, 음성, 연결된 호스트, 원격 디렉터리 선택.
+- 네이티브 데스크톱 통합과 로컬 데몬 수명 주기 관리. 모바일은 원격 연결만 지원합니다.
 
-- **셀프 호스팅:** 에이전트는 완전한 개발 환경이 갖춰진 내 컴퓨터에서 실행됩니다. 평소 쓰던 도구, 설정, 스킬을 그대로 쓸 수 있습니다.
-- **여러 제공자 지원:** Claude Code, Codex, Copilot, OpenCode, Pi를 하나의 인터페이스에서 사용할 수 있습니다. 작업마다 알맞은 모델을 고를 수 있습니다.
-- **음성 제어:** 음성 모드에서 작업을 말로 지시하거나 문제를 음성으로 함께 검토할 수 있습니다. 손을 쓰지 않고 작업해야 할 때 유용합니다.
-- **여러 기기 지원:** iOS, Android, 데스크톱, 웹, CLI를 지원합니다. 데스크톱에서 시작해 휴대폰으로 확인하고 터미널에서 자동화할 수 있습니다.
-- **개인정보 보호 우선:** Paseo는 텔레메트리, 추적, 강제 로그인을 사용하지 않습니다.
+기본 설치 런타임에 **Node, Electron, Chromium을 포함하지 않습니다**. 제품 웹 클라이언트, 내장 브라우저, 브라우저 자동화 또는 실행 가능한 React UI 플러그인 호환성을 제공하지 않습니다. 외부 링크는 앱 밖에서 열립니다. 웹사이트는 별도의 문서/마케팅 프로젝트입니다. 에이전트 CLI는 외부 프로그램이므로 자체 런타임 요구 사항이 있을 수 있습니다.
 
-## 스폰서
+내장 제공자 및 사용량 통합은 Rust에서 실행됩니다. 선택적 JavaScript **백엔드** 플러그인은 별도로 설치한 Node 20+가 필요하며 `PASEO_PLUGIN_NODE`로 지정할 수 있습니다. 컴파일러/SDK 자산이 있다고 Node 데몬을 번들로 제공하는 것은 아닙니다. [플러그인 문서](docs/plugins.md)를 참고하세요.
 
-<!-- Sponsors: one cell per sponsor in the order of packages/website/src/data/sponsors.ts, then "become a sponsor" cells up to three. -->
-<table>
-  <tr>
-    <td align="center" width="33%"><a href="https://hoplite.sh/?utm_source=paseo&utm_medium=readme&utm_campaign=sponsor"><picture><source media="(prefers-color-scheme: dark)" srcset="packages/website/public/sponsors/hoplite-on-dark.svg"><img src="packages/website/public/sponsors/hoplite-on-light.svg" alt="Hoplite" height="40"></picture></a><br><sub>Cloud coding agents</sub></td>
-    <td align="center" width="33%"><a href="https://paseo.sh/sponsor">Paseo 스폰서 되기</a></td>
-    <td align="center" width="33%"><a href="https://paseo.sh/sponsor">Paseo 스폰서 되기</a></td>
-  </tr>
-</table>
+## 소스에서 빌드하고 실행하기
 
-## 시작하기
+Rust/Cargo, Flutter SDK, 대상 플랫폼의 네이티브 도구 체인과 빌드 도구용 **Node 24 및 npm**이 필요합니다. 에이전트 CLI도 하나 이상 설치하고 인증 정보를 설정하세요: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Copilot](https://github.com/features/copilot/cli/), [OpenCode](https://github.com/anomalyco/opencode), [Pi](https://pi.dev). 자세한 준비 사항은 [개발 가이드](docs/development.md)에 있습니다.
 
-Paseo는 코딩 에이전트를 관리하는 로컬 서버인 데몬을 실행합니다. 데스크톱 앱, 모바일 앱, 웹 앱, CLI 같은 클라이언트가 이 데몬에 연결합니다.
-
-### 준비 사항
-
-아래 에이전트 CLI 중 하나 이상을 설치하고 인증 정보를 설정해야 합니다.
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- [Codex](https://github.com/openai/codex)
-- [GitHub Copilot](https://github.com/features/copilot/cli/)
-- [OpenCode](https://github.com/anomalyco/opencode)
-- [Pi](https://pi.dev)
-
-### 데스크톱 앱(권장)
-
-[paseo.sh/download](https://paseo.sh/download) 또는 [GitHub 릴리스 페이지](https://github.com/getpaseo/paseo/releases)에서 다운로드하세요. 앱을 열면 데몬이 자동으로 시작됩니다. 별도로 설치할 것은 없습니다.
-
-휴대폰에서 연결하려면 **설정 → 호스트 → 기기 페어링**을 여세요.
-
-### CLI / 헤드리스 환경
-
-CLI를 설치하고 Paseo를 시작하세요.
-
-```bash
-npm install -g @getpaseo/cli
-paseo
-```
-
-Paseo가 로컬에서 시작된 뒤 기기 페어링을 위한 종단 간 암호화 릴레이를 켤지 묻습니다. 거절하면 TCP, Tailscale 또는 다른 VPN으로 직접 연결할 수 있습니다. 이 방식은 서버나 원격 머신에서 유용합니다.
-
-자세한 설치와 설정은 아래 문서를 참고하세요.
-
-- [문서](https://paseo.sh/docs)
-- [연결 가이드](https://paseo.sh/docs/connectivity)
-- [설정 레퍼런스](https://paseo.sh/docs/configuration)
-
-### Docker
-
-Docker에서 Paseo 데몬과 셀프 호스팅 웹 UI를 실행하세요:
-
-```bash
-docker run -d --name paseo \
-  -p 6767:6767 \
-  -e PASEO_PASSWORD=change-me \
-  -v "$PWD/paseo-home:/home/paseo" \
-  -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
-```
-
-컨테이너가 시작되면 `http://localhost:6767`을 여세요. 사용하는 에이전트 CLI를 기본 이미지에 추가한 뒤, 환경 변수나 영구 `/home/paseo` 볼륨으로 인증 정보를 설정하세요. 자세한 내용은 [Docker 문서](docs/docker.md)를 참고하세요.
-
-## CLI
-
-앱에서 할 수 있는 모든 작업은 터미널에서도 할 수 있습니다.
-
-```bash
-paseo run --provider claude/opus-4.6 "implement user authentication"
-paseo run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
-
-paseo ls                           # 실행 중인 에이전트 목록
-paseo attach abc123                # 실시간 출력 스트리밍
-paseo send abc123 "also add tests" # 후속 작업 전송
-
-# 원격 데몬에서 실행
-paseo --host workstation.local:6767 run "run the full test suite"
-```
-
-자세한 내용은 [전체 CLI 레퍼런스](https://paseo.sh/docs/cli)를 참고하세요.
-
-## 스킬
-
-스킬은 에이전트가 Paseo를 통해 다른 에이전트를 오케스트레이션하는 방법을 알려 줍니다.
-
-```bash
-npx skills add getpaseo/paseo
-```
-
-그런 다음 어떤 에이전트 대화에서든 아래 명령을 사용할 수 있습니다.
-
-- `/paseo-handoff` — 에이전트 간에 작업을 넘깁니다. Claude로 계획을 세운 뒤 Codex에 구현을 넘길 때 이 기능을 씁니다.
-- `/paseo-advisor` — 작업 자체를 넘기지 않고, 에이전트 하나를 조언자로 띄워 두 번째 의견을 받습니다.
-- `/paseo-committee` — 서로 다른 관점의 에이전트 두 개로 위원회를 구성해, 한 발 물러나 근본 원인을 분석하고 계획을 세웁니다.
-
-## 개발
-
-모노레포 패키지 구성은 다음과 같습니다.
-
-- `packages/server`: Paseo 데몬(에이전트 프로세스 오케스트레이션, WebSocket API, MCP 서버 제공)
-- `packages/app`: Expo 클라이언트(iOS, Android, 웹)
-- `packages/cli`: `paseo` CLI(데몬과 에이전트 워크플로)
-- `packages/desktop`: Electron 데스크톱 앱
-- `packages/relay`: 데몬과 클라이언트가 쓰는 릴레이 전송 및 암호화 패키지
-- `packages/website`: 마케팅 사이트 및 문서(`paseo.sh`)
-
-자주 쓰는 명령:
-
-```bash
-# 모든 로컬 개발 서비스 실행
-npm run dev
-
-# 개별 환경 실행
-npm run dev:server
-npm run dev:app
+```sh
+npm ci
+npm run build:daemon
 npm run dev:desktop
-npm run dev:website
-
-# 서버 스택 빌드
-npm run build:server
-
-# 레포 전체 검사 실행
-npm run typecheck
 ```
 
-## Paseo 후원하기
+개발 데몬과 네이티브 클라이언트를 따로 실행하려면:
 
-Paseo는 한 사람이 개발하며, 사용하는 분들의 후원으로 운영됩니다. [GitHub Sponsors](https://github.com/sponsors/boudra)로 후원할 수 있습니다. 회사는 매월 [Paseo를 후원](https://paseo.sh/sponsor#spot)하고 로고를 이 README 상단과 paseo.sh 홈페이지 및 문서에 게재할 수 있습니다.
+```sh
+npm run dev:daemon
+# 다른 터미널에서:
+npm run dev:app
+```
 
-## 관련 프로젝트
+개발 환경은 체크아웃의 `.dev/paseo-home`과 포트 `6768`을 사용하며, 일반 실행의 `~/.paseo` 및 포트 `6767`과 분리합니다. 빌드 래퍼는 Node 도구로 Rust를 실행하며 Node 서버가 아닙니다.
 
-- [getpaseo/paseo-relay](https://github.com/getpaseo/paseo-relay) — Elixir로 작성한 공식 분산형 릴레이
-- [paseo-skins](https://github.com/huangguang1999/paseo-skins) — 커뮤니티 테마와 Agent Skill을 제공하고, 코드 수정 없이 쓸 수 있는 데스크톱 테마 로더
-- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code 확장 프로그램
+```sh
+npm run build:flutter -- linux
+npm run build:flutter -- macos
+npm run build:flutter -- windows
+npm run build:apk
+npm run build:apk:arm64
+npm run build:ios
+```
 
-## 라이선스
+데스크톱은 대상 OS에서 빌드해야 하며 iOS는 macOS/Xcode가 필요합니다. 산출물과 빌드 설명은 `artifacts/flutter/`에 저장됩니다. Android/iOS에는 데몬이 없습니다. Android 앱 이름은 **Paseo Sessions**, 패키지는 `sh.paseo.sessions`입니다. 디버그 서명 APK나 서명되지 않은 iOS 앱 아카이브는 스토어 출시용 산출물이 아닙니다. [Android](docs/android.md)와 [출시 가이드](docs/release.md)를 참고하세요.
 
-Apache-2.0
+헤드리스 호스트에서는 생성된 `target/debug/paseo`(Windows에서는 `paseo.exe`)를 사용합니다. `CARGO_TARGET_DIR`를 설정했다면 해당 디렉터리를 사용하고, 생성된 런타임 자산을 실행 파일 옆에 유지하세요. npm 전역 CLI 설치는 필요하지 않습니다.
+
+```sh
+./target/debug/paseo onboard
+./target/debug/paseo daemon start
+./target/debug/paseo daemon status
+```
+
+`build:daemon`은 디버그 빌드와 자산을 생성합니다. `npm run build:daemon:release`는 `target/release/`에 최적화된 **로컬 빌드**와 자산을 생성할 뿐 출시 검증을 의미하지 않습니다. `paseo onboard`는 명시적인 초기 설정 명령입니다. 인수 없이 `paseo`를 실행하면 CLI 채팅이 열리며 설치나 초기 설정을 수행하지 않습니다.
+
+일반 데이터 디렉터리는 `~/.paseo`이며 `PASEO_HOME` 또는 `--home`으로 변경할 수 있습니다. `config.json`, 에이전트 기록, 프로젝트/워크스페이스 메타데이터와 연결 자격 증명은 기존 영속성 규약을 유지합니다. 원격 데몬에는 `--host`로 연결하고 필요한 경우 `PASEO_PASSWORD`를 설정합니다. SSH 전송은 이미 있는 데몬에 연결할 뿐 설치하지 않습니다. [Docker 가이드](docs/docker.md)는 네이티브 데몬 전용 컨테이너를 빌드하며 HTTP 루트에서 앱을 제공하지 않습니다.
+
+## CLI와 SDK
+
+호스트 설정의 에이전트 프로필에서 **Use for CLI**를 선택하면 기본 제공자, 모델, 모드와 사고 수준을 설정할 수 있습니다. 명시적인 CLI 옵션이 우선하며, 충돌하는 제공자/모델 인수는 연결 전에 오류를 반환합니다.
+
+```sh
+paseo
+paseo --resume <session-id>
+paseo run --provider codex "review this checkout"
+paseo ls
+paseo attach <session-id>
+paseo send <session-id> "also add tests"
+paseo import --provider pi <native-session-id>
+paseo run --host workstation.local:6767 --cwd /workspace --provider codex "review the diff"
+```
+
+외부 통합용 TypeScript SDK `@getpaseo/client`는 `packages/client`, 공유 프로토콜 정의는 `packages/protocol`에 있습니다. Rust 데몬과 Dart 클라이언트는 동일한 통신 규약을 구현합니다. SDK 사용은 제품 런타임이 Node에 의존한다는 뜻이 아닙니다.
+
+## 소스 구성과 검증 범위
+
+| 영역                                                            | 경로                                                    |
+| --------------------------------------------------------------- | ------------------------------------------------------- |
+| Rust 데몬, CLI, 제공자, 저장소, supervisor, 데스크톱 호스트 IPC | `packages/daemon`                                       |
+| 5개 플랫폼용 Flutter 클라이언트                                 | `packages/flutter_app`                                  |
+| 데스크톱 패키징 및 런타임 자산                                  | `packages/flutter_desktop_host`                         |
+| 네이티브 오디오 통합                                            | `packages/flutter_audio`                                |
+| TypeScript SDK 및 프로토콜                                      | `packages/client`, `packages/protocol`                  |
+| 선택적 확장 SDK / 비공개 백엔드 worker                          | `packages/plugin` / `packages/daemon/plugin-worker/src` |
+| 문서 웹사이트                                                   | `packages/website`                                      |
+
+런타임 경계를 변경하기 전에 [아키텍처](docs/architecture.md), [개발](docs/development.md), [테스트](docs/testing.md), [출시](docs/release.md) 문서를 읽으세요. Linux에는 네이티브 데몬/클라이언트 및 데스크톱 호스트 수명 주기의 실제 실행 증거가 있습니다. Android ARM64 release 모드 빌드는 통과했지만 디버그 서명을 사용했으며 설치나 기기 실행은 하지 않았습니다. 이번 전환에서 Windows, macOS, iOS의 실제 실행은 없습니다. 플랫폼별 CI 정의는 실행 증거가 아닙니다. 데스크톱 추가 검증을 포함한 최신 증거와 제한은 테스트 문서에서 관리합니다.
+
+## 라이선스와 배포
+
+Paseo 소스는 Apache-2.0이며 의존성에는 각각의 라이선스가 적용됩니다. 패키징 과정에서 Cargo, 선택적 worker, 음성 의존성의 고지문을 생성하지만 이는 **준수 인증이나 대응 소스 제공 제안이 아닙니다**. 공식 Sherpa 1.12.28 TTS 활성화 사전 빌드에는 GPL espeak-ng가 정적으로 포함됩니다. 소스 전달/제공 제안, 결합 저작물, MPL/LGPL, CRT 및 Rust 도구 체인 관련 의무는 아직 해결되지 않은 출시 배포 요구 사항입니다. 음성 모델 가중치는 번들에 포함하지 않고 필요할 때 다운로드합니다. [배포 요구 사항](docs/release.md#distribution-requirements)을 참고하세요.
+
+## 커뮤니티와 관련 프로젝트
+
+[Discord](https://discord.gg/jz8T2uahpH) · [Reddit](https://www.reddit.com/r/PaseoAI/) · [GitHub Sponsors](https://github.com/sponsors/boudra) · [후원](https://paseo.sh/sponsor)
+
+- [getpaseo/paseo-relay](https://github.com/getpaseo/paseo-relay): 독립적인 Elixir 분산 릴레이 프로젝트.
+- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode): VS Code 확장 프로그램. 이번 네이티브 전환에서의 호환성 검증을 의미하지 않습니다.
+- [paseo-skins](https://github.com/huangguang1999/paseo-skins): 기존 커뮤니티 테마 프로젝트 링크입니다. 현재 Flutter 클라이언트와의 호환성이나 실행 가능한 UI 플러그인 지원을 의미하지 않습니다.

@@ -6,7 +6,9 @@ nav: CLI 参考
 
 # CLI 参考 {#cli-reference}
 
-Paseo CLI 让你在终端中管理 Agent。它与 daemon 的 API 提供的接口相同，因此能在应用中做的事，都可以在命令行中完成。
+Rust Paseo CLI 用于从终端管理 Agent 和 daemon。0.13.0 原生迁移尚未发布，请按[更新](/docs/updates)从检出构建原生运行时，不要安装旧 npm CLI 包。保留可执行文件旁生成的资源。
+
+直接运行 `paseo` 打开 CLI 聊天。显式设置使用 `paseo onboard`，托管运行使用 `paseo daemon start` 和 `paseo daemon status`。默认主目录仍为 `~/.paseo`。
 
 > **Agent 编排**：你可以让编程 Agent 使用 Paseo CLI 启动和管理其他 Agent。Paseo 会识别发起调用的 Agent，因此通过 CLI 创建的执行者与通过 MCP 创建的执行者获得相同的工作区和父级默认值。
 
@@ -206,6 +208,8 @@ paseo workspace archive <workspace-id>
 
 ## 终端 {#terminals}
 
+这些命令控制 daemon 保留的脚本和设置任务 PTY，不会在 Flutter 中打开交互式终端 UI；原生客户端仅呈现只读日志。
+
 当多个工作区共享同一个目录时，请使用工作区 ID：
 
 ```bash
@@ -239,7 +243,7 @@ Paseo 默认选择目录为当前目录的工作区。传入 `--cwd <path>` 选�
 
 ## 插件 {#plugins}
 
-> **信任你添加的每一个插件**。`paseo plugin add` 和 `paseo plugin install` 的含义是“我信任这个代码库”。插件的服务端代码和 Git 准备命令在 daemon 主机上以 daemon 用户的权限运行，没有沙盒；客户端贡献在 Paseo 内部运行。依赖和将来的更新也是这个决定的一部分。使用全局的 `--host` 选项时，命令在远程 daemon 主机上运行。
+> **信任你添加的每一个插件**。`paseo plugin add` 和 `paseo plugin install` 的含义是“我信任这个代码库”。后端插件代码和 Git 准备命令以 daemon 用户权限运行，没有沙盒。可选 JavaScript 后端插件需要外部 Node 20+（`PASEO_PLUGIN_NODE`）；内置集成运行在 Rust 中。Flutter 客户端不支持可执行 React UI 贡献。依赖和未来更新也是信任决定的一部分。使用全局 `--host` 时，命令在远程 daemon 主机上运行。
 
 在 daemon 上创建和管理受信任的插件：
 
@@ -389,7 +393,7 @@ PASEO_LISTEN=127.0.0.1:6799 PASEO_RELAY_ENABLED=false paseo daemon run --home ~/
 
 它会一直保持附着，直到进程管理器退出或你取消，没有就绪超时。worker 重启会保留这些启动输入。要修改它们，请停止并重新启动部署。如果主目录中已经有一个运行中的进程管理器，`run` 会返回 `already_running`，而不会接管或启动前台进程。
 
-托管的 `start` 会忽略继承来的 daemon 设置覆盖项，包括 `PORT`、`PASEO_LISTEN`、中继、语音和 Web UI 设置。它会保留 Provider 凭据以及可执行文件/运行时控制项。`start --foreground` 已被移除；请使用 `daemon run`。以前的 start/restart 配置参数，例如 `--port`、`--no-relay` 和 `--web-ui`，会在产生任何副作用之前失败，并给出相应的 `config set` 迁移方式。见[配置编辑](/docs/configuration#apply-changes)。
+托管 `start` 忽略继承的 daemon 设置覆盖项，包括 `PORT`、`PASEO_LISTEN`、中继和语音设置，但保留 Provider 凭据与可执行文件/运行时控制项。`start --foreground` 已移除，请使用 `daemon run`。旧 start/restart 参数如 `--port` 和 `--no-relay` 会在副作用前失败，应改用对应持久设置。`--web-ui` 已废弃，没有原生替代项。见[配置编辑](/docs/configuration#apply-changes)。
 
 ### 选择一个 daemon {#select-one-daemon}
 

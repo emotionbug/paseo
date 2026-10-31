@@ -8,7 +8,9 @@ nav: 发布
 
 从一个可用的[插件项目](/docs/plugins)开始。准备好它的展示页，把它发布到 npm 或推送到 GitHub，然后提交到注册表。获得批准后，用户可以用 `paseo plugin add owner/slug` 安装经过审查的版本。
 
-1. 准备你的[展示页](#your-listing-page)；对于可视化插件，还要准备一张[界面图片](#icons-and-screenshots)。
+对于 0.13.0 源码检出中尚未发布的原生迁移，应发布**纯后端**扩展：RPC 处理函数、生命周期钩子、设置持久化、Provider 和用量来源。内置功能由 Rust 实现。可选 JavaScript 在私有后端 worker 中运行，需要 daemon 主机另行安装 Node.js 20+（用 `PASEO_PLUGIN_NODE` 选择）；Flutter 不执行 React 插件。在 README 和展示页说明外部运行时和可选 worker 资源要求，不要把源码检出描述为已发布的原生版本。
+
+1. 准备你的[展示页](#your-listing-page)和有用的[辅助图片](#icons-and-screenshots)。
 2. [发布到 npm](#publish-on-npm)或[通过 Git 分享](#share-through-github-or-git)。
 3. [提交到插件注册表](#plugin-registry)。
 
@@ -54,7 +56,7 @@ nav: 发布
 
 ## 图标和截图 {#icons-and-screenshots}
 
-主题、面板以及其他带可视界面的插件，需要至少一张展示当前界面的图片。请使用示例数据并隐藏隐私信息。只有图标不满足这项要求；没有自己可视界面的插件不需要截图。
+后端扩展不需要自定义界面截图。可选图片可以用示例数据展示其在原生 Paseo 中的实际结果，并隐藏隐私信息。不要把旧 React 面板、主题或自定义渲染器宣传为受支持的原生功能。历史图片必须明确标为历史，不能作为当前行为证据。
 
 发布之前，在 `paseo-plugin.json` 中声明本地图片：
 
@@ -65,11 +67,11 @@ nav: 发布
   "description": "Reviews changes before merge",
   "icon": "assets/icon.png",
   "media": ["assets/screenshot.png"],
-  "requirements": { "paseo": ">=0.11.0" }
+  "requirements": { "paseo": ">=0.13.0" }
 }
 ```
 
-创建所引用的文件；对于 npm，把 `assets/` 加入 `package.json` 的 `files` 列表。路径相对于 manifest，使用正斜杠，并且必须位于插件目录之内。这些元数据字段需要 Paseo 0.11.0 或更高版本。
+创建所引用的文件；对于 npm，把 `assets/` 加入 `package.json` 的 `files` 列表。路径相对于 manifest，使用正斜杠，且必须位于插件目录内。这些展示元数据早于原生迁移；只有 semver 要求不能证明原生兼容性。
 
 | 字段    | 展示行为                                                                                                                       |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -119,7 +121,7 @@ npm run typecheck
 npm pack --dry-run --ignore-scripts
 ```
 
-检查文件列表是否包含 `paseo-plugin.json`、至少一个运行时入口、每个被导入的本地模块、你声明的所有概览和资源文件，以及需要时的 shrinkwrap 文件。只在仓库中存在的导入别名和包外的文件不会到达用户手中。脚手架已经包含了入口以及 `client/`、`server/` 和 `shared/`；请把其他资源目录加入 `files`。
+检查文件列表包含 `paseo-plugin.json`、`index.server.ts`（或 `.tsx`）、每个导入的后端/共享模块、声明的概览和资源，以及需要时的 shrinkwrap。仓库专用别名和包外文件不会到达用户手中。原生脚手架包含服务端入口、`server/` 和 `shared/`；其他资源目录应加入 `files`。从面向原生的包中移除旧客户端入口、模块及纯 UI 依赖。
 
 确认所有声明的准备命令在你支持的 Node/npm 版本下都能成功；不同步或不兼容的锁文件仍然会阻止安装。
 
@@ -136,11 +138,11 @@ paseo plugin install npm:@acme/paseo-review@1.0.0
 paseo plugin ls
 ```
 
-确认状态为 `running` 且没有错误，然后[提交这个包](#plugin-registry)。
+确认状态为 `running` 且无错误，并实际运行后端行为后，再[提交这个包](#plugin-registry)。仅激活不证明原生 UI 支持。
 
 ## 通过 GitHub 或 Git 分享 {#share-through-github-or-git}
 
-对于公开注册表，请把插件推送到一个公开的 GitHub 仓库。包含它的 manifest、运行时入口、被导入的文件和展示页资源。提交时 Git 标签和提交是可选的；提供一个即可选择某个修订，否则审查者会解析 `main`。
+对于公开注册表，请把插件推送到公开的 GitHub 仓库，包含 manifest、服务端入口、被导入的后端/共享文件及展示页资源。提交时 Git 标签和提交可选；提供一个即可选择修订，否则审查者解析 `main`。
 
 如果准备过程会安装运行时 npm 依赖，请提交一个同步的 `package-lock.json`，并把以下命令加入 `paseo-plugin.json`：
 
@@ -183,7 +185,7 @@ npm 发布会自动收到更新 PR。Git 更新需要手动提交所需的修订
 
 ## 带构建步骤的插件 {#plugins-with-a-build-step}
 
-Paseo 会编译 TypeScript，因此普通插件不需要单独的发布构建。请把生成的模块放在它们的运行时目录中，并把宿主提供的模块保留为外部依赖。
+可选后端 worker 编译 TypeScript，因此普通插件不需要单独的发布构建。生成模块放在 `server/` 或 `shared/`，宿主提供模块保留为外部依赖。SDK 位于 `packages/plugin`，提取出的私有 worker 位于 `packages/daemon/plugin-worker/src`。仓库构建工具使用 Node.js 24，与扩展运行时要求的外部 Node.js 20+ 不同。不要导入旧 server 目录或打包 React 客户端。
 
 Paseo 在获取包时会禁止 npm 生命周期脚本。manifest 的 `build` 中显式声明的命令仍然会运行，包括它们调用的脚本。请说明这些命令的用途，并让它们的输入保持锁定且可检查。当 npm 已经安装了生产依赖时，请从 npm manifest 中移除只用于 Git 的依赖安装命令。
 

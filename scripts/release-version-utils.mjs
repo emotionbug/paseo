@@ -51,6 +51,20 @@ export function parseReleaseVersion(version) {
   };
 }
 
+export function syncCargoReleaseVersion(source, version, lockfile = false) {
+  const normalized = parseReleaseVersion(version).version;
+  const pattern = lockfile ?
+    /^(\[\[package\]\]\r?\nname = "paseo-daemon"\r?\nversion = ")[^"]+(")/gm :
+    /^(\[workspace\.package\]\r?\n(?:(?!\[)[^\r\n]*\r?\n)*?version\s*=\s*")[^"]+(")/gm;
+  let matches = 0;
+  const result = source.replace(pattern, (_match, prefix, suffix) => {
+    matches++;
+    return `${prefix}${normalized}${suffix}`;
+  });
+  if (matches !== 1) throw new Error(`Expected exactly one native daemon version in Cargo.${lockfile ? 'lock' : 'toml'}.`);
+  return result;
+}
+
 export function formatReleaseVersion({ major, minor, patch, prerelease = null }) {
   assertInteger(major, "major version");
   assertInteger(minor, "minor version");

@@ -7,19 +7,22 @@ import { describe, expect, it } from "vitest";
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const skill = readFileSync(path.join(repository, "skills/paseo-plugin/SKILL.md"), "utf8");
 
-function sectionCode(heading: string): string {
+function sectionCode(heading: string, language: "ts" | "tsx"): string {
   const section = skill.slice(skill.indexOf(`\n## ${heading}\n`));
-  const code = /```tsx\n([\s\S]*?)\n```/.exec(section)?.[1];
-  if (!code) throw new Error(`No tsx example under "${heading}"`);
+  const code = new RegExp("```" + language + "\\n([\\s\\S]*?)\\n```").exec(section)?.[1];
+  if (!code) throw new Error(`No ${language} example under "${heading}"`);
   return code;
 }
 
-// Checks the example as a plugin client file, with the same options as the plugin examples.
-function typeErrors(code: string): string[] {
+const clientExample = "plugin-examples/skill-example/client/example.tsx";
+const serverEntryExample = "plugin-examples/skill-example/index.server.ts";
+
+// Checks the code as a plugin file at `examplePath`, with the same options as the plugin examples.
+function typeErrors(code: string, examplePath = clientExample): string[] {
   const configPath = path.join(repository, "packages/plugin/tsconfig.examples.json");
   const { config } = ts.readConfigFile(configPath, ts.sys.readFile);
   const { options } = ts.parseJsonConfigFileContent(config, ts.sys, path.dirname(configPath));
-  const file = path.join(repository, "plugin-examples/skill-example/client/example.tsx");
+  const file = path.join(repository, examplePath);
   const host = ts.createCompilerHost(options);
   const getSourceFile = host.getSourceFile;
   host.getSourceFile = (name, language, ...rest) =>
@@ -34,8 +37,8 @@ function typeErrors(code: string): string[] {
 }
 
 describe("paseo-plugin skill examples", () => {
-  it("composer pill example typechecks against the plugin SDK", () => {
-    expect(typeErrors(sectionCode("Add a composer pill"))).toEqual([]);
+  it("complete backend entry example typechecks against the plugin SDK", () => {
+    expect(typeErrors(sectionCode("Complete backend entry", "ts"), serverEntryExample)).toEqual([]);
   });
 });
 

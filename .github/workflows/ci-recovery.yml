@@ -12,24 +12,16 @@ on:
         options:
           - quality
           - typecheck
-          - server-tests-ubuntu
-          - server-tests-windows
-          - server-integration-windows
-          - server-tests-macos
-          - desktop-tests-ubuntu
-          - desktop-tests-windows
-          - app-tests
-          - playwright-1
-          - playwright-2
-          - playwright-3
-          - playwright-4
-          - playwright-5
-          - playwright-6
-          - playwright-7
-          - playwright-8
-          - cli-tests-1
-          - cli-tests-2
-          - cli-tests-3
+          - native-daemon-linux
+          - native-daemon-windows
+          - native-daemon-macos
+          - flutter-analyze
+          - flutter-test
+          - flutter-build-linux
+          - flutter-build-windows
+          - flutter-build-macos
+          - flutter-build-android
+          - flutter-build-ios
 
 # Reuse the real checks without replacing their required status contexts.
 # These report as "Recover / <check>", not as the normal push/PR check names.
@@ -39,7 +31,6 @@ jobs:
     # A reusable workflow cannot elevate the caller's token permissions.
     permissions:
       contents: read
-      packages: read
       pull-requests: read
     uses: ./.github/workflows/ci.yml
     with:

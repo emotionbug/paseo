@@ -88,7 +88,7 @@ By default, anyone who can reach the daemon's listening address can connect. On 
 
 When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header, and every WebSocket client, including relay clients, must send the password when it connects. Relay clients send it inside the end-to-end encrypted channel, so the relay never sees it. Unauthenticated HTTP requests receive a `401 Unauthorized` response. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
 
-If you enable the [bundled web UI](/docs/web-ui), its static files are also served without the password so the login screen can render. This is by design, the API and WebSocket still require authentication before any agent data is returned or any command runs. Set a password before binding the daemon to a network so the data behind the page stays protected.
+The native daemon does not serve a bundled web product client. Flutter clients and the Rust CLI authenticate to its API; no public static login page is required.
 
 The password is stored as a bcrypt hash in `config.json`, the daemon never stores it in plaintext. See [Configuration](/docs/configuration#password-authentication) for setup instructions.
 
@@ -107,12 +107,12 @@ We still recommend the relay for mobile access, it combines authentication with 
 
 ## Docker self-hosting
 
-The official Docker image runs the daemon and bundled web UI in one container. It binds to `0.0.0.0:6767` inside the container so Docker port publishing and reverse proxies work normally.
+The native Docker definition runs the Rust daemon, without a bundled web UI or Node runtime. It binds to `0.0.0.0:6767` inside the container. This migration is unpublished; build the local image as described in [Docker](/docs/docker), rather than assuming a published image contains it.
 
 For Docker deployments:
 
 - Set `PASEO_PASSWORD` before publishing the port to a LAN, VPN, or public address.
-- Use HTTPS at your reverse proxy for browser access outside localhost.
+- Use HTTPS/WSS at your reverse proxy outside trusted local connections.
 - Set `PASEO_HOSTNAMES` for any DNS names you use to reach the container.
 - Keep `/workspace` mounts scoped to repositories the agents should be able to read and write.
 - Treat `/home/paseo` as sensitive, it can contain daemon state and provider credentials.
@@ -121,13 +121,11 @@ The image runs the daemon and launched agents as the non-root `paseo` user, but 
 
 See [Docker](/docs/docker) for Compose and reverse proxy examples.
 
-## Linux desktop sandbox
+## Native desktop trust boundary
 
-Paseo checks Chromium sandbox availability each time the desktop app launches on Linux. It keeps sandboxing enabled when user namespaces work or an installed sandbox helper is usable. The `.deb` and `.rpm` installers configure that helper.
+The Flutter desktop client does not bundle Electron or Chromium. Chromium sandbox switches and helper-installation instructions do not apply. This does not sandbox agents: providers and script/setup PTYs run with the daemon user's filesystem and credential access. The client exposes read-only task logs, not an interactive terminal UI.
 
-AppImage and extracted tar archives launch with Chromium's sandbox disabled when neither is available. Use the `.deb` or `.rpm` package if you require Chromium process isolation. Passing `--no-sandbox` explicitly disables it.
-
-Open **Settings → Diagnostics → App Diagnostics** to check the sandbox state and reason. The [desktop log](/docs/troubleshooting#reading-the-logs) records the same decision.
+Built-in integrations run in Rust. Optional JavaScript backend plugins execute trusted code using externally installed Node 20+ (`PASEO_PLUGIN_NODE` may select it). Do not treat the separate worker process as a security sandbox; install only plugins you trust. Executable React UI plugins and embedded browser automation are not part of the native product.
 
 ## Agent authentication
 
@@ -137,7 +135,7 @@ Paseo wraps agent CLIs (Claude Code, Codex, OpenCode, Muse Code) but does not ma
 - **Codex**, uses your OpenAI API key or OAuth session
 - **OpenCode**, configured via provider-specific API keys
 
-Paseo never stores or transmits provider API keys. Agents run in your user context with your existing credentials.
+Agents run in your user context with their existing credentials. Paseo can also read explicitly configured provider credentials, including OpenAI speech keys, so protect `config.json`, the daemon environment, and backups as sensitive state. These credentials are distinct from relay pairing and Hub enrollment.
 
 ## Hub identities and credentials
 

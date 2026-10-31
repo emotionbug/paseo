@@ -1,0 +1,660 @@
+[
+  {
+    "id": "agent-new-cmd-shift-o-mac",
+    "action": "agent.new",
+    "combo": "Cmd+O",
+    "when": { "mac": true },
+    "help": { "id": "new-agent", "section": "workspaces", "label": "Open project" },
+    "parsedChord": [{ "code": "KeyO", "meta": true, "key": "o" }]
+  },
+  {
+    "id": "agent-new-ctrl-shift-o-non-mac",
+    "action": "agent.new",
+    "combo": "Ctrl+O",
+    "when": { "mac": false, "terminal": false },
+    "help": { "id": "new-agent", "section": "workspaces", "label": "Open project" },
+    "parsedChord": [{ "code": "KeyO", "ctrl": true, "key": "o" }]
+  },
+  {
+    "id": "workspace-new-cmd-n-mac",
+    "action": "workspace.new",
+    "combo": "Cmd+N",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "new-workspace", "section": "workspaces", "label": "New workspace" },
+    "parsedChord": [{ "code": "KeyN", "meta": true, "key": "n" }]
+  },
+  {
+    "id": "workspace-new-ctrl-n-non-mac",
+    "action": "workspace.new",
+    "combo": "Ctrl+N",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "new-workspace", "section": "workspaces", "label": "New workspace" },
+    "parsedChord": [{ "code": "KeyN", "ctrl": true, "key": "n" }]
+  },
+  {
+    "id": "workspace-project-pick-cmd-p-mac",
+    "action": "command-center.files",
+    "combo": "Cmd+P",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "search-files", "section": "general", "label": "Search files" },
+    "parsedChord": [{ "code": "KeyP", "meta": true, "key": "p" }]
+  },
+  {
+    "id": "workspace-project-pick-ctrl-p-non-mac",
+    "action": "command-center.files",
+    "combo": "Ctrl+P",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "search-files", "section": "general", "label": "Search files" },
+    "parsedChord": [{ "code": "KeyP", "ctrl": true, "key": "p" }]
+  },
+  {
+    "id": "worktree-archive-cmd-shift-backspace-mac",
+    "action": "workspace.archive",
+    "combo": "Cmd+Shift+Backspace",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "archive-workspace", "section": "workspaces", "label": "Archive workspace" },
+    "parsedChord": [{ "code": "Backspace", "meta": true, "shift": true }]
+  },
+  {
+    "id": "worktree-archive-ctrl-shift-backspace-non-mac",
+    "action": "workspace.archive",
+    "combo": "Ctrl+Shift+Backspace",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "archive-workspace", "section": "workspaces", "label": "Archive workspace" },
+    "parsedChord": [{ "code": "Backspace", "ctrl": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pin-cmd-shift-p-mac",
+    "action": "workspace.pin",
+    "combo": "Cmd+Shift+P",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "pin-workspace", "section": "workspaces", "label": "Pin chat" },
+    "parsedChord": [{ "code": "KeyP", "meta": true, "shift": true, "key": "p" }]
+  },
+  {
+    "id": "workspace-pin-ctrl-shift-p-non-mac",
+    "action": "workspace.pin",
+    "combo": "Ctrl+Shift+P",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "pin-workspace", "section": "workspaces", "label": "Pin chat" },
+    "parsedChord": [{ "code": "KeyP", "ctrl": true, "shift": true, "key": "p" }]
+  },
+  {
+    "id": "workspace-tab-new-cmd-t-mac",
+    "action": "workspace.tab.menu.open",
+    "combo": "Cmd+T",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "workspace-tab-new", "section": "tabs-panes", "label": "New tab" },
+    "parsedChord": [{ "code": "KeyT", "meta": true, "key": "t" }]
+  },
+  {
+    "id": "workspace-tab-new-ctrl-t-non-mac",
+    "action": "workspace.tab.menu.open",
+    "combo": "Ctrl+T",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "workspace-tab-new", "section": "tabs-panes", "label": "New tab" },
+    "parsedChord": [{ "code": "KeyT", "ctrl": true, "key": "t" }]
+  },
+  {
+    "id": "workspace-tab-target-agent-cmd-shift-a-mac",
+    "action": "workspace.tab.target.agent",
+    "combo": "Cmd+Shift+A",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "workspace-tab-target-agent", "section": "tabs-panes", "label": "New agent" },
+    "parsedChord": [{ "code": "KeyA", "meta": true, "shift": true, "key": "a" }]
+  },
+  {
+    "id": "workspace-tab-target-agent-ctrl-shift-a-non-mac",
+    "action": "workspace.tab.target.agent",
+    "combo": "Ctrl+Shift+A",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "workspace-tab-target-agent", "section": "tabs-panes", "label": "New agent" },
+    "parsedChord": [{ "code": "KeyA", "ctrl": true, "shift": true, "key": "a" }]
+  },
+  {
+    "id": "workspace-tab-target-changes-cmd-shift-c-mac",
+    "action": "workspace.tab.target.changes",
+    "combo": "Cmd+Shift+G",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "workspace-tab-target-changes", "section": "tabs-panes", "label": "Changes" },
+    "parsedChord": [{ "code": "KeyG", "meta": true, "shift": true, "key": "g" }]
+  },
+  {
+    "id": "workspace-tab-target-changes-ctrl-shift-c-non-mac",
+    "action": "workspace.tab.target.changes",
+    "combo": "Ctrl+Shift+G",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "workspace-tab-target-changes", "section": "tabs-panes", "label": "Changes" },
+    "parsedChord": [{ "code": "KeyG", "ctrl": true, "shift": true, "key": "g" }]
+  },
+  {
+    "id": "workspace-tab-target-files-cmd-shift-e-mac",
+    "action": "workspace.tab.target.files",
+    "combo": "Cmd+Shift+E",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "workspace-tab-target-files", "section": "tabs-panes", "label": "Files" },
+    "parsedChord": [{ "code": "KeyE", "meta": true, "shift": true, "key": "e" }]
+  },
+  {
+    "id": "workspace-tab-target-files-ctrl-shift-e-non-mac",
+    "action": "workspace.tab.target.files",
+    "combo": "Ctrl+Shift+E",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "workspace-tab-target-files", "section": "tabs-panes", "label": "Files" },
+    "parsedChord": [{ "code": "KeyE", "ctrl": true, "shift": true, "key": "e" }]
+  },
+  {
+    "id": "workspace-tab-close-current-cmd-w-mac",
+    "action": "workspace.tab.close.current",
+    "combo": "Cmd+W",
+    "when": { "mac": true, "desktop": true, "commandCenter": false },
+    "help": {
+      "id": "workspace-tab-close-current",
+      "section": "tabs-panes",
+      "label": "Close current tab"
+    },
+    "parsedChord": [{ "code": "KeyW", "meta": true, "key": "w" }]
+  },
+  {
+    "id": "workspace-tab-close-current-ctrl-w-non-mac",
+    "action": "workspace.tab.close.current",
+    "combo": "Ctrl+W",
+    "when": { "mac": false, "desktop": true, "commandCenter": false, "terminal": false },
+    "help": {
+      "id": "workspace-tab-close-current",
+      "section": "tabs-panes",
+      "label": "Close current tab"
+    },
+    "parsedChord": [{ "code": "KeyW", "ctrl": true, "key": "w" }]
+  },
+  {
+    "id": "workspace-tab-close-current-alt-shift-w-web",
+    "action": "workspace.tab.close.current",
+    "combo": "Alt+Shift+W",
+    "when": { "desktop": false, "commandCenter": false },
+    "help": {
+      "id": "workspace-tab-close-current",
+      "section": "tabs-panes",
+      "label": "Close current tab"
+    },
+    "parsedChord": [{ "code": "KeyW", "alt": true, "shift": true, "key": "w" }]
+  },
+  {
+    "id": "workspace-navigate-index-cmd-digit-mac",
+    "action": "workspace.navigate.index",
+    "combo": "Cmd+Digit",
+    "when": { "mac": true, "desktop": true, "commandCenter": false },
+    "payload": { "type": "index" },
+    "help": {
+      "id": "workspace-jump-index",
+      "section": "workspaces",
+      "label": "Jump to workspace",
+      "defaultDisplayKeys": ["mod", "1-9"]
+    },
+    "parsedChord": [{ "code": "Digit", "meta": true }]
+  },
+  {
+    "id": "workspace-navigate-index-ctrl-digit-non-mac",
+    "action": "workspace.navigate.index",
+    "combo": "Ctrl+Digit",
+    "when": { "mac": false, "desktop": true, "commandCenter": false, "terminal": false },
+    "payload": { "type": "index" },
+    "help": {
+      "id": "workspace-jump-index",
+      "section": "workspaces",
+      "label": "Jump to workspace",
+      "defaultDisplayKeys": ["mod", "1-9"]
+    },
+    "parsedChord": [{ "code": "Digit", "ctrl": true }]
+  },
+  {
+    "id": "workspace-navigate-index-alt-digit-web",
+    "action": "workspace.navigate.index",
+    "combo": "Alt+Digit",
+    "when": { "desktop": false, "commandCenter": false },
+    "payload": { "type": "index" },
+    "help": {
+      "id": "workspace-jump-index",
+      "section": "workspaces",
+      "label": "Jump to workspace",
+      "defaultDisplayKeys": ["alt", "1-9"]
+    },
+    "parsedChord": [{ "code": "Digit", "alt": true }]
+  },
+  {
+    "id": "workspace-tab-navigate-index-cmd-alt-digit-mac-desktop",
+    "action": "workspace.tab.navigate.index",
+    "combo": "Cmd+Alt+Digit",
+    "when": { "mac": true, "desktop": true, "commandCenter": false },
+    "payload": { "type": "index" },
+    "help": {
+      "id": "workspace-tab-jump-index",
+      "section": "tabs-panes",
+      "label": "Jump to tab",
+      "defaultDisplayKeys": ["mod", "alt", "1-9"]
+    },
+    "parsedChord": [{ "code": "Digit", "meta": true, "alt": true }]
+  },
+  {
+    "id": "workspace-tab-navigate-index-alt-digit-desktop",
+    "action": "workspace.tab.navigate.index",
+    "combo": "Alt+Digit",
+    "when": { "mac": false, "desktop": true, "commandCenter": false },
+    "payload": { "type": "index" },
+    "help": {
+      "id": "workspace-tab-jump-index",
+      "section": "tabs-panes",
+      "label": "Jump to tab",
+      "defaultDisplayKeys": ["alt", "1-9"]
+    },
+    "parsedChord": [{ "code": "Digit", "alt": true }]
+  },
+  {
+    "id": "workspace-tab-navigate-index-alt-shift-digit-web",
+    "action": "workspace.tab.navigate.index",
+    "combo": "Alt+Shift+Digit",
+    "when": { "desktop": false, "commandCenter": false },
+    "payload": { "type": "index" },
+    "help": {
+      "id": "workspace-tab-jump-index",
+      "section": "tabs-panes",
+      "label": "Jump to tab",
+      "defaultDisplayKeys": ["alt", "shift", "1-9"]
+    },
+    "parsedChord": [{ "code": "Digit", "alt": true, "shift": true }]
+  },
+  {
+    "id": "workspace-navigate-relative-cmd-left-mac",
+    "action": "workspace.navigate.relative",
+    "combo": "Cmd+[",
+    "when": { "mac": true, "desktop": true, "commandCenter": false },
+    "payload": { "type": "delta", "delta": -1 },
+    "help": { "id": "workspace-prev", "section": "workspaces", "label": "Previous workspace" },
+    "parsedChord": [{ "code": "BracketLeft", "meta": true, "key": "[", "shiftedKey": "{" }]
+  },
+  {
+    "id": "workspace-navigate-relative-ctrl-left-non-mac",
+    "action": "workspace.navigate.relative",
+    "combo": "Ctrl+[",
+    "when": { "mac": false, "desktop": true, "commandCenter": false, "terminal": false },
+    "payload": { "type": "delta", "delta": -1 },
+    "help": { "id": "workspace-prev", "section": "workspaces", "label": "Previous workspace" },
+    "parsedChord": [{ "code": "BracketLeft", "ctrl": true, "key": "[", "shiftedKey": "{" }]
+  },
+  {
+    "id": "workspace-navigate-relative-cmd-right-mac",
+    "action": "workspace.navigate.relative",
+    "combo": "Cmd+]",
+    "when": { "mac": true, "desktop": true, "commandCenter": false },
+    "payload": { "type": "delta", "delta": 1 },
+    "help": { "id": "workspace-next", "section": "workspaces", "label": "Next workspace" },
+    "parsedChord": [{ "code": "BracketRight", "meta": true, "key": "]", "shiftedKey": "}" }]
+  },
+  {
+    "id": "workspace-navigate-relative-ctrl-right-non-mac",
+    "action": "workspace.navigate.relative",
+    "combo": "Ctrl+]",
+    "when": { "mac": false, "desktop": true, "commandCenter": false, "terminal": false },
+    "payload": { "type": "delta", "delta": 1 },
+    "help": { "id": "workspace-next", "section": "workspaces", "label": "Next workspace" },
+    "parsedChord": [{ "code": "BracketRight", "ctrl": true, "key": "]", "shiftedKey": "}" }]
+  },
+  {
+    "id": "workspace-navigate-relative-alt-left-web",
+    "action": "workspace.navigate.relative",
+    "combo": "Alt+[",
+    "when": { "desktop": false, "commandCenter": false },
+    "payload": { "type": "delta", "delta": -1 },
+    "help": { "id": "workspace-prev", "section": "workspaces", "label": "Previous workspace" },
+    "parsedChord": [{ "code": "BracketLeft", "alt": true, "key": "[", "shiftedKey": "{" }]
+  },
+  {
+    "id": "workspace-navigate-relative-alt-right-web",
+    "action": "workspace.navigate.relative",
+    "combo": "Alt+]",
+    "when": { "desktop": false, "commandCenter": false },
+    "payload": { "type": "delta", "delta": 1 },
+    "help": { "id": "workspace-next", "section": "workspaces", "label": "Next workspace" },
+    "parsedChord": [{ "code": "BracketRight", "alt": true, "key": "]", "shiftedKey": "}" }]
+  },
+  {
+    "id": "workspace-tab-navigate-relative-alt-shift-left",
+    "action": "workspace.tab.navigate.relative",
+    "combo": "Alt+Shift+[",
+    "when": { "commandCenter": false },
+    "payload": { "type": "delta", "delta": -1 },
+    "help": { "id": "workspace-tab-prev", "section": "tabs-panes", "label": "Previous tab" },
+    "parsedChord": [
+      { "code": "BracketLeft", "alt": true, "shift": true, "key": "[", "shiftedKey": "{" }
+    ]
+  },
+  {
+    "id": "workspace-tab-navigate-relative-alt-shift-right",
+    "action": "workspace.tab.navigate.relative",
+    "combo": "Alt+Shift+]",
+    "when": { "commandCenter": false },
+    "payload": { "type": "delta", "delta": 1 },
+    "help": { "id": "workspace-tab-next", "section": "tabs-panes", "label": "Next tab" },
+    "parsedChord": [
+      { "code": "BracketRight", "alt": true, "shift": true, "key": "]", "shiftedKey": "}" }
+    ]
+  },
+  {
+    "id": "workspace-pane-split-right-cmd-backslash",
+    "action": "workspace.pane.split.right",
+    "combo": "Cmd+\\",
+    "when": { "mac": true, "commandCenter": false },
+    "help": {
+      "id": "workspace-pane-split-right",
+      "section": "tabs-panes",
+      "label": "Split pane right"
+    },
+    "parsedChord": [{ "code": "Backslash", "meta": true, "key": "\\", "shiftedKey": "|" }]
+  },
+  {
+    "id": "workspace-pane-split-down-cmd-shift-backslash",
+    "action": "workspace.pane.split.down",
+    "combo": "Cmd+Shift+\\",
+    "when": { "mac": true, "commandCenter": false },
+    "help": {
+      "id": "workspace-pane-split-down",
+      "section": "tabs-panes",
+      "label": "Split pane down"
+    },
+    "parsedChord": [
+      { "code": "Backslash", "meta": true, "shift": true, "key": "\\", "shiftedKey": "|" }
+    ]
+  },
+  {
+    "id": "workspace-pane-focus-left-cmd-shift-left",
+    "action": "workspace.pane.focus.left",
+    "combo": "Cmd+Shift+ArrowLeft",
+    "when": { "mac": true, "commandCenter": false, "editable": false },
+    "help": {
+      "id": "workspace-pane-focus-left",
+      "section": "tabs-panes",
+      "label": "Focus pane left"
+    },
+    "parsedChord": [{ "code": "ArrowLeft", "meta": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-focus-right-cmd-shift-right",
+    "action": "workspace.pane.focus.right",
+    "combo": "Cmd+Shift+ArrowRight",
+    "when": { "mac": true, "commandCenter": false, "editable": false },
+    "help": {
+      "id": "workspace-pane-focus-right",
+      "section": "tabs-panes",
+      "label": "Focus pane right"
+    },
+    "parsedChord": [{ "code": "ArrowRight", "meta": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-focus-up-cmd-shift-up",
+    "action": "workspace.pane.focus.up",
+    "combo": "Cmd+Shift+ArrowUp",
+    "when": { "mac": true, "commandCenter": false, "editable": false },
+    "help": { "id": "workspace-pane-focus-up", "section": "tabs-panes", "label": "Focus pane up" },
+    "parsedChord": [{ "code": "ArrowUp", "meta": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-focus-down-cmd-shift-down",
+    "action": "workspace.pane.focus.down",
+    "combo": "Cmd+Shift+ArrowDown",
+    "when": { "mac": true, "commandCenter": false, "editable": false },
+    "help": {
+      "id": "workspace-pane-focus-down",
+      "section": "tabs-panes",
+      "label": "Focus pane down"
+    },
+    "parsedChord": [{ "code": "ArrowDown", "meta": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-move-tab-left-cmd-shift-alt-left",
+    "action": "workspace.pane.move-tab.left",
+    "combo": "Cmd+Alt+Shift+ArrowLeft",
+    "when": { "mac": true, "commandCenter": false },
+    "help": {
+      "id": "workspace-pane-move-tab-left",
+      "section": "tabs-panes",
+      "label": "Move tab left"
+    },
+    "parsedChord": [{ "code": "ArrowLeft", "meta": true, "alt": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-move-tab-right-cmd-shift-alt-right",
+    "action": "workspace.pane.move-tab.right",
+    "combo": "Cmd+Alt+Shift+ArrowRight",
+    "when": { "mac": true, "commandCenter": false },
+    "help": {
+      "id": "workspace-pane-move-tab-right",
+      "section": "tabs-panes",
+      "label": "Move tab right"
+    },
+    "parsedChord": [{ "code": "ArrowRight", "meta": true, "alt": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-move-tab-up-cmd-shift-alt-up",
+    "action": "workspace.pane.move-tab.up",
+    "combo": "Cmd+Alt+Shift+ArrowUp",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "workspace-pane-move-tab-up", "section": "tabs-panes", "label": "Move tab up" },
+    "parsedChord": [{ "code": "ArrowUp", "meta": true, "alt": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-move-tab-down-cmd-shift-alt-down",
+    "action": "workspace.pane.move-tab.down",
+    "combo": "Cmd+Alt+Shift+ArrowDown",
+    "when": { "mac": true, "commandCenter": false },
+    "help": {
+      "id": "workspace-pane-move-tab-down",
+      "section": "tabs-panes",
+      "label": "Move tab down"
+    },
+    "parsedChord": [{ "code": "ArrowDown", "meta": true, "alt": true, "shift": true }]
+  },
+  {
+    "id": "workspace-pane-close-cmd-shift-w",
+    "action": "workspace.pane.close",
+    "combo": "Cmd+Shift+W",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "workspace-pane-close", "section": "tabs-panes", "label": "Close pane" },
+    "parsedChord": [{ "code": "KeyW", "meta": true, "shift": true, "key": "w" }]
+  },
+  {
+    "id": "command-center-toggle-cmd-k-mac",
+    "action": "command-center.toggle",
+    "combo": "Cmd+K",
+    "when": { "mac": true },
+    "help": {
+      "id": "toggle-command-center",
+      "section": "general",
+      "label": "Toggle command center"
+    },
+    "parsedChord": [{ "code": "KeyK", "meta": true, "key": "k" }]
+  },
+  {
+    "id": "command-center-toggle-ctrl-k-non-mac",
+    "action": "command-center.toggle",
+    "combo": "Ctrl+K",
+    "when": { "mac": false, "terminal": false },
+    "help": {
+      "id": "toggle-command-center",
+      "section": "general",
+      "label": "Toggle command center"
+    },
+    "parsedChord": [{ "code": "KeyK", "ctrl": true, "key": "k" }]
+  },
+  {
+    "id": "shortcuts-dialog-toggle-question-mark",
+    "action": "shortcuts.dialog.toggle",
+    "combo": "Shift+?",
+    "repeat": false,
+    "when": { "focusScope": "other" },
+    "help": {
+      "id": "show-shortcuts",
+      "section": "general",
+      "label": "Show keyboard shortcuts",
+      "defaultDisplayKeys": ["?"],
+      "note": "Available when focus is not in a text field or terminal."
+    },
+    "parsedChord": [{ "code": "Slash", "shift": true, "key": "?", "repeat": false }]
+  },
+  {
+    "id": "sidebar-toggle-left-mac-cmd-b",
+    "action": "sidebar.toggle.left",
+    "combo": "Cmd+B",
+    "when": { "mac": true },
+    "help": { "id": "toggle-left-sidebar", "section": "layout", "label": "Toggle left sidebar" },
+    "parsedChord": [{ "code": "KeyB", "meta": true, "key": "b" }]
+  },
+  {
+    "id": "sidebar-toggle-left-ctrl-period-non-mac",
+    "action": "sidebar.toggle.left",
+    "combo": "Ctrl+B",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "toggle-left-sidebar", "section": "layout", "label": "Toggle left sidebar" },
+    "parsedChord": [{ "code": "KeyB", "ctrl": true, "key": "b" }]
+  },
+  {
+    "id": "sidebar-toggle-right-cmd-e-mac",
+    "action": "sidebar.toggle.right",
+    "combo": "Cmd+E",
+    "when": { "mac": true, "commandCenter": false },
+    "help": {
+      "id": "toggle-right-sidebar",
+      "section": "layout",
+      "label": "Toggle Explorer sidebar"
+    },
+    "parsedChord": [{ "code": "KeyE", "meta": true, "key": "e" }]
+  },
+  {
+    "id": "sidebar-toggle-right-ctrl-e-non-mac",
+    "action": "sidebar.toggle.right",
+    "combo": "Ctrl+E",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": {
+      "id": "toggle-right-sidebar",
+      "section": "layout",
+      "label": "Toggle Explorer sidebar"
+    },
+    "parsedChord": [{ "code": "KeyE", "ctrl": true, "key": "e" }]
+  },
+  {
+    "id": "sidebar-toggle-right-ctrl-backquote",
+    "action": "sidebar.toggle.right",
+    "combo": "Ctrl+`",
+    "when": { "commandCenter": false },
+    "parsedChord": [{ "code": "Backquote", "ctrl": true, "key": "`", "shiftedKey": "~" }]
+  },
+  {
+    "id": "sidebar-toggle-both-cmd-period-mac",
+    "action": "sidebar.toggle.both",
+    "combo": "Cmd+.",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "toggle-both-sidebars", "section": "layout", "label": "Toggle both sidebars" },
+    "parsedChord": [{ "code": "Period", "meta": true, "key": ".", "shiftedKey": ">" }]
+  },
+  {
+    "id": "sidebar-toggle-both-ctrl-period-non-mac",
+    "action": "sidebar.toggle.both",
+    "combo": "Ctrl+.",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "toggle-both-sidebars", "section": "layout", "label": "Toggle both sidebars" },
+    "parsedChord": [{ "code": "Period", "ctrl": true, "key": ".", "shiftedKey": ">" }]
+  },
+  {
+    "id": "settings-toggle-cmd-comma-mac",
+    "action": "settings.toggle",
+    "combo": "Cmd+,",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "toggle-settings", "section": "general", "label": "Toggle settings" },
+    "parsedChord": [{ "code": "Comma", "meta": true, "key": ",", "shiftedKey": "<" }]
+  },
+  {
+    "id": "settings-toggle-ctrl-comma-non-mac",
+    "action": "settings.toggle",
+    "combo": "Ctrl+,",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "toggle-settings", "section": "general", "label": "Toggle settings" },
+    "parsedChord": [{ "code": "Comma", "ctrl": true, "key": ",", "shiftedKey": "<" }]
+  },
+  {
+    "id": "view-toggle-focus-cmd-shift-f-mac",
+    "action": "view.toggle.focus",
+    "combo": "Cmd+Shift+F",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "toggle-focus", "section": "layout", "label": "Toggle focus mode" },
+    "parsedChord": [{ "code": "KeyF", "meta": true, "shift": true, "key": "f" }]
+  },
+  {
+    "id": "view-toggle-focus-ctrl-shift-f-non-mac",
+    "action": "view.toggle.focus",
+    "combo": "Ctrl+Shift+F",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "toggle-focus", "section": "layout", "label": "Toggle focus mode" },
+    "parsedChord": [{ "code": "KeyF", "ctrl": true, "shift": true, "key": "f" }]
+  },
+  {
+    "id": "theme-cycle-cmd-shift-t-mac",
+    "action": "theme.cycle",
+    "combo": "Cmd+Alt+T",
+    "when": { "mac": true, "commandCenter": false },
+    "help": { "id": "cycle-theme", "section": "general", "label": "Cycle theme" },
+    "parsedChord": [{ "code": "KeyT", "meta": true, "alt": true, "key": "t" }]
+  },
+  {
+    "id": "theme-cycle-ctrl-alt-t-non-mac",
+    "action": "theme.cycle",
+    "combo": "Ctrl+Alt+T",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "help": { "id": "cycle-theme", "section": "general", "label": "Cycle theme" },
+    "parsedChord": [{ "code": "KeyT", "ctrl": true, "alt": true, "key": "t" }]
+  },
+  {
+    "id": "message-input-focus-cmd-l-mac",
+    "action": "message-input.action",
+    "combo": "Cmd+L",
+    "when": { "mac": true, "commandCenter": false },
+    "payload": { "type": "message-input", "kind": "focus" },
+    "help": {
+      "id": "focus-message-input",
+      "section": "agent-input",
+      "label": "Focus message input"
+    },
+    "parsedChord": [{ "code": "KeyL", "meta": true, "key": "l" }]
+  },
+  {
+    "id": "message-input-focus-ctrl-l-non-mac",
+    "action": "message-input.action",
+    "combo": "Ctrl+L",
+    "when": { "mac": false, "commandCenter": false, "terminal": false },
+    "payload": { "type": "message-input", "kind": "focus" },
+    "help": {
+      "id": "focus-message-input",
+      "section": "agent-input",
+      "label": "Focus message input"
+    },
+    "parsedChord": [{ "code": "KeyL", "ctrl": true, "key": "l" }]
+  },
+  {
+    "id": "message-input-mode-cycle-shift-tab",
+    "action": "message-input.action",
+    "combo": "Shift+Tab",
+    "repeat": false,
+    "when": { "commandCenter": false, "focusScope": "message-input" },
+    "payload": { "type": "message-input", "kind": "mode-cycle" },
+    "help": { "id": "cycle-agent-mode", "section": "agent-input", "label": "Cycle agent mode" },
+    "parsedChord": [{ "code": "Tab", "shift": true, "repeat": false }]
+  },
+  {
+    "id": "agent-interrupt",
+    "action": "agent.interrupt",
+    "combo": "Escape",
+    "when": { "commandCenter": false, "focusScope": ["message-input", "other"] },
+    "preventDefault": false,
+    "stopPropagation": false,
+    "help": { "id": "agent-interrupt", "section": "agent-input", "label": "Interrupt agent" },
+    "parsedChord": [{ "code": "Escape" }]
+  }
+]

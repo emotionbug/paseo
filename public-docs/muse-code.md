@@ -19,9 +19,7 @@ curl -fsSL https://dev.meta.ai/install.sh | sh
 muse login
 ```
 
-Use Muse 1.3.0 or newer. This integration was verified with 1.4.1. For API access, set
-`META_API_KEY` in the daemon's environment instead of logging in. See
-[provider environment overrides](/docs/custom-providers).
+Use Muse 1.3.0 or newer. The previous integration recorded compatibility with 1.4.1; that historical result is not a claim that Muse was exercised in the native migration. The current adapter executes in Rust. For API access, set `META_API_KEY` in the daemon's environment instead of logging in. See [provider environment overrides](/docs/custom-providers).
 
 In Paseo, select **Muse Code**, then choose a model, approval mode, and reasoning effort.
 Paseo runs `muse serve` and communicates over the Muse Session Protocol (MSP). Your Muse

@@ -1,14 +1,20 @@
 ---
 title: Docker
-description: 使用官方 Docker 镜像运行 Paseo daemon 和内置网页界面。
+description: 构建并运行原生 Rust daemon 容器，供远程 Flutter 客户端连接。
 nav: Docker
 ---
 
 # Docker {#docker}
 
-官方 Paseo Docker 镜像运行 daemon，并在同一个 HTTP 源上提供内置的浏览器界面。它适用于服务器、开发机、NAS 设备、家庭实验室主机，以及其他你希望在没有桌面应用的情况下运行 Paseo 的地方。
+原生容器为服务器和开发主机运行 Rust daemon 与 CLI。请使用远程 Flutter 桌面/移动客户端或 CLI 连接；它不提供 Web 产品客户端，也不包含 Node、Electron、Chromium 或内嵌浏览器自动化。
 
-Docker 镜像跟随 Paseo 稳定版的发布节奏。`ghcr.io/getpaseo/paseo:latest` 指向最新的稳定版，而不是任意的 `main` 构建。
+0.13.0 原生迁移检出尚未发布，已发布的 `latest` 镜像不能证明包含此运行时。请从当前检出构建本地镜像：
+
+```bash
+docker build -f docker/base/Dockerfile -t paseo-native:local .
+```
+
+这是本地构建，不是已签名或已验证的发布产物。
 
 ```bash
 docker run -d --name paseo \
@@ -16,23 +22,17 @@ docker run -d --name paseo \
   -e PASEO_PASSWORD=change-me \
   -v "$PWD/paseo-home:/home/paseo" \
   -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
+  paseo-native:local
 ```
 
-然后打开：
-
-```text
-http://localhost:6767
-```
-
-如果设置了 `PASEO_PASSWORD`，在网页界面、移动应用或 CLI 中添加直连 daemon 时，请使用相同的密码。
+在 Flutter 客户端中添加 `127.0.0.1:6767` 直连，使用配置的密码。从另一台机器连接时，请使用 daemon 主机的可达地址，而非回环地址。
 
 ## 镜像包含什么 {#what-the-image-includes}
 
 该镜像：
 
-- 安装 Paseo daemon 和 CLI
-- 提供内置的网页界面
+- 安装 Rust Paseo daemon、CLI 及其相邻运行时资源
+- 为原生客户端提供 API，不包含 Web UI
 - 在容器内监听 `0.0.0.0:6767`
 - 把 daemon 状态保存在 `/home/paseo/.paseo` 下
 - 以非 root 的 `paseo` 用户运行 daemon 和启动的 Agent
@@ -46,7 +46,7 @@ http://localhost:6767
 ```yaml
 services:
   paseo:
-    image: ghcr.io/getpaseo/paseo:latest
+    image: paseo-native:local
     container_name: paseo
     restart: unless-stopped
     ports:
@@ -67,22 +67,11 @@ docker compose up -d
 
 ## 安装 Agent CLI {#install-agent-clis}
 
-为你想使用的 Provider 创建一个子镜像：
+可参考现有的 [`docker/Dockerfile.agents.example`](https://github.com/getpaseo/paseo/blob/main/docker/Dockerfile.agents.example)，将基础镜像改为本地原生镜像。按照各 Provider 支持的分发方式安装，并提供其所需运行时。基础镜像没有 `node` 或 `npm`；使用 npm 安装 Provider 前，需要在子镜像中显式添加这些工具。
 
-```Dockerfile
-FROM ghcr.io/getpaseo/paseo:latest
+可选 JavaScript 后端插件同样需要外部安装的 Node 20+，必要时用 `PASEO_PLUGIN_NODE` 指定。内置 Rust 集成不需要它。仓库构建使用 Node 24。
 
-USER root
-RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
-```
-
-构建：
-
-```bash
-docker build -t paseo-with-agents .
-```
-
-然后在 Compose 中使用 `image: paseo-with-agents`。
+然后在 Compose 中使用构建出的子镜像。
 
 保持子镜像的用户为 root。基础镜像的入口点只在首次运行配置挂载卷时使用 root，之后会以非 root 的 `paseo` 用户运行 daemon 和启动的 Agent。
 
@@ -147,9 +136,7 @@ IP 和 `localhost` 默认是允许的。
 
 ## 安全 {#security}
 
-对于任何发布的端口或可通过网络访问的部署，请设置 `PASEO_PASSWORD`。在 localhost 之外通过浏览器访问时，请在反向代理上使用 HTTPS。
-
-静态网页界面在 daemon 源上是公开的。配置密码后，daemon API 和 WebSocket 受密码认证保护。
+对于发布的端口或网络可达部署，请设置 `PASEO_PASSWORD`。在可信本地连接之外，请在反向代理使用 HTTPS/WSS。配置密码后，daemon API 和 WebSocket 需要认证；不存在静态 Web 产品界面。
 
 Agent 可以访问你挂载到 `/workspace` 的任何内容，以及你放在 `/home/paseo` 中的任何凭据。请把这些挂载限制在 Agent 应该能使用的范围内。
 
@@ -157,7 +144,7 @@ Agent 可以访问你挂载到 `/workspace` 的任何内容，以及你放在 `/
 
 ## 故障排查 {#troubleshooting}
 
-- **界面能加载但无法连接**：如果设置了 `PASEO_PASSWORD`，请使用相同的密码添加直连。
+- **客户端无法连接**：如果设置了 `PASEO_PASSWORD`，请使用相同的密码添加直连。
 - **403 Host not allowed**：把 `PASEO_HOSTNAMES` 设置为你使用的 DNS 名称。
 - **Provider 不可用**：在子镜像中安装该 Agent CLI，或确保二进制文件在 `PATH` 中。
 - **`/workspace` 中的权限错误**：让挂载的目录对 uid/gid `1000:1000` 可写，或以宿主机的 uid/gid 运行容器。

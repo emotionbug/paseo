@@ -1,6 +1,6 @@
 ---
 title: Docker
-description: Run the Paseo daemon and bundled web UI with the official Docker image.
+description: Build and operate the native Rust daemon container with remote Flutter clients.
 nav: Docker
 order: 6
 category: Getting started
@@ -8,9 +8,15 @@ category: Getting started
 
 # Docker
 
-The official Paseo Docker image runs the daemon and serves the bundled browser UI from the same HTTP origin. It is meant for servers, dev boxes, NAS devices, homelab hosts, and other places where you want Paseo running without the desktop app.
+The native container runs the Rust daemon and CLI for servers and development hosts. Connect with a remote Flutter desktop/mobile client or the CLI; it does not serve a web product client or include Node, Electron, Chromium, or embedded browser automation.
 
-Docker images follow the stable Paseo release cadence. `ghcr.io/getpaseo/paseo:latest` points at the latest stable release, not an arbitrary `main` build.
+The 0.13.0 native migration checkout is unpublished. Published `latest` images are not evidence of this runtime. Build a local image from this checkout:
+
+```bash
+docker build -f docker/base/Dockerfile -t paseo-native:local .
+```
+
+This is a local build, not a signed or verified release artifact.
 
 ```bash
 docker run -d --name paseo \
@@ -18,23 +24,17 @@ docker run -d --name paseo \
   -e PASEO_PASSWORD=change-me \
   -v "$PWD/paseo-home:/home/paseo" \
   -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
+  paseo-native:local
 ```
 
-Then open:
-
-```text
-http://localhost:6767
-```
-
-If you set `PASEO_PASSWORD`, use that same password when adding the direct daemon connection in the web UI, mobile app, or CLI.
+Add a direct connection to `127.0.0.1:6767` in the Flutter client, using the configured password. On another machine, use the daemon host's reachable address instead of loopback.
 
 ## What the image includes
 
 The image:
 
-- installs the Paseo daemon and CLI
-- serves the bundled web UI
+- installs the Rust Paseo daemon and CLI with their adjacent runtime assets
+- provides APIs for native clients, without a bundled web UI
 - listens on `0.0.0.0:6767` inside the container
 - stores daemon state under `/home/paseo/.paseo`
 - runs the daemon and launched agents as the non-root `paseo` user
@@ -48,7 +48,7 @@ Host-side CLI commands select the container explicitly, for example `paseo proje
 ```yaml
 services:
   paseo:
-    image: ghcr.io/getpaseo/paseo:latest
+    image: paseo-native:local
     container_name: paseo
     restart: unless-stopped
     ports:
@@ -69,22 +69,11 @@ docker compose up -d
 
 ## Install agent CLIs
 
-Create a child image for the providers you want available:
+Use the existing [`docker/Dockerfile.agents.example`](https://github.com/getpaseo/paseo/blob/main/docker/Dockerfile.agents.example) as a starting point, setting its base image to your local native image. Install each provider using its supported distribution and include any runtime it requires. The base runtime has no `node` or `npm`, so an npm-based provider installation requires explicitly adding those tools to your child image first.
 
-```Dockerfile
-FROM ghcr.io/getpaseo/paseo:latest
+Optional JavaScript backend plugins likewise require an externally installed Node 20+ runtime, selected with `PASEO_PLUGIN_NODE` when needed. This is not required by built-in Rust integrations. Repository builds use Node 24.
 
-USER root
-RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
-```
-
-Build it:
-
-```bash
-docker build -t paseo-with-agents .
-```
-
-Then use `image: paseo-with-agents` in Compose.
+Use the resulting child image in Compose.
 
 Leave the child image user as root. The base entrypoint uses root only for first-run mounted-volume setup, then drops the daemon and launched agents to the non-root `paseo` user.
 
@@ -149,9 +138,7 @@ IPs and `localhost` are allowed by default.
 
 ## Security
 
-Set `PASEO_PASSWORD` for any published port or network-reachable deployment. Use HTTPS at your reverse proxy for browser access outside localhost.
-
-The static web UI is public on the daemon origin. The daemon API and WebSocket are protected by password auth when configured.
+Set `PASEO_PASSWORD` for any published port or network-reachable deployment. Use HTTPS/WSS at your reverse proxy outside trusted local connections. The daemon API and WebSocket require password authentication when configured; there is no static product web UI.
 
 Agents can access whatever you mount into `/workspace` and whatever credentials you place in `/home/paseo`. Keep those mounts scoped to what the agents should be able to use.
 
@@ -159,7 +146,7 @@ See [Security](/docs/security) for the full daemon trust model.
 
 ## Troubleshooting
 
-- **The UI loads but cannot connect:** if `PASEO_PASSWORD` is set, add a direct connection with the same password.
+- **Client cannot connect:** if `PASEO_PASSWORD` is set, add a direct connection with the same password.
 - **403 Host not allowed:** set `PASEO_HOSTNAMES` to the DNS names you use.
 - **Provider not available:** install that agent CLI in a child image or make sure the binary is on `PATH`.
 - **Permission errors in `/workspace`:** make the mounted directory writable by uid/gid `1000:1000`, or run the container as the host uid/gid.

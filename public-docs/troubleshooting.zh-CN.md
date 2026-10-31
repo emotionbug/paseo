@@ -1,27 +1,18 @@
 ---
 title: 故障排查
-description: 修复 Linux AppImage 启动错误、找不到 Provider 以及环境不一致的问题。
+description: 排查原生运行时启动错误、找不到 Provider 和环境不一致的问题。
 nav: 常见问题
 ---
 
 # 故障排查 {#troubleshooting}
 
-## Linux 上 AppImage 无法打开 {#appimage-wont-open-on-linux}
+## 原生客户端或 daemon 无法启动 {#native-client-or-daemon-will-not-start}
 
-让下载的 AppImage 可执行，然后在终端中启动它，查看错误信息：
+0.13.0 Rust/Flutter 迁移尚未发布。旧 Electron AppImage、npm CLI 包或商店下载不能证明包含原生运行时。请按[更新](/docs/updates)从迁移检出构建。
 
-```bash
-chmod +x Paseo-x86_64.AppImage
-./Paseo-x86_64.AppImage
-```
+保留完整 Flutter 包和生成的 Rust 运行时资源。只复制 `paseo` 会遗漏所需库和技能。查看启动输出和 `paseo daemon status`；前台诊断使用 `paseo daemon run`。直接运行 `paseo` 打开聊天，不负责 daemon 设置或启动。
 
-如果报告 `error loading libfuse.so.2`，请不使用 FUSE 运行：
-
-```bash
-./Paseo-x86_64.AppImage --appimage-extract-and-run
-```
-
-Paseo 窗口应该会打开。你也可以从[下载页面](https://paseo.sh/download)获取 `.deb`（Debian/Ubuntu）或 `.rpm`（Fedora）进行安装。
+开发环境默认使用 `.dev/paseo-home` 和端口 `6768`，普通运行使用 `~/.paseo` 和 `6767`。诊断前用 `--home` 或 `--host` 选择正确实例。移动应用只连接远程主机，不能启动本地 daemon。
 
 ## Paseo 找不到我的 Provider {#paseo-cant-find-my-provider}
 
@@ -50,7 +41,7 @@ paseo --host <host:port> provider diagnostic <provider> --json
 
 ### 修复 {#fix-it}
 
-持久的修复方法是确保该命令在普通登录 shell 的 `PATH` 中，然后重启 Paseo。为什么要以此为准，请参见 [Paseo 的环境为何可能与终端不同](#why-paseos-environment-can-differ-from-your-terminal)。
+请让 Provider 命令在 daemon 启动时的 `PATH` 中可用，然后停止并重新启动 supervisor；参见 [Paseo 的环境为何可能与终端不同](#why-paseos-environment-can-differ-from-your-terminal)。
 
 如果你更想直接固定路径，请在 `~/.paseo/config.json` 中设置二进制文件路径：
 
@@ -72,28 +63,17 @@ paseo --host <host:port> provider diagnostic <provider> --json
 
 ## Paseo 的环境为何可能与终端不同 {#why-paseos-environment-can-differ-from-your-terminal}
 
-只要 Paseo 运行你的工具、Agent 或终端，就可能出现同样的不一致：你每天都在用的命令被报告为 `command not found`。
+操作系统启动器、服务管理器、容器或远程主机可能提供不同于终端的环境。这会影响 Agent Provider、脚本/设置任务 PTY 和其他主机工具。
 
-当你从 Dock 或 Finder 打开**桌面应用**时，操作系统给它的是一个精简过的环境，而不是你终端里的 `PATH`。为了弥补这一点，Paseo 会在启动时运行一次你的登录 shell（`$SHELL -i -l -c`），捕获它的环境，并把它交给 daemon 及其启动的所有进程。经验法则：**如果一个全新的终端能运行该命令，Paseo 也应该能。** 这也是检验方法：打开一个新终端，在那里试一试。
+请查看受影响 daemon 的 Provider 诊断，不要假定 Flutter 应用会导入交互式 shell 配置。`paseo daemon run` 使用终端启动环境；托管的 `paseo daemon start` 会有意移除 daemon 设置覆盖项，应将这些设置写入 `config.json`。
 
-当你自己在终端中启动 daemon（`paseo`）时，没有登录 shell 这一步，它直接继承该终端的环境。
-
-无论哪种方式，缺少工具的修复都在你的 shell 配置（`.zshrc`、`.zprofile` 等）中，而不在 Paseo 中。通过版本管理器（asdf、mise、nvm 等）安装的工具最常出问题，请确保它们在干净的登录 shell 中也会初始化，而不仅仅是在你已经打开的 shell 中。
-
-这一登录 shell 步骤在 macOS 和 Linux 上运行。在 Windows 上，Paseo 使用它启动时所带的环境。
+确保 Provider 二进制文件位于 daemon 启动时的 `PATH` 中，或配置绝对路径 `command`。修改启动环境后停止并重新启动 supervisor；只重启 worker 会保留原环境。可选 JavaScript 后端插件需要外部 Node 20+（`PASEO_PLUGIN_NODE`），并无内置 Node 运行时。
 
 ## 查看日志 {#reading-the-logs}
 
-- **桌面应用**：登录 shell 的解析过程记录在这里。查找 `[login-shell-env]`：`applied` 表示成功（会记录前后的 `PATH`）；`failed; keeping inherited env` 表示它退回到了精简环境，并附带 `reason`（超时、shell 配置以非零状态退出、没有输出等）。最常见的原因是 `.zshrc`/`.zprofile` 运行缓慢或出错。
-- **daemon**：`~/.paseo/daemon.log`（如果你设置了自定义 home，则是 `$PASEO_HOME/daemon.log`）。
-
-桌面应用日志位置：
-
-| 平台    | 路径                            |
-| ------- | ------------------------------- |
-| macOS   | `~/Library/Logs/Paseo/main.log` |
-| Linux   | `~/.config/Paseo/logs/main.log` |
-| Windows | `%APPDATA%\Paseo\logs\main.log` |
+- **daemon**：`~/.paseo/daemon.log`，自定义主目录则为 `$PASEO_HOME/daemon.log`。
+- **Flutter 桌面**：使用原生设置诊断中的 **Application logs** 和 **Daemon logs**。应用日志为支持目录中的每窗口 `desktop-<windowId>.log`；以返回的 `logPath` 为准，不要使用旧 Electron 日志路径。
+- **脚本/设置任务**：查看只读日志。原生客户端没有交互式终端 UI。
 
 ## 我修改了 config.json，但什么都没发生 {#i-changed-configjson-but-nothing-happened}
 
@@ -111,5 +91,5 @@ Paseo 会应用可以在运行时安全生效的设置，并列出需要重启�
 
 - [自定义 Provider](/docs/custom-providers)：端点、多个配置、二进制文件、ACP Agent。
 - [配置](/docs/configuration)：`config.json`、环境变量、日志。
-- [Paseo 如何解析你的登录 shell](https://github.com/getpaseo/paseo/blob/main/packages/desktop/src/login-shell-env.ts)：加载你的 shell 环境的具体代码。
+- [原生桌面宿主](https://github.com/getpaseo/paseo/tree/main/packages/flutter_app/lib/platform/desktop)：Flutter 宿主启动与诊断实现。
 - [报告问题](https://github.com/getpaseo/paseo/issues)。

@@ -11,13 +11,11 @@ import {
   appStoreUrl,
   playStoreUrl,
   thanksPageHref,
-  webAppUrl,
   AppleIcon,
   AndroidIcon,
   WindowsIcon,
   LinuxIcon,
   TerminalIcon,
-  GlobeIcon,
 } from "~/downloads";
 import { useBetaRelease, useRelease } from "~/routes/__root";
 import "~/styles.css";
@@ -95,6 +93,8 @@ function Download() {
 
       {onBeta && <BetaNotice />}
 
+      <p className="text-sm text-muted-foreground mb-6">{t("download.nativeCutoverNotice")}</p>
+
       {/* Desktop */}
       <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8 mb-6">
         <div className="flex items-start justify-between mb-8">
@@ -169,27 +169,6 @@ function Download() {
         </div>
       </section>
 
-      {/* Web */}
-      {!onBeta && (
-        <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8 mb-6">
-          <div className="flex items-start justify-between mb-8">
-            <div>
-              <h2 className="text-2xl font-semibold">{t("download.web")}</h2>
-              <p className="text-sm text-muted-foreground mt-1">{t("download.webDescription")}</p>
-            </div>
-            <GlobeIcon className="h-5 w-5 text-muted-foreground mt-1.5" />
-          </div>
-
-          <div className="divide-y divide-border">
-            <PlatformRow icon={GlobeIcon} label={t("download.webApp")}>
-              <PillGroup>
-                <DownloadPill href={webAppUrl} label={t("download.open")} external />
-              </PillGroup>
-            </PlatformRow>
-          </div>
-        </section>
-      )}
-
       {/* Server */}
       <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8">
         <div className="flex items-start justify-between mb-8">
@@ -201,20 +180,14 @@ function Download() {
         </div>
 
         <div className="divide-y divide-border">
-          <PlatformRow icon={TerminalIcon} label="npm">
+          <PlatformRow icon={TerminalIcon} label={t("download.sourceBuild")}>
             <CodeBlock size="sm">
-              {onBeta
-                ? "npm install -g @getpaseo/cli@beta && paseo"
-                : "npm install -g @getpaseo/cli && paseo"}
+              {"npm ci && npm run build:daemon && ./target/debug/paseo onboard"}
             </CodeBlock>
           </PlatformRow>
 
-          <PlatformRow icon={TerminalIcon} label="Nix">
-            <CodeBlock size="sm">
-              {onBeta
-                ? `nix run github:getpaseo/paseo/v${version}`
-                : "nix run github:getpaseo/paseo"}
-            </CodeBlock>
+          <PlatformRow icon={TerminalIcon} label={t("download.localNix")}>
+            <CodeBlock size="sm">{"nix run . -- onboard"}</CodeBlock>
           </PlatformRow>
         </div>
       </section>

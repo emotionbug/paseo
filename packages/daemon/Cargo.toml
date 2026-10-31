@@ -1,0 +1,101 @@
+[package]
+name = "paseo-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "paseo_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "paseo"
+path = "src/main.rs"
+
+[dependencies]
+alacritty_terminal = { version = "=0.25.0", default-features = false }
+anyhow = "1"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["ws", "multipart"] }
+base64 = "0.22"
+bcrypt = "0.17"
+bytes = "1"
+bzip2 = "0.6"
+chacha20poly1305 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+clap = { version = "4", features = ["derive", "env"] }
+crypto_secretbox = { version = "0.1", features = ["salsa20"] }
+curve25519-dalek = "4"
+dirs = "6"
+flate2 = "1"
+futures-util = { version = "0.3", features = ["sink"] }
+hex = "0.4"
+hmac = "0.12"
+hostname = "0.4"
+http = "1"
+jsonschema = { version = "0.60.2", default-features = false }
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "server", "http1", "http2", "tokio", "service"] }
+icu_collator = "1.5"
+icu_casemap = "1.5"
+icu_locid = "1.5"
+libloading = "0.8"
+mime_guess = "2"
+notify = "8"
+node-semver = "2.2"
+percent-encoding = "2"
+portable-pty = "0.9"
+pulldown-cmark = "0.13"
+qrcode = { version = "0.14", default-features = false }
+rand = "0.8"
+ryu-js = "1"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart", "gzip"] }
+sysinfo = "0.37"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+semver = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+sha1 = "0.10"
+sha2 = "0.10"
+subtle = "2"
+tar = "0.4"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+tokio-util = { version = "0.7", features = ["rt", "io"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+unicode-normalization = "0.1"
+url = { version = "2", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+vt100 = "0.16"
+walkdir = "2"
+which = "7"
+zeroize = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
+[target.'cfg(not(unix))'.dependencies]
+jiff = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+# alacritty_terminal expects std-owned file descriptors from rustix-openpty.
+rustix = { version = "0.38", default-features = false, features = ["std"] }
+nix = { version = "0.30", features = ["fs", "process", "signal", "term", "user"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_Threading"] }

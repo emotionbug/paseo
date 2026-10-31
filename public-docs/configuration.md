@@ -51,7 +51,7 @@ Edit the selected file through the CLI:
 ```bash
 paseo daemon config get daemon.listen --home ~/paseo-test
 paseo daemon config set daemon.listen 127.0.0.1:6800 --home ~/paseo-test
-paseo daemon config unset features.webUi.enabled --home ~/paseo-test
+paseo daemon config unset daemon.hostnames --home ~/paseo-test
 ```
 
 `get [path]` reports configured values and labels missing fields unset. It does not create a home. `set` parses JSON, otherwise treats the input as a string; `--string` forces a literal string. `--json` selects output format. Use whole-object JSON for dynamic keys containing dots. Unknown paths, invalid values, and invalid existing files are rejected without writing. Passwords use `set-password`.
@@ -70,13 +70,13 @@ The daemon validates the complete file before applying anything. It applies runt
 paseo daemon restart
 ```
 
-Runtime-safe settings include relay enablement, MCP settings, browser tools, hostnames, CORS origins, trusted proxies, Git process limits, agent and terminal profiles, provider definitions, metadata generation, the app base URL, provider catalog timeout, and the global plugin switch. Removing one of these settings applies its omitted-field behavior; removing a provider removes it from future launches.
+Runtime-safe settings include relay enablement, MCP settings, hostnames, CORS origins, trusted proxies, Git process limits, agent and script/setup terminal profiles, provider definitions, metadata generation, the app base URL, provider catalog timeout, and the global plugin switch. Removing one of these settings applies its omitted-field behavior; removing a provider removes it from future launches.
 
 New homes keep relay disabled when you remove `daemon.relay.enabled`. A daemon whose config already omitted this field when it started keeps the legacy relay-enabled behavior for compatibility. Set `daemon.relay.enabled` explicitly when editing an older config.
 
-Listen addresses, authentication, relay endpoints and TLS, worktree allocation, service-proxy addresses, the bundled web UI, logging, speech, voice, credentials, and local model settings require a restart. Reload applies other valid edits in the same file before reporting those paths.
+Listen addresses, authentication, relay endpoints and TLS, worktree allocation, service-proxy addresses, logging, speech, voice, credentials, and local model settings require a restart. Reload applies other valid edits in the same file before reporting those paths.
 
-Deployment environment variables and legacy supervisor flags remain authoritative. Reload reports a changed file setting under `overrideControlledPaths` when a launch override prevents it from taking effect. This includes startup settings such as listen addresses, passwords, relay endpoints and TLS, service-proxy and web UI settings, logging, speech, and voice configuration. List settings such as hostnames and CORS origins still append across sources, so values from `config.json` continue to apply. Stop and relaunch the deployment without the override to make the file value authoritative.
+Deployment environment variables remain authoritative. Reload reports a changed file setting under `overrideControlledPaths` when a launch override prevents it from taking effect. List settings such as hostnames and CORS origins still append across sources. Stop and relaunch the deployment without the override to make the file value authoritative.
 
 ## Agent providers
 
@@ -104,36 +104,11 @@ Voice is configured through `features.dictation` and `features.voiceMode`, with 
 
 For voice philosophy, architecture, and complete local/OpenAI setup examples, see [Voice docs](/docs/voice).
 
-## Bundled web UI
+## Native clients
 
-The daemon can serve the browser web client from the same HTTP server. This is enabled in the official Docker image and disabled by default for normal CLI and desktop-managed daemons.
+The Rust daemon serves APIs, not a bundled web product client. Connect with the Flutter desktop/mobile app or the Rust CLI. Mobile clients connect to a remote desktop/server daemon; they do not run one locally.
 
-Enable it from the CLI:
-
-```bash
-paseo daemon config set features.webUi.enabled true
-paseo daemon start
-```
-
-Or set the environment variable:
-
-```bash
-PASEO_WEB_UI_ENABLED=true paseo daemon run
-```
-
-Or persist it in `config.json`:
-
-```json
-{
-  "features": {
-    "webUi": {
-      "enabled": true
-    }
-  }
-}
-```
-
-When enabled, open the daemon HTTP origin, for example `http://localhost:6767/`, to load the web app. Static UI files load without daemon auth; API and WebSocket requests still require the configured password.
+Retired `features.webUi` and `daemon.browserTools` settings are discarded during normalization. There is no web UI or embedded browser automation to enable. Script/setup PTYs remain available on the daemon with read-only logs in the client, not an interactive terminal UI.
 
 ## Logging
 
@@ -179,7 +154,7 @@ This prompts for a password, writes the bcrypt hash to `config.json`, and tells 
 Alternatively, set the `PASEO_PASSWORD` environment variable (plaintext, hashed automatically at startup):
 
 ```bash
-PASEO_PASSWORD=my-secret paseo daemon start
+PASEO_PASSWORD=my-secret paseo daemon run
 ```
 
 Or write the hash directly in `config.json`:
@@ -244,8 +219,6 @@ Set the persisted value in `config.json`:
 - `PASEO_RELAY_ENABLED`, enable or disable the outbound relay for this daemon launch
 - `PASEO_HOSTNAMES`, override/extend `daemon.hostnames`
 - `PASEO_ALLOWED_HOSTS`, deprecated alias for `PASEO_HOSTNAMES`
-- `PASEO_WEB_UI_ENABLED`, enable or disable the daemon-served web UI
-- `PASEO_WEB_UI_DIST_DIR`, override the daemon web UI build directory
 - `PASEO_TRUSTED_PROXIES`, configure trusted reverse proxy ranges for `X-Forwarded-*` headers
 - `PASEO_LOG_CONSOLE_LEVEL`, override `log.console.level`
 - `PASEO_LOG_FILE_LEVEL`, override `log.file.level`

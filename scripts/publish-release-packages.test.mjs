@@ -6,7 +6,7 @@ import {
   RELEASE_WORKSPACES,
 } from "./publish-release-packages.mjs";
 
-const packages = ["highlight", "relay", "protocol", "client", "plugin", "server", "cli"].map(
+const packages = ["highlight", "relay", "protocol", "client", "plugin"].map(
   (name) => ({
     workspace: `packages/${name}`,
     name: `@getpaseo/${name}`,

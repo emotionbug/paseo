@@ -8,18 +8,18 @@ category: Configuration
 
 # Voice
 
-Paseo has first-class voice support for dictation and voice mode conversations with your coding environment.
+The daemon synthesizes the speech your agents send with the `speak` tool, and the native clients play it. The native Flutter clients do not capture microphone audio, so composer dictation and voice-mode conversations are not available in them. The dictation and voice-mode settings below configure the daemon for clients that send audio over the protocol.
 
 ## Philosophy
 
-Voice is local-first. You can run speech fully on-device, or choose OpenAI for speech features. For voice reasoning/orchestration, Paseo reuses agent providers already installed and authenticated on your machine.
+Voice is local-first on the **daemon host**. The Rust daemon can run speech locally, or use OpenAI for speech features. Flutter plays audio; mobile clients connect to a remote daemon and do not execute the daemon's speech models on the phone. Voice reasoning/orchestration reuses agent providers installed and authenticated on the daemon host.
 
 This keeps credentials and execution in your environment and avoids introducing a separate cloud-only voice stack.
 
 ## Architecture
 
 - Speech I/O: STT and TTS providers per feature (`local` or `openai`)
-- Local speech runtime: ONNX models executed on CPU by default
+- Local speech runtime: native Sherpa/ONNX CPU execution for VAD, Parakeet STT, and Kokoro TTS; no Node speech runtime
 - Voice LLM orchestration: hidden agent session using your configured provider (`claude`, `codex`, or `opencode`)
 - Tooling path: MCP stdio bridge for voice tools and agent control
 
@@ -27,7 +27,11 @@ This keeps credentials and execution in your environment and avoids introducing 
 
 Local speech defaults to model IDs `parakeet-tdt-0.6b-v2-int8` (STT) and `kokoro-en-v0_19` (TTS, speaker 0 / voice 00).
 
-Missing models are downloaded at daemon startup into `$PASEO_HOME/models/local-speech`. Downloads happen only for missing files.
+Model weights are downloaded on demand into `$PASEO_HOME/models/local-speech` and are not bundled with the application. Keep the generated native speech libraries alongside the daemon runtime.
+
+Native VAD, Kokoro TTS, and Parakeet STT were exercised on Linux; this is not evidence of execution on every target platform. See [testing evidence](https://github.com/getpaseo/paseo/blob/main/docs/testing.md).
+
+The TTS-enabled Sherpa 1.12.28 prebuilts statically include GPL espeak-ng. Generated notices do not resolve corresponding-source/offer, combined-work, MPL/LGPL, CRT, or Rust toolchain obligations. See the [release requirements](https://github.com/getpaseo/paseo/blob/main/docs/release.md). The migration remains unpublished; local TTS is retained and the source license is unchanged.
 
 ### Local STT models and language support
 

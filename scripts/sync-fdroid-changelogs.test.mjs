@@ -3,11 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import {
-  getFdroidVersionCodes,
-  getNativeReleaseVersion,
-} from "../packages/app/native-release-version.js";
-import { formatFdroidChangelog, syncFdroidChangelogs } from "./sync-fdroid-changelogs.mjs";
+import { formatFdroidChangelog, getFdroidVersionCodes, syncFdroidChangelogs } from "./sync-fdroid-changelogs.mjs";
 
 const CHANGELOG_CHARACTER_LIMIT = 500;
 
@@ -29,16 +25,15 @@ function readChangelogFile(dir, versionCode, locale = "en-US") {
   );
 }
 
-// The whole point of the shared module: these are the numbers the APKs actually
-// ship with, so the filenames have to track them exactly.
-test("derives one version code per published ABI", () => {
-  assert.equal(getNativeReleaseVersion("0.2.2").androidVersionCode, 2002);
-  assert.deepEqual(getFdroidVersionCodes("0.2.2"), [
-    { abi: "armeabi-v7a", versionCode: 20021 },
-    { abi: "arm64-v8a", versionCode: 20022 },
-    { abi: "x86", versionCode: 20023 },
-    { abi: "x86_64", versionCode: 20024 },
-  ]);
+test("uses the Flutter Android build number and upgrade floor", () => {
+  assert.deepEqual(getFdroidVersionCodes("0.13.0", {}), [{ abi: "universal", versionCode: 13000 }]);
+  assert.deepEqual(getFdroidVersionCodes("0.13.0", { PASEO_BUILD_NUMBER: "14000", ANDROID_VERSION_CODE: "15000" }),
+    [{ abi: "universal", versionCode: 14000 }]);
+  assert.deepEqual(getFdroidVersionCodes("0.13.0", { ANDROID_VERSION_CODE: "15000" }),
+    [{ abi: "universal", versionCode: 15000 }]);
+  assert.deepEqual(getFdroidVersionCodes("0.13.0", { PASEO_BUILD_NUMBER: "12" }),
+    [{ abi: "universal", versionCode: 13000 }]);
+  assert.throws(() => getFdroidVersionCodes("0.13.0", { PASEO_BUILD_NUMBER: "invalid" }), /numeric/);
 });
 
 test("does not write or validate F-Droid changelogs for beta releases", () => {
@@ -57,44 +52,19 @@ test("does not write or validate F-Droid changelogs for beta releases", () => {
   );
 });
 
-test("rejects versions that would collide or overflow", () => {
-  assert.throws(() => getNativeReleaseVersion("0.1000.0"), /collision-free/);
-  assert.throws(() => getNativeReleaseVersion("not-a-version"), /unsupported version/);
-  assert.throws(() => getNativeReleaseVersion("210.0.0"), /out of range/);
-});
-
-test("writes an identical changelog for every ABI version code", () => {
+test("writes the changelog for the native Android version code", () => {
   const changelog = "# Changelog\n\n## 0.2.3 - 2026-07-27\n\n### Fixed\n\n- Something broke.\n";
   withTempRepo(
     (dir) => {
       const result = syncFdroidChangelogs([], { cwd: dir });
 
-      assert.equal(result.written.length, 4);
+      assert.equal(result.written.length, 1);
       for (const { versionCode } of getFdroidVersionCodes("0.2.3")) {
         assert.equal(readChangelogFile(dir, versionCode), result.contents);
       }
       assert.match(result.contents, /- Something broke\./);
     },
     { changelog },
-  );
-});
-
-test("writes the four stable 0.5.0 changelog files", () => {
-  const changelog = "## 0.5.0 - 2026-08-21\n\n### Added\n\n- Stable F-Droid metadata.\n";
-  withTempRepo(
-    (dir) => {
-      const result = syncFdroidChangelogs([], { cwd: dir });
-      assert.deepEqual(
-        result.written.map((entry) => entry.replace(/ \(.+\)$/, "")),
-        [
-          "fastlane/metadata/android/en-US/changelogs/50001.txt",
-          "fastlane/metadata/android/en-US/changelogs/50002.txt",
-          "fastlane/metadata/android/en-US/changelogs/50003.txt",
-          "fastlane/metadata/android/en-US/changelogs/50004.txt",
-        ],
-      );
-    },
-    { changelog, version: "0.5.0" },
   );
 });
 

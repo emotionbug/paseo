@@ -30,7 +30,7 @@ Workspace archive runs lifecycle teardown from the exact `cwd` but removes only 
 `worktreeRoot` after its last active reference disappears. Worktree recovery recreates that backing
 checkout from `mainRepoRoot`, then restores the relative path from `worktreeRoot` to `cwd`.
 
-Paseo uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
+Paseo uses **file-based JSON persistence**. The Rust daemon owns validation and mutation in `packages/daemon/src/config`, `agent`, `projects`, and `automation`. Existing persisted records, IDs, provider handles and configuration shapes remain compatible; the TypeScript-style shapes below describe data, not a Node runtime. Store implementations own atomic writes and compatibility normalization. Do not reset a home or rekey existing records as part of the native client cutover.
 
 All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
@@ -551,7 +551,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ## 7. Daemon meta files
 
-These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
+These small files are persisted under `$PASEO_HOME` for native daemon identity and runtime coordination.
 
 | Path                  | Format                                                         | Notes                                                                             |
 | --------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -559,74 +559,19 @@ These small files are not validated as full Zod schemas but are persisted under 
 | `daemon-keypair.json` | `{ v: 2, publicKeyB64, secretKeyB64 }` (libsodium box keypair) | E2EE relay identity. Written with mode `0600`. Regenerated if file is unreadable. |
 | `paseo.pid`           | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$PASEO_HOME`.                         |
 | `local-credential`    | 32 random bytes encoded as base64url text                      | Rotated before each listen and deleted on shutdown; mode `0600`.                  |
-| `daemon.log`          | Pino log output                                                | Default location; path/rotation configurable via `log.file` in `config.json`.     |
+| `daemon.log`          | Native daemon log output                                       | Default location; selected-home logging configuration applies.                    |
 
 ---
 
-## Client-side stores (App)
+## Client-side stores (Flutter)
 
-These live in React Native `AsyncStorage` or browser `IndexedDB`, not on the daemon filesystem.
+The native client stores state beneath the platform application-support directory in `paseo-native/`, independently of the daemon's `$PASEO_HOME`. `packages/flutter_app/lib/core/app_store.dart` owns this boundary.
 
-### Keying convention: directory-backed vs workspace-owned
+- `state.json` contains versioned preferences, saved hosts, route suppression and layout. Unknown preference keys are retained. A newer unsupported state version is not overwritten.
+- `state.lock` serializes updates. Writes merge changes against the latest state so another client window's unrelated preference/host edits are not lost.
+- `replica-<base64url-server-id>.json` stores a host's project/workspace/agent snapshot and cache timestamp. It is scoped to the saved server identity and reconciled with the live daemon.
+- Drafts are retained in preferences with explicit host/workspace/target keys. Layout restoration excludes removed browser and executable plugin targets.
 
-Right-sidebar client state splits on whether it is determined by the directory or owned by the workspace (two workspaces can share one `cwd`). The split is enforced by the cache key, so changing a key changes the sharing semantics — see [architecture.md](architecture.md#right-sidebar-boundary-directory-backed-vs-workspace-owned) for the full table.
+Directory identity includes `(serverId, cwd)`; equal paths on two hosts must not merge. Workspace-owned state remains scoped to workspace identity, not parsed from a pathname. Closing a tab changes layout, not the daemon's archive state.
 
-- **Directory-backed** (shared by same-`cwd` workspaces): keyed by `(serverId, cwd)`. Git status/diff, GitHub PR status, PR timeline, file preview content. These are TanStack Query caches, not persisted stores.
-- **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Review draft comments (`@paseo:review-draft-store`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** — never parse it back into a path.
-
-### Replica row store
-
-The durable client replica uses IndexedDB on browser/Electron and expo-sqlite on native. Rows use the
-compound key `(serverId, kind, id)`; kinds are `agent`, `workspace`, `project`, `timeline`, and
-`checkpoint`. Directory entities have individual rows, timelines use the agent id, and the checkpoint
-uses the singleton id.
-
-The store is a typed persistence boundary. It returns values to directory and timeline owners and
-accepts their explicit commits; it never reads or writes UI state. Reads are scoped to the requested
-host, kinds, and ids. Opening a cached workspace uses exact workspace and project keys rather than a
-directory scan. One invalid row is deleted and returned as a miss without affecting other rows.
-An invalid directory row and its affected checkpoint cursor are repaired in one transaction, so a
-later launch cannot accept a checkpoint for a partial baseline. Directory changes and their
-checkpoint are also applied in one transaction. Reads wait for accepted changes to reach storage,
-then retry only when a requested row changes during the read. Unrelated agent streams do not
-invalidate the read. Directory baseline replacements and host removal or renaming still invalidate
-the affected reads.
-
-The cache is capped at 32 MiB and evicts whole hosts in least-recently-written order. Budget
-bookkeeping may scan opaque row sizes during a deferred write, never during host registry startup or
-before a requested cache row can paint. The row store is not encrypted. A cached timeline can contain
-source code, prompts, and tool output; encrypted-at-rest storage is a separate security decision.
-
-### Draft Store
-
-**AsyncStorage key:** `paseo-drafts` (version 2)
-
-```typescript
-{
-  drafts: Record<draftKey, {
-    input: { text: string, images: AttachmentMetadata[] },
-    lifecycle: "active" | "abandoned" | "sent",
-    updatedAt: number,     // epoch ms
-    version: number        // optimistic concurrency
-  }>,
-  createModalDraft: DraftRecord | null
-}
-```
-
-### Attachment Store (Web)
-
-**IndexedDB database:** `paseo-attachment-bytes`, object store: `attachments`
-
-Stores binary attachment blobs keyed by attachment ID.
-
-### AttachmentMetadata
-
-| Field         | Type      | Description                    |
-| ------------- | --------- | ------------------------------ |
-| `id`          | `string`  | Unique attachment ID           |
-| `mimeType`    | `string`  | MIME type                      |
-| `storageType` | `string`  | Storage backend identifier     |
-| `storageKey`  | `string`  | Key within the storage backend |
-| `createdAt`   | `number`  | Epoch ms                       |
-| `fileName`    | `string?` | Original filename              |
-| `byteSize`    | `number?` | Size in bytes                  |
+The Flutter client does not use the retired browser IndexedDB, React Native AsyncStorage or Expo SQLite replica implementation. Cached client state is not the authoritative session history; the daemon remains the authority. Treat cached prompts, paths, credentials and tool output as sensitive data and do not infer encryption at rest from encrypted transport.

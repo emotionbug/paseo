@@ -2,11 +2,9 @@
 //
 // Two things make this non-optional to script:
 //
-//   1. F-Droid matches `changelogs/<versionCode>.txt` literally, and the F-Droid
-//      profile splits one release into four single-ABI APKs with four distinct
-//      version codes (see packages/app/native-release-version.js). A single
-//      hand-written file matches no published APK, which silently costs the
-//      "What's New" entry and the Latest tab placement that depends on it.
+//   1. F-Droid matches `changelogs/<versionCode>.txt` literally. Flutter's
+//      universal and arm64 APKs share the configured native build number;
+//      historical Expo per-ABI version codes no longer describe these artifacts.
 //   2. F-Droid caps a changelog at 500 characters. Real Paseo entries run into
 //      the thousands, so they have to be compressed rather than copied.
 //
@@ -17,9 +15,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-// CommonJS on purpose: packages/app/app.config.js and the Expo config plugin both
-// require it, so the ABI table has exactly one definition across all three callers.
-import { getFdroidVersionCodes as defaultGetFdroidVersionCodes } from "../packages/app/native-release-version.js";
+import { buildNumber } from "../packages/flutter_desktop_host/packaging/common.mjs";
 import { parseChangelogBody, parseChangelogEntries } from "./changelog-utils.mjs";
 import { isMainModule } from "./is-main-module.mjs";
 
@@ -32,12 +28,16 @@ const FULL_NOTES_FOOTER = "Full notes: https://paseo.sh/changelog";
 const DEFAULT_LOCALE = "en-US";
 const METADATA_DIR = path.join("fastlane", "metadata", "android");
 
+export function getFdroidVersionCodes(_version, env = process.env) {
+  return [{ abi: "universal", versionCode: Number(buildNumber("android", env)) }];
+}
+
 function usageAndExit(code = 1) {
   const usage = `
 Usage: node scripts/sync-fdroid-changelogs.mjs [options]
 
-Writes fastlane/metadata/android/<locale>/changelogs/<versionCode>.txt for every
-ABI the F-Droid build publishes.
+Writes fastlane/metadata/android/<locale>/changelogs/<versionCode>.txt for the
+Flutter Android build number (PASEO_BUILD_NUMBER, then ANDROID_VERSION_CODE).
 
 Options:
   --version <x.y.z>   Release version. Defaults to the root package.json version.
@@ -188,7 +188,7 @@ export function formatFdroidChangelog(bodyLines, options = {}) {
 export function syncFdroidChangelogs(argv = process.argv.slice(2), deps = {}) {
   const cwd = deps.cwd ?? rootDir;
   const args = parseArgs(argv);
-  const getFdroidVersionCodes = deps.getFdroidVersionCodes ?? defaultGetFdroidVersionCodes;
+  const resolveVersionCodes = deps.getFdroidVersionCodes ?? getFdroidVersionCodes;
 
   const version =
     args.version || JSON.parse(readFileSync(path.join(cwd, "package.json"), "utf8")).version;
@@ -217,7 +217,7 @@ export function syncFdroidChangelogs(argv = process.argv.slice(2), deps = {}) {
   }
 
   const changelogDir = path.join(cwd, METADATA_DIR, args.locale, "changelogs");
-  const versionCodes = getFdroidVersionCodes(version);
+  const versionCodes = resolveVersionCodes(version);
   const stale = [];
   const written = [];
 

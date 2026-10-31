@@ -6,18 +6,18 @@ nav: 语音
 
 # 语音 {#voice}
 
-Paseo 对语音提供一流的支持，可用于口述输入，以及与编程环境进行语音模式对话。
+Agent 通过 `speak` 工具发送的语音由 daemon 合成，并由原生客户端播放。原生 Flutter 客户端不采集麦克风音频，因此其中没有输入框口述和语音模式对话。下面的口述和语音模式设置用于配置 daemon，供通过协议发送音频的客户端使用。
 
 ## 设计理念 {#philosophy}
 
-语音以本地优先。你可以完全在设备上运行语音功能，也可以为语音功能选择 OpenAI。对于语音推理和编排，Paseo 复用你机器上已安装并完成认证的 Agent Provider。
+语音在 **daemon 主机**上本地优先。Rust daemon 可以本地运行语音或使用 OpenAI。Flutter 负责播放音频；移动客户端连接远程 daemon，不在手机运行 daemon 的语音模型。语音推理与编排复用 daemon 主机上已安装、已认证的 Agent Provider。
 
 这让凭据和执行都留在你的环境中，也避免了引入一套独立的、只能在云端运行的语音系统。
 
 ## 架构 {#architecture}
 
 - 语音输入输出：每个功能各自的 STT 和 TTS Provider（`local` 或 `openai`）
-- 本地语音运行时：默认在 CPU 上执行的 ONNX 模型
+- 本地语音运行时：原生 Sherpa/ONNX CPU 执行 VAD、Parakeet STT 和 Kokoro TTS；不使用 Node 语音运行时
 - 语音 LLM 编排：使用你配置的 Provider（`claude`、`codex` 或 `opencode`）的隐藏 Agent 会话
 - 工具路径：用于语音工具和 Agent 控制的 MCP stdio 桥
 
@@ -25,7 +25,11 @@ Paseo 对语音提供一流的支持，可用于口述输入，以及与编程�
 
 本地语音默认使用模型 ID `parakeet-tdt-0.6b-v2-int8`（STT）和 `kokoro-en-v0_19`（TTS，speaker 0 / voice 00）。
 
-缺失的模型会在 daemon 启动时下载到 `$PASEO_HOME/models/local-speech`。只会下载缺失的文件。
+模型权重按需下载到 `$PASEO_HOME/models/local-speech`，不随应用捆绑。请将生成的原生语音库与 daemon 运行时一起保留。
+
+原生 VAD、Kokoro TTS 和 Parakeet STT 已在 Linux 执行，但这不是所有目标平台的运行证据。见[测试证据](https://github.com/getpaseo/paseo/blob/main/docs/testing.md)。
+
+启用 TTS 的 Sherpa 1.12.28 预构建库静态包含 GPL espeak-ng。生成声明不能解决对应源码/要约、组合软件范围、MPL/LGPL、CRT 或 Rust 工具链义务，详见[发布要求](https://github.com/getpaseo/paseo/blob/main/docs/release.md)。迁移尚未发布；本地 TTS 保留，源码许可证不变。
 
 ### 本地 STT 模型与语言支持 {#local-stt-models-and-language-support}
 

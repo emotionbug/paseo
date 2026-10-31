@@ -1,6 +1,8 @@
-import { DaemonClient } from "../packages/server/src/client/daemon-client.js";
-import { buildRelayWebSocketUrl } from "../packages/server/src/shared/daemon-endpoints.js";
-import { buildDaemonWebSocketUrl } from "../packages/server/src/shared/daemon-endpoints.js";
+import { DaemonClient } from "../packages/client/src/daemon-client.js";
+import {
+  buildRelayWebSocketUrl,
+  buildDaemonWebSocketUrl,
+} from "../packages/protocol/src/daemon-endpoints.js";
 
 const OFFER = {
   serverId: "srv_ETXtcjYRGrCI",

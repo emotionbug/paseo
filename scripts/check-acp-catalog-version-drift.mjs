@@ -3,10 +3,11 @@
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 
 const execFileAsync = promisify(execFile);
 
-const CATALOG_PATH = new URL("../packages/app/src/data/acp-provider-catalog.ts", import.meta.url);
+const CATALOG_PATH = new URL("../packages/flutter_app/lib/features/settings/provider_catalog.dart", import.meta.url);
 const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+].*)?$/;
 const HELP_TEXT = `Usage: npm run acp:version-drift [-- --json] [-- --fail-on-drift] [-- --no-network] [-- --update]
 
@@ -47,114 +48,144 @@ function parseArgs(argv) {
   return options;
 }
 
-function getCatalogBodyRange(source) {
-  const startToken = "const CATALOG_DATA = [";
+// Parse the catalog's literal-only Dart subset, never Dart expressions. Keep
+// source ranges so updates leave metadata, comments and untouched arguments intact.
+function readCatalogLiteral(source, start) {
+  let index = start;
+  const fail = (message) => {
+    throw new Error(`Invalid ACP catalog literal at ${index}: ${message}`);
+  };
+  function skipTrivia() {
+    while (index < source.length) {
+      if (/\s/.test(source[index])) {
+        index += 1;
+      } else if (source.startsWith("//", index)) {
+        const end = source.indexOf("\n", index + 2);
+        index = end === -1 ? source.length : end + 1;
+      } else if (source.startsWith("/*", index)) {
+        index += 2;
+        let depth = 1;
+        while (depth && index < source.length) {
+          if (source.startsWith("/*", index)) {
+            depth += 1;
+            index += 2;
+          } else if (source.startsWith("*/", index)) {
+            depth -= 1;
+            index += 2;
+          } else {
+            index += 1;
+          }
+        }
+        if (depth) fail("unterminated comment");
+      } else {
+        break;
+      }
+    }
+  }
+  function readString() {
+    const raw = source[index] === "r";
+    if (raw) index += 1;
+    const quote = source[index++];
+    if (source.startsWith(quote.repeat(2), index)) fail("multiline strings are not supported");
+    let value = "";
+    while (index < source.length) {
+      const char = source[index++];
+      if (char === quote) return value;
+      if (char === "\n" || char === "\r") fail("newline in single-line string");
+      if (!raw && char === "$") fail("string interpolation is not supported");
+      if (raw || char !== "\\") {
+        value += char;
+        continue;
+      }
+      const escape = source[index++];
+      const escapes = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v", "\\": "\\", "'": "'", '"': '"', $: "$" };
+      if (Object.hasOwn(escapes, escape)) {
+        value += escapes[escape];
+      } else if (escape === "x" || escape === "u") {
+        const braced = escape === "u" && source[index] === "{";
+        if (braced) index += 1;
+        const length = escape === "x" ? 2 : 4;
+        const end = braced ? source.indexOf("}", index) : index + length;
+        const hex = source.slice(index, end);
+        if (end === -1 || !/^[0-9a-fA-F]+$/.test(hex) || (braced ? hex.length > 6 : hex.length !== length)) {
+          fail("invalid character escape");
+        }
+        const codePoint = Number.parseInt(hex, 16);
+        if (codePoint > 0x10ffff) fail("invalid Unicode code point");
+        value += String.fromCodePoint(codePoint);
+        index = end + (braced ? 1 : 0);
+      } else {
+        fail("unsupported string escape");
+      }
+    }
+    fail("unterminated string");
+  }
+  function readValue() {
+    skipTrivia();
+    const start = index;
+    const char = source[index];
+    if (char === '"' || char === "'" || (char === "r" && /['"]/.test(source[index + 1] ?? ""))) {
+      const value = readString();
+      return { start, end: index, value };
+    }
+    if (char === "[" || char === "{") {
+      index += 1;
+      const close = char === "[" ? "]" : "}";
+      const items = [];
+      const fields = new Map();
+      skipTrivia();
+      while (source[index] !== close) {
+        const item = readValue();
+        if (char === "{") {
+          if (typeof item.value !== "string") fail("map keys must be strings");
+          skipTrivia();
+          if (source[index++] !== ":") fail("expected ':'");
+          if (fields.has(item.value)) fail("duplicate map key");
+          fields.set(item.value, readValue());
+        } else {
+          items.push(item);
+        }
+        skipTrivia();
+        if (source[index] === close) break;
+        if (source[index++] !== ",") fail("expected ','");
+        skipTrivia();
+      }
+      index += 1;
+      return { start, end: index, ...(char === "[" ? { items } : { fields }) };
+    }
+    const scalar = /^(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(source.slice(index));
+    if (!scalar) fail("expected a literal");
+    index += scalar[0].length;
+    return { start, end: index, value: JSON.parse(scalar[0]) };
+  }
+  return readValue();
+}
+
+function readCatalog(source) {
+  const startToken = "const acpProviderCatalog = <Map<String, dynamic>>[";
   const startIndex = source.indexOf(startToken);
   if (startIndex === -1) {
-    throw new Error("Could not find CATALOG_DATA in ACP provider catalog");
+    throw new Error("Could not find acpProviderCatalog in native ACP provider catalog");
   }
-
-  const arrayStartIndex = source.indexOf("[", startIndex);
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = arrayStartIndex; index < source.length; index += 1) {
-    const char = source[index];
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-    } else if (char === "[") {
-      depth += 1;
-    } else if (char === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        return { start: arrayStartIndex + 1, end: index };
-      }
-    }
-  }
-
-  throw new Error("Could not parse CATALOG_DATA array");
+  return readCatalogLiteral(source, startIndex + startToken.length - 1).items;
 }
 
-function extractEntryBlocks(source) {
-  const range = getCatalogBodyRange(source);
-  const blocks = [];
-  let blockStart = null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = range.start; index < range.end; index += 1) {
-    const char = source[index];
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
+export function parseCatalogEntries(source) {
+  return readCatalog(source).map((entry) => {
+    if (!entry.fields) throw new Error("ACP catalog entries must be maps");
+    const command = entry.fields.get("command");
+    if (command && (!command.items || command.items.some((arg) => typeof arg.value !== "string"))) {
+      throw new Error("ACP catalog commands must be lists of string literals");
     }
-
-    if (char === '"') {
-      inString = true;
-    } else if (char === "{") {
-      if (depth === 0) {
-        blockStart = index;
-      }
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0 && blockStart !== null) {
-        blocks.push({
-          start: blockStart,
-          end: index + 1,
-          block: source.slice(blockStart, index + 1),
-        });
-        blockStart = null;
-      }
-    }
-  }
-
-  return blocks;
-}
-
-function getStringField(block, fieldName) {
-  const match = new RegExp(`${fieldName}:\\s*"([^"]+)"`).exec(block);
-  return match?.[1] ?? null;
-}
-
-function getCommandField(block) {
-  const match = /command:\s*(\[[^\]]+\])/.exec(block);
-  if (!match?.[1]) {
-    return null;
-  }
-  return JSON.parse(match[1]);
-}
-
-function parseCatalogEntries(source) {
-  return extractEntryBlocks(source).map((entryBlock) => ({
-    id: getStringField(entryBlock.block, "id"),
-    title: getStringField(entryBlock.block, "title"),
-    version: getStringField(entryBlock.block, "version"),
-    command: getCommandField(entryBlock.block),
-    start: entryBlock.start,
-    end: entryBlock.end,
-  }));
+    return {
+      id: entry.fields.get("id")?.value ?? null,
+      title: entry.fields.get("title")?.value ?? null,
+      version: entry.fields.get("version")?.value ?? null,
+      command: command?.items.map((arg) => arg.value) ?? null,
+      start: entry.start,
+      end: entry.end,
+    };
+  });
 }
 
 function findNpmPackageSpec(command) {
@@ -374,22 +405,39 @@ async function inspectEntry(entry, options) {
   };
 }
 
-function serializeCommand(command) {
-  return `[${command.map((arg) => JSON.stringify(arg)).join(", ")}]`;
+function serializeString(value) {
+  return JSON.stringify(value).replace(/\$/g, () => "\\$");
 }
 
-function applyUpdates(source, results) {
+export function applyUpdates(source, results) {
   let updatedSource = source;
   const updates = results
     .filter((result) => result.checked && result.latestVersion && result.updatedCommand)
     .sort((left, right) => right.start - left.start);
 
   for (const result of updates) {
-    const block = updatedSource.slice(result.start, result.end);
-    const updatedBlock = block
-      .replace(/version:\s*"[^"]+"/, `version: "${result.latestVersion}"`)
-      .replace(/command:\s*\[[^\]]+\]/, `command: ${serializeCommand(result.updatedCommand)}`);
-    updatedSource = `${updatedSource.slice(0, result.start)}${updatedBlock}${updatedSource.slice(result.end)}`;
+    const entry = readCatalogLiteral(source, result.start);
+    const version = entry.fields.get("version");
+    const command = entry.fields.get("command");
+    if (!version || !command?.items) {
+      throw new Error("Cannot update ACP entry without version and command literals");
+    }
+    const replacements = [{ ...version, text: serializeString(result.latestVersion) }];
+    if (command.items.length === result.updatedCommand.length) {
+      command.items.forEach((arg, index) => {
+        if (arg.value !== result.updatedCommand[index]) {
+          replacements.push({ ...arg, text: serializeString(result.updatedCommand[index]) });
+        }
+      });
+    } else {
+      replacements.push({
+        ...command,
+        text: `[${result.updatedCommand.map(serializeString).join(", ")}]`,
+      });
+    }
+    for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+      updatedSource = `${updatedSource.slice(0, replacement.start)}${replacement.text}${updatedSource.slice(replacement.end)}`;
+    }
   }
 
   return updatedSource;
@@ -435,18 +483,20 @@ function printReport(results, options) {
   }
 }
 
-const options = parseArgs(process.argv.slice(2));
-const source = await readFile(CATALOG_PATH, "utf8");
-const entries = parseCatalogEntries(source);
-const results = await Promise.all(entries.map((entry) => inspectEntry(entry, options)));
-const hasDrift = results.some((result) => result.checked && result.status === "drift");
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const options = parseArgs(process.argv.slice(2));
+  const source = await readFile(CATALOG_PATH, "utf8");
+  const entries = parseCatalogEntries(source);
+  const results = await Promise.all(entries.map((entry) => inspectEntry(entry, options)));
+  const hasDrift = results.some((result) => result.checked && result.status === "drift");
 
-if (options.update) {
-  await writeFile(CATALOG_PATH, applyUpdates(source, results));
-}
+  if (options.update) {
+    await writeFile(CATALOG_PATH, applyUpdates(source, results));
+  }
 
-printReport(results, options);
+  printReport(results, options);
 
-if (options.failOnDrift && hasDrift) {
-  process.exitCode = 1;
+  if (options.failOnDrift && hasDrift) {
+    process.exitCode = 1;
+  }
 }

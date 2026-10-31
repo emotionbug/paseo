@@ -6,13 +6,13 @@ nav: 为什么选择 Paseo？
 
 # 为什么选择 Paseo？ {#why-paseo}
 
-Paseo 是一个完整的 Agent 开发环境。你可以运行编程 Agent、编辑文件、审查 diff 和 PR，并用终端和内置的桌面浏览器测试你的应用。对于由 Agent 驱动的开发，Paseo 可以替代你的 IDE：在一个应用里把任务从第一条提示词一路推进到审查和测试。
+Paseo 是面向 Agent 开发的原生环境：运行编程 Agent、编辑源码、阅读 Markdown、审查 diff 和 PR，并查看脚本输出。Flutter 客户端连接 Rust daemon，由 daemon 管理工作并跨设备保留状态。
 
 ## 在一个工作区中开发 {#develop-in-one-workspace}
 
-打开桌面应用，选择一个项目和一个 Agent，然后开始工作。对话、编辑器、终端、diff 和浏览器以分栏的形式放在一起。运行你的应用、检查结果、让 Agent 修改，都不用离开工作区。
+打开原生桌面客户端，选择主机和目录，然后开始会话。对话、编辑器、摘要优先的 diff 和只读脚本日志一起使用。侧边栏按主机 → 目录 → 会话组织；工作区仍负责 worktree 与编排。
 
-桌面应用支持 macOS、Windows 和 Linux。它会自动启动和管理本地 daemon。
+客户端目标平台为 Linux、macOS、Windows、Android 和 iOS。桌面端可管理本地 Rust daemon；移动端远程连接。此次原生迁移尚未发布，请按[源码构建说明](/docs)使用，不要假定现有上游下载已包含它。
 
 ## 并行运行任务 {#run-tasks-in-parallel}
 
@@ -24,18 +24,18 @@ Paseo 是一个完整的 Agent 开发环境。你可以运行编程 Agent、编�
 
 Paseo 运行你已经在用的编程 Agent，沿用你的订阅、凭据、配置、技能和 MCP 服务器。你的 Agent 使用你机器上的文件和工具。参见[支持的 Provider](/docs/supported-providers)。
 
-你可以口述任务，或使用[语音模式](/docs/voice)。语音转文字和文字转语音默认在本地运行，也可以在设置中选择云端 Provider。
+Agent 可以通过[文字转语音](/docs/voice)对你说话，默认在本地运行，也可以在设置中选择云端 Provider。原生客户端不采集麦克风输入。
 
 ## 在另一台设备上继续 {#continue-from-another-device}
 
-daemon 持有正在运行的 Agent 和工作区。桌面应用在本地连接它；移动端、网页端和 CLI 客户端连接到同一个环境。这种分离让你可以在另一台设备上继续工作，或者把环境运行在服务器上。
+daemon 持有正在运行的 Agent 和工作区。原生桌面/移动客户端与 Rust CLI 连接同一个环境。现有 ID、历史、配置和主机侧文件保持不变。
 
-你可以完全在笔记本电脑上使用 Paseo，也可以在需要时连接另一台机器。原生的 iOS 和 Android 应用让你在手机上使用 Agent、文件、终端和 diff。内置浏览器在桌面应用中运行。你可以直接[连接你的设备](/docs/connectivity)，也可以通过可选的端到端加密中继连接。
+可以在笔记本电脑上使用，也可连接另一台机器。Android 和 iOS 提供远程聊天、文件、diff 和只读脚本日志，不运行 daemon。通过直连或可选端到端加密中继[连接设备](/docs/connectivity)。产品没有网页客户端、内嵌浏览器/自动化或交互式终端界面；需要时使用自己的外部浏览器/终端。
 
 ## 自动化并扩展你的工作流 {#automate-and-extend-your-workflow}
 
 为 Agent 提供 [Paseo 工具](/docs/orchestration)，让它们创建 worktree、启动其他 Agent、发送提示词并收集结果。使用 [CLI](/docs/cli) 或 [TypeScript SDK](/docs/sdk) 自动化 Agent 和工作区操作。
 
-[插件](/docs/plugins)可以添加 Provider、工作区面板、命令和工作流。[Hub](/docs/hub) 把外部事件连接到在你机器上运行的 Agent。
+[后端扩展](/docs/plugins)通过可选的外部 Node worker 添加 Provider、RPC、生命周期行为和用量集成。内置集成使用 Rust，不支持可执行 React UI 插件。默认安装运行时不包含 Node、Electron 或 Chromium。[Hub](/docs/hub)将外部事件连接到你机器上的 Agent。
 
-Paseo 基于 Apache-2.0 开源，没有遥测和跟踪，也不需要 Paseo 账号。
+Paseo 源码采用 Apache-2.0，没有遥测和跟踪，也不要求 Paseo 账号。依赖项遵循各自许可证。生成的声明不能解决原生语音库的源码和许可证分发义务；分发二进制文件前请阅读仓库 `docs/release.md`。模型权重按需下载，不随运行时捆绑。

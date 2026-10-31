@@ -1,6 +1,6 @@
 ---
 title: Workspaces
-description: Understand how Paseo groups working directories, agents, terminals, and browsers into workspaces.
+description: Understand host-scoped directories, agent sessions, and the workspaces that own their execution.
 nav: Workspaces
 order: 10
 category: Workspaces
@@ -8,28 +8,17 @@ category: Workspaces
 
 # Workspaces
 
-This fork opens with a session sidebar: projects contain individual conversations.
-Use **New session** to start a chat in your existing checkout, or search the sidebar
-and select an existing conversation to resume it. Workspace navigation is no longer exposed in this fork.
+The native sidebar is **host → directory → session**, including a host row for a single host and empty registered directories. Search reveals matching ancestors without replacing saved collapse state. Equal paths on different hosts remain separate.
 
-Workspaces still own working directories, terminals, files and agent sessions internally.
-The session interface does not migrate or delete any workspace or conversation.
-The remaining documentation describes the upstream internal workspace model.
+Workspaces still own working directories, scripts, files and agent sessions. They are available through Command Center and the CLI, not as sidebar grouping rows. The native interface preserves existing workspace/session IDs, history and storage; closing a chat tab does not archive its session.
 
 A workspace is the place where a task happens. It has a working directory and can contain multiple sessions running at the same time. In the app, each session opens as a tab.
 
 ## Projects contain workspaces
 
-The sidebar starts with projects. A project can be a git repository, a GitHub project, or any directory on a machine running the Paseo daemon.
+A project is a registered root on one daemon host. It can be a Git repository or another directory. Project membership and workspace identity remain durable even though the sidebar presents directories and sessions rather than workspace groups.
 
-Inside each project are workspaces. For example:
-
-```
-my-app
-├── main
-├── fix-login-flow
-└── redesign-settings
-```
+For example, a project's main checkout and two managed worktrees can each have sessions visible under their own host-side directory. Use Command Center or the CLI when selecting a workspace as an orchestration entity.
 
 Each workspace is a separate place to work. You can keep one for your main checkout, create another for a feature, or open a GitHub PR as another workspace.
 
@@ -37,15 +26,15 @@ Use the [CLI project commands](/docs/cli#projects) to register, list, rename, or
 
 ## Workspaces contain sessions
 
-Agents run inside a workspace as sessions. A workspace can have one agent session, several agent sessions, terminals, browsers, and diffs open at the same time.
+Agents run inside a workspace as sessions. One workspace can have several agent sessions, source/Markdown views, diffs and script/setup logs.
 
-That matters because real development rarely fits into one long chat. You might ask one agent to implement a feature, open a terminal to run a service, start another agent to review the diff, and keep the browser open next to both. Those belong together because they are all part of the same task.
+For example, ask one agent to implement a feature, run a service through a workspace script, and ask another agent to review the diff. The daemon retains their shared working-directory and lifecycle relationships without requiring an embedded terminal or browser.
 
 In Paseo, the workspace is the stable container. The sessions are what you run inside it.
 
 ## Choose the isolation
 
-Every workspace has an isolation mode:
+When creating a workspace, choose its isolation:
 
 - **Local** uses an existing directory, such as your main checkout. Use it when sessions should share the files already on disk.
 - **Worktree** creates or opens a managed git worktree. Use it when a task needs its own directory and branch.
@@ -63,9 +52,9 @@ paseo workspace create --isolation local --path ~/dev/my-app --title main
 paseo workspace create --isolation worktree --path ~/dev/my-app --base origin/main
 ```
 
-You can also create a workspace without starting an agent right away. The workspace is still there with its working directory ready; you can open terminals, run services, or browse files, then start an agent later.
+You can also create a workspace without starting an agent immediately. Its working directory is ready for services, scripts and file browsing.
 
-Either way, once the workspace exists you can add more sessions to it. Open a terminal alongside an agent, start a second agent to review changes, or open a browser tab to check a local service. Every session lives as a tab inside the same workspace.
+Add another agent to review changes or inspect a running script's read-only output. For manual shell interaction or a web project's UI, use your own external terminal/browser. The native client has no interactive terminal emulator or embedded browser.
 
 Creating an agent and creating a workspace are separate actions. Pass a workspace ID when you want an agent in a specific existing workspace. A bare `paseo run` from a human shell creates a new local workspace; when one agent runs it, Paseo recognizes the caller and creates a subagent in the caller's workspace.
 

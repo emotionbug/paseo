@@ -10,14 +10,14 @@ nav: 支持的 Provider
 
 ## 原生支持 {#native-support}
 
-安装底层 CLI 并完成认证后即可开箱使用。
+内置适配器使用 Rust，调用 daemon 主机上已安装并认证的 Provider CLI。Provider 程序可有自身运行时要求，但这不代表 Paseo 默认安装运行时包含 Node。
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)。Anthropic 的编程 Agent，支持 MCP、流式输出和深度推理。
 - [Codex](/docs/codex)。OpenAI 的工作区 Agent，带有沙箱控制和可选的网络访问。
 - [OpenCode](https://opencode.ai/)。开源编程助手，支持多家 Provider 的模型。
 - [Pi](https://pi.dev)。极简的终端编程 Agent，支持多家 Provider 的 LLM。
-- [Antigravity](#antigravity)。通过内置的 Provider 插件使用你已安装的 `agy` CLI。
-- [Muse Code](/docs/muse-code)。Meta 的终端编程 Agent，以 Provider 插件的形式内置。
+- [Antigravity](#antigravity)。通过内置 Rust Provider 调用你已安装的 `agy` CLI。
+- [Muse Code](/docs/muse-code)。通过内置 Rust Provider 集成的 Meta 编程 Agent。
 
 ### Antigravity {#antigravity}
 

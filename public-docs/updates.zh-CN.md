@@ -1,71 +1,45 @@
 ---
 title: 更新
-description: Paseo 如何发布版本、稳定版与测试版渠道的区别，以及如何提前获取更新。
+description: 原生构建身份、更新通道与迁移可用性。
 nav: 更新
 ---
 
 # 更新 {#updates}
 
-Paseo 通过两个渠道发布更新：**Stable**（稳定版）和 **Beta**（测试版）。
+当前检出版本为 **0.13.0**，但 Rust/Flutter 迁移**尚未发布**。不能假定已有下载、npm CLI 包、应用商店条目或容器 `latest` 标签包含此迁移。
 
-大多数版本在稳定版渠道发布。测试版是候选版本，让你在新内容推送给所有人之前先行测试。
+## 原生构建身份 {#native-build-identity}
 
-## 版本号 {#version-numbers}
+产品客户端使用 Flutter，目标为 Linux、macOS、Windows、Android 和 iOS。桌面/服务器运行 Rust daemon 与 Rust `paseo` CLI；移动客户端只连接远程 daemon。
 
-Paseo 遵循带预发布标签的[语义化版本](https://semver.org)。
+本地源码构建需要 Node 24、Rust/Cargo、Flutter 及目标平台的原生工具：
 
-稳定版看起来是这样：
-
-```
-v0.1.90
-```
-
-同一版本的测试版看起来是这样：
-
-```
-v0.1.90-beta.1
+```bash
+npm ci
+npm run build:daemon
+# 优化的本地构建，不代表发布来源身份：
+npm run build:daemon:release
+npm run build:flutter -- linux
 ```
 
-如果某个版本需要更多测试，我们会发布更多测试版：
+在匹配的桌面宿主系统选择 `linux`、`macos` 或 `windows`。Flutter 产物位于 `artifacts/flutter/`。daemon 位于 `target/debug/paseo` 或 `target/release/paseo`（Windows 为 `paseo.exe`），设置 `CARGO_TARGET_DIR` 时以其为根目录。请保留可执行文件旁生成的全部资源。
 
-```
-v0.1.92-beta.1
-v0.1.92-beta.2
-v0.1.92-beta.3
-```
+## 更新本地安装 {#updating-a-local-installation}
 
-版本准备就绪后，最终的稳定版标签是 `v0.1.92`，而不是 `v0.1.93`。这些测试版是通往同一个稳定版本的检查点。
+替换运行时前先备份 Paseo 主目录。默认仍为 `~/.paseo`，保留原有配置和历史。使用 `paseo daemon stop` 停止托管 daemon，用目标修订构建的完整运行时替换，然后运行 `paseo daemon start` 和 `paseo daemon status`。重启 worker 不会替换 supervisor 可执行文件。
 
-## 稳定版渠道 {#stable-channel}
+直接运行 `paseo` 打开 CLI 聊天；显式设置请用 `paseo onboard`，它不是更新命令。
 
-稳定版渠道是默认渠道。桌面端稳定版会在 **36 小时**内逐步推送，这样即使有意外问题漏网，也不会同时影响所有人。自动更新检查会随着推送进度获取新版本；在应用中点击 **检查** 会跳过分批推送，立即安装。
+## 通道与发布 {#channels-and-publication}
 
-大多数用户应该使用稳定版。
+稳定版和测试版是发布身份，不证明此次迁移已经发布。优化本地二进制文件不等于启用官方更新来源身份。原生发布需要验证源代码身份、通道/仓库元数据、完整运行时资源、适用的签名以及明确发布授权。
 
-## 测试版渠道 {#beta-channel}
+本地 Flutter 构建不应沿用旧桌面应用更新界面的操作说明。当前更新清单、灰度控制和打包要求见仓库[发布指南](https://github.com/getpaseo/paseo/blob/main/docs/release.md)。
 
-测试版渠道在每个预发布版本发布后立即收到它，没有推送延迟。当某个测试版升级为稳定版时，测试版用户也会立即收到这个稳定版更新。
+## 移动端与验证边界 {#mobile-and-verification-boundaries}
 
-测试版是提前获得修复和新功能的最佳方式。如果遇到 bug，请报告；测试版的反馈让稳定版更加可靠。
+`npm run build:apk` 或 `npm run build:apk:arm64` 构建 Android 远程客户端。没有发布签名凭据时，产物明确标记为调试签名。`npm run build:ios` 需要 macOS/Xcode；没有 provisioning/export 配置时输出未签名的设备应用归档。这些产物不自动具备上架条件。
 
-### 如何加入测试版渠道 {#how-to-join-the-beta-channel}
+已记录的运行时执行位于 Linux。Android ARM64 release 模式构建已通过，使用调试签名，未安装 APK 或在设备上运行；不声称已在 Windows/macOS/iOS 实际运行。桌面后续验证及限制见[测试证据](https://github.com/getpaseo/paseo/blob/main/docs/testing.md)；工作流定义不是成功运行记录。
 
-在桌面应用中：
-
-1. 打开 **设置**
-2. 进入 **关于**
-3. 在 **发布通道** 下选择 **Beta**
-
-之后应用就会检查测试版更新。
-
-## 应用商店 {#app-stores}
-
-桌面端版本和 CLI 通常最先提供。App Store 和 Play Store 的版本需要经过审核，可能会滞后。
-
-应用商店目前没有测试版渠道，只提交稳定版构建。如果你想提前使用 Android 构建，请从 [GitHub releases 页面](https://github.com/getpaseo/paseo/releases)下载 APK。
-
-## 出现问题怎么办 {#what-to-do-if-something-breaks}
-
-测试版难免有不完善之处。如果某个测试版带来问题，你可以在 **设置 → 关于 → 发布通道** 中切换回稳定版渠道。下一个稳定版更新会正常安装。
-
-如果你需要一个尚未发布到稳定版的修复，请留在测试版并报告问题。测试版中发现的大多数问题都会在稳定版发布前修复。
+生成第三方声明不代表可合法分发。启用 TTS 的 Sherpa 1.12.28 预构建库静态包含 GPL espeak-ng；对应源码/要约、组合软件范围、MPL/LGPL、CRT 和 Rust 工具链义务仍未解决。具体要求由[发布指南](https://github.com/getpaseo/paseo/blob/main/docs/release.md)说明。这不意味着许可证变更或移除本地 TTS。

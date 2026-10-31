@@ -141,7 +141,7 @@ nav: API 参考
 
 ## `client.terminals` {#clientterminals}
 
-终端操作需要一个支持工作区终端的主机。较旧的主机不会收到任何终端请求；SDK 会抛出一个要求更新主机的错误。
+终端操作控制为脚本/设置自动化保留的 daemon 端 PTY，不是 Flutter 的交互式终端 UI。原生客户端显示只读日志。API 需要支持工作区终端的主机；旧主机不会收到请求，SDK 会抛出要求更新主机的错误。
 
 | 方法                | 结果                               | 行为                                                                  |
 | ------------------- | ---------------------------------- | --------------------------------------------------------------------- |
@@ -177,7 +177,7 @@ nav: API 参考
 
 capture 接受可选的 `start`、`end`、`stripAnsi` 和 `requestId`。行范围从零开始、包含两端，跨越回滚缓冲区和视口。负数范围从末尾开始计数；省略范围时捕获所有行。`stripAnsi` 默认为 `true`。终端不存在时返回空行。
 
-使用 `workspace.terminals.create(options?)` 和 `workspace.terminals.list(options?)` 可以从句柄提供工作区 ID。创建接受除 `workspaceId` 之外的相同选项；列表只接受 `requestId`。插件通过 `usePaseo()` 和处理函数的 `paseo` context 获得这些方法。
+使用 `workspace.terminals.create(options?)` 和 `workspace.terminals.list(options?)` 从句柄提供工作区 ID。创建接受除 `workspaceId` 外的相同选项；列表只接受 `requestId`。后端插件可使用处理函数的 `paseo` context。Flutter 产品客户端不支持可执行 React UI 插件及其 `usePaseo()` hook。
 
 ## `client.providers` {#clientproviders}
 

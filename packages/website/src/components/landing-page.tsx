@@ -1071,7 +1071,7 @@ function ServerInstallButton() {
       trigger={trigger}
       title={t("landing.getStarted.serverInstallTitle")}
       description={t("landing.getStarted.serverInstallDescription")}
-      command="npm install -g @getpaseo/cli && paseo"
+      command="npm ci && npm run build:daemon && ./target/debug/paseo onboard"
       footnote={footnote}
     />
   );

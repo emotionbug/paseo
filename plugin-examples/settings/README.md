@@ -1,14 +1,17 @@
+> The native Paseo client does not run client UI plugins. The settings screen in `client/` only
+> exercises the SDK's client types; the native app has no plugin settings screen.
+
 # Settings example
 
-Install this directory with `paseo plugin install /absolute/path/to/plugin-examples/settings`.
-Open Settings → Plugins → settings-example → Display, or run **Configure agent monitor** in Command Center.
+The backend part works on a native daemon: `index.server.ts` registers the `display` settings
+document from `shared/preferences.ts` with `server.registerSettings()`. That adds the
+`settings.display.read`, `settings.display.write`, and `settings.display.reset` RPCs. Values are
+stored on the daemon host and shared by every client of that host. Every field has a default, so a
+read returns complete values before anything is saved.
 
-The select and switch save immediately. The title editor keeps a draft and its original revision,
-so another client's save produces a conflict instead of overwriting its changes. Close and reopen
-the editor to discard the draft and use the latest settings.
+Install it with `paseo plugin install /absolute/path/to/plugin-examples/settings`.
 
-Every UI component is a plain named import. The custom preview shares the same values without
-using a form wrapper. Values are shared by clients connected to the same host.
-
-The same screen on [Android](screenshots/android.png), [Electron](screenshots/electron.png),
-and [compact web](screenshots/web-compact.png).
+`client/display-settings.tsx` was written for the former JavaScript client. Its title editor keeps
+the revision it started from, so another client's save produces a conflict instead of being
+overwritten. The images in `screenshots/` are historical captures of that client on Android,
+Electron, and the web, not current behavior.

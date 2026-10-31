@@ -4,27 +4,71 @@
 
 ### Added
 
+- Replaced the product daemon and CLI with Rust and the client with native Flutter targets for Linux, macOS, Windows, Android and iOS. Desktop/server hosts run the daemon; mobile clients connect remotely. The native cutover is not a published release.
+- Preserved host → directory → session navigation, existing protocol/configuration/home and session persistence, Markdown/source editing, summary-first large diffs, schedules, MCP, speech, connected hosts, and script/setup PTYs with read-only client logs.
+- Kept optional JavaScript backend extensions on an externally installed Node runtime, with built-in integrations running in Rust and no Node executable in the default installed runtime.
+- Added generated Cargo, optional-worker and speech attributions. Official Sherpa 1.12.28 TTS-enabled prebuilts statically include GPL espeak-ng; notices do not establish corresponding-source/source-offer, combined-work, MPL/LGPL, CRT or Rust-toolchain obligations. These remain unresolved release-distribution requirements, not a compliance certification. Model weights are downloaded on demand, not bundled.
+
 - Added a host-scoped directory browser to Add Project, including explicit selection, history, retry, and mobile-friendly remote navigation without path entry.
+- The native client imports the previous app's settings without modifying the original data: Android/iOS AsyncStorage and the desktop Chromium localStorage. Imported settings include hosts and passwords, theme, language, font sizes, keyboard overrides, sidebar order, layout and unsent drafts. On later launches it also picks up settings changed in the previous app, unless the same setting was changed in the native client; native choices win on conflict. An unreadable source is retried on the next launch instead of being marked as imported.
 
 ### Improved
 
 - Bounded relay connection fan-out, protected-handshake retries, WebSocket buffering, and supervisor log backpressure.
 - Reduced persisted-agent lookup allocation and isolated terminal latency benchmarks from speech and relay startup.
-- Updated TanStack Start, Electron Updater, Express, Vite, WebSocket, Zod, MCP SDK, YAML, and critical transitive security dependencies.
+- Updated retained SDK and build-tool dependencies; the installed product no longer depends on a Node daemon, Electron or Chromium.
 - Reduced Changes-pane startup latency by loading file-tree summaries without waiting for patch bodies or filesystem watcher startup, highlighting only the initial visible file batch, batching tracked-file work, and removing per-file Git processes for untracked text files.
-- Kept large Changes views responsive by updating web canvas materialization outside React, reducing interactive header overscan, and reusing stable sticky-header paints.
-- Made timeline pagination and browser snapshot cleanup scale with returned/live state instead of retained history.
+- Kept large Changes views summary-first with lazy patch loading in the native client.
+- Preserved timeline pagination and reconnect/history behavior in the native runtime.
 - Preserved complete desktop release artifacts before publication for 30-day, publication-only and single-architecture recovery, and made partial npm publication resumable.
+- Restored the original app's look across the native client. This covers the sidebar tree and footer, the conversation header, tool and Thinking rows, the composer and model controls, permission cards, settings list/detail, file and diff panes, Git/PR panels and host dialogs. It also restores the original palettes, independent UI/content/code font sizes and Lucide icons.
 
 ### Fixed
 
+- Restored the top-level `paseo reload` command from the original CLI; it reloads `config.json` like `paseo daemon reload`. `paseo plugin init` scaffolds again return the cleanup function the extension worker requires, so a new plugin loads instead of failing at startup.
 - Preserved project and workspace registry files when loading invalid data instead of replacing them on the next mutation.
 - Verified daemon process-start identity before sending local signals, and retained managed-helper recovery records after termination timeouts.
 - Cancelled pending Desktop daemon starts during quit and normalized Windows checkout identity across short and canonical paths.
+- Fixed fresh desktop-settings initialization mutating an immutable empty migration map, which could leave the hidden coordinator without a user window. Preserve one-time quit-policy migration without overwriting later keep-running choices.
+- Preserved generic platform-channel maps when decoding desktop IPC so close, ready, focus, route and settings payloads reach the multiwindow coordinator instead of becoming empty objects.
+- Fixed Linux multiwindow GPU resource ownership in the project-vendored `desktop_multi_window` 0.3.1+paseo.1 dependency: separate per-engine displays and controlled GL binding/display teardown prevent one closing engine from invalidating another window. Retained the upstream license and macOS/Windows implementations.
+- Native chat Markdown converts HTML (`<details>`/`<summary>`, links, images, line breaks, emphasis, inline code) to Markdown like the original instead of dropping it, and leaves footnote syntax as literal text as the original does.
+- The desktop app adds the local daemon as a host while it is still starting, labelled with its hostname, instead of staying on the welcome screen until restart. A desktop without a session manager no longer shows an error banner; close-to-tray stays disabled. The sidebar's extra new-window button was removed; `Ctrl/Cmd+Shift+N` opens a new window as in the original.
+- Added a retained Linux native desktop regression for tray hide/restore/Quit, no-panel last-window close and hidden-window logout, using actual Flutter windows and a private native daemon rather than browser or mocked-window coverage.
+- Restricted notification cold-launch lookup to supported desktop platforms while retaining Linux live notification callbacks.
+- Fixed native Neovim editor startup by obtaining the channel ID through the `nvim_get_api_info` RPC handshake and passing it into Lua setup, rather than calling an RPC-only API through `vim.api`.
+- Applied Android target-platform ABI selection to all native dependencies, not only the Flutter engine, while preserving split-per-ABI builds.
 - Serialized same-file editor saves, prevented rename collisions from replacing files, and made directory listings tolerate inaccessible children.
 - Propagated durable agent-deletion failures instead of acknowledging deletion that could reappear after restart.
 - Cleaned up mirrored terminals after worker crashes and bounded WebSocket shutdown handshakes before forced daemon exit.
-- Stopped browser workspace icons from forwarding internal styling props to the DOM, and deferred browser-automation implementation loading to remove a startup import cycle.
+- Removed the product web client, embedded browser/automation, interactive terminal UI and executable React UI-plugin compatibility. Script/setup PTY backend support remains.
+- Removed microphone capture, dictation and voice-input controls and permissions from the native client and audio plugin; server audio playback remains.
+- Recorded actual Linux native client/daemon, provider/extension, desktop-host lifecycle and native speech inference coverage separately from unexecuted cross-platform CI definitions; see `docs/testing.md`.
+- Fixed the native client clearing attention on agents nobody opened at launch: only the focused agent clears, on focus, input focus, send or leave, and never for a pending permission. Opening an archived agent from History no longer sends a refresh that could replace its stored timeline, and its header reads "Untitled session" like the original.
+- Made the native conversation an inverted, virtualized list like the original: short chats rest on the composer, older pages load without moving the rows or stopping a fling, a detached reader keeps their place while new rows stream in, and a running agent keeps Stop while the keyboard is still composing a word. Typing and tapping no longer rebuild every open tab.
+- Fixed the native conversation shaking while a reader scrolled up during a running turn: new rows arriving below made the list jump back and forth every frame, and each arrival twitched what was on screen. The reading position is now held as part of the list's layout, so it stays put and the reader can still scroll freely.
+- Fixed native chat Markdown picking up the Markdown library's default styles: inline code no longer draws a second box over its background chip, and table headers without a column alignment start-align like the original instead of centering.
+- Made the native conversation stay smooth while agents stream, catch up or reload: live updates fold into the timeline incrementally instead of reprocessing the whole history per event; unchanged rows, code highlighting and file previews are no longer rebuilt or re-parsed on unrelated updates; a long answer re-renders only its growing last block while it streams; and repeated agent/workspace updates that change nothing no longer refresh the app.
+- Aligned native client and daemon behavior with the original app across chat, composer, connections, navigation, files/Git, settings and the daemon. User-visible fixes:
+  - **Composer:** clears immediately on send and restores the draft on failure. Ctrl/Cmd+Enter sends while idle. "Send now" on a queued message follows the steer preference. Pasted issue/PR links attach automatically. Files over 50 MB are rejected before upload. The last provider/model/mode/thinking/feature choices are remembered for new sessions.
+  - **Connections:** follow the original reconnect backoff, heartbeat, request queueing while connecting, and probing-based connection selection. Pairing saves a host only after it connects. Push-token removal no longer blocks removing an offline host.
+  - **Agents:**
+    - Attention is raised only when a turn finishes or fails, and is no longer cleared just by sending.
+    - Failed turns keep the user's message and add a `[System Error]` row.
+    - Replacing a running turn no longer flashes idle.
+    - Closing a tab, by any path, archives the agent; bulk closes ask first.
+    - Opening a project registers it instead of opening a new session.
+  - **Files:**
+    - Edits autosave after 0.8 s.
+    - A modified buffer enters conflict when the file changes on disk, with Overwrite or Reload.
+    - File associations use the original `ext:`/`name:` keys.
+    - Modified file tabs show a dot.
+  - **Git:** the action menu follows the original primary-action order, availability messages and per-repo ship default. Branch switching offers stash-and-switch only on an uncommitted refusal. Discard is limited to the uncommitted comparison. The PR panel follows forge capabilities and retries activity 3 times.
+  - **Settings:**
+    - The profile editor seeds catalog defaults.
+    - Usage reports are cached for 60 s.
+    - Shortcut overrides no longer reject conflicts.
+    - Daemon PCM audio plays, resampled to 16 kHz.
 
 ## 0.13.0 - 2026-10-24
 

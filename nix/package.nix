@@ -1,155 +1,98 @@
 {
   lib,
   stdenv,
-  buildNpmPackage,
-  nodejs_22,
-  python3,
-  makeWrapper,
+  rustPlatform,
+  callPackage,
+  fetchurl,
+  nodejs_24,
   autoPatchelfHook,
-  # node-pty needs libuv headers on Linux
-  libuv,
-  # Exposed so downstream flakes that follow a different nixpkgs revision
-  # (where `fetchNpmDeps` may produce a different hash for the same lockfile)
-  # can override via `.override { npmDepsHash = "sha256-..."; }` without
-  # `overrideAttrs` gymnastics — `npmDepsHash` is destructured from
-  # `buildNpmPackage`'s args, so `overrideAttrs` cannot reach it.
-  #
-  # The default is read from a sidecar file so the CI auto-updater can replace
-  # the hash with a single file write instead of a sed against this source.
-  npmDepsHash ? lib.fileContents ./npm-deps.hash,
+  patchelf,
+  darwin,
+  sourceSha ? "",
 }:
-
-buildNpmPackage rec {
-  pname = "paseo";
-  version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
-
+let
+  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
+  nodePlatform = if stdenv.hostPlatform.isDarwin then "darwin" else "linux";
+  nodeArch = if stdenv.hostPlatform.isAarch64 then "arm64" else "x64";
+  # Shared with desktop/standalone packaging: official release metadata hashes.
+  sherpaAssets = builtins.fromJSON (builtins.readFile
+    ../packages/flutter_desktop_host/packaging/sherpa-assets.json);
+  sherpaAsset = sherpaAssets."${nodePlatform}-${nodeArch}";
+  sherpaArchive = fetchurl {
+    url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.28/${builtins.elemAt sherpaAsset 0}";
+    sha256 = builtins.elemAt sherpaAsset 1;
+  };
   src = lib.cleanSourceWith {
     src = ./..;
     filter = path: type:
       let
-        baseName = builtins.baseNameOf path;
-        relPath = lib.removePrefix (toString ./..) path;
-      in
-      # Exclude non-daemon workspace contents (keep package.json for workspace resolution)
-      !(lib.hasPrefix "/packages/app/android" relPath)
-      && !(lib.hasPrefix "/packages/app/ios" relPath)
-      && !(lib.hasPrefix "/packages/website/src" relPath)
-      && !(lib.hasPrefix "/packages/website/public" relPath)
-      && !(lib.hasPrefix "/packages/desktop/src" relPath)
-      && !(lib.hasPrefix "/packages/desktop/src-tauri" relPath)
-      # Documentation, CI definitions and agent/editor configuration. None of
-      # these reach the build. Excluding them here also matters for the desktop
-      # derivation, which inherits this package's npmDeps: leaving them in makes
-      # a docs-only commit produce a new npm-deps .drv, and so a new desktop
-      # .drv, and so a full rebuild for a byte-identical result.
-      && !(lib.hasPrefix "/docs" relPath)
-      && !(lib.hasPrefix "/.github" relPath)
-      && !(lib.hasPrefix "/.agents" relPath)
-      && !(lib.hasPrefix "/.claude" relPath)
-      && !(lib.hasPrefix "/.codex" relPath)
-      && !(lib.hasPrefix "/docker" relPath)
-      # Top-level prose only (README, CHANGELOG, AGENTS...). Deeper markdown is
-      # not necessarily documentation: skills/*/SKILL.md is a runtime file the
-      # daemon's trace script copies into the output.
-      && builtins.match "/[^/]+\\.md" relPath == null
-      # Exclude test fixtures and debug files
-      && !(lib.hasSuffix ".test.ts" baseName)
-      && !(lib.hasSuffix ".e2e.test.ts" baseName)
-      && baseName != "node_modules"
-      && baseName != ".git"
-      && baseName != ".paseo"
-      && baseName != ".DS_Store";
+        name = builtins.baseNameOf path;
+        relative = lib.removePrefix (toString ./.. + "/") (toString path);
+        roots = [
+          "Cargo.toml" "Cargo.lock" "package.json" "package-lock.json" "LICENSE"
+          "tsconfig.json" "tsconfig.base.json" "skills" "plugins"
+          "packages/daemon" "packages/protocol" "packages/plugin"
+          "packages/client" "packages/relay"
+          "packages/flutter_desktop_host/packaging" "scripts/build-plugin-worker.mjs"
+        ];
+      in lib.cleanSourceFilter path type
+        && !(builtins.elem name [ "node_modules" "target" "dist" ".tmp" ".paseo" ])
+        && (toString path == toString ./.. || lib.any (root:
+          relative == root || lib.hasPrefix (root + "/") relative
+          || (type == "directory" && lib.hasPrefix (relative + "/") root)) roots);
   };
-
-  nodejs = nodejs_22;
-
-  # Default hash lives in nix/npm-deps.hash (see arg default above).
-  # CI auto-updates that file when package-lock.json changes (see .github/workflows/).
-  inherit npmDepsHash;
-
-  # Prevent onnxruntime-node's install script from running during automatic
-  # npm rebuild (it tries to download from api.nuget.org, which fails in the sandbox).
-  # We manually rebuild only node-pty in buildPhase.
-  npmRebuildFlags = [ "--ignore-scripts" ];
-
-  nativeBuildInputs = [
-    python3 # for node-gyp (node-pty compilation)
-    makeWrapper
-  ] ++ lib.optionals stdenv.hostPlatform.isLinux [
-    autoPatchelfHook
-  ];
-
-  buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
-    libuv
-    stdenv.cc.cc.lib # libstdc++ for sherpa-onnx prebuilt binaries
-  ];
-
-  # Don't use the default npm build hook — we need a custom build sequence
-  dontNpmBuild = true;
-
-  buildPhase = ''
-    runHook preBuild
-
-    # Rebuild only node-pty (native addon for terminal emulation). The sherpa
-    # speech runtime ships prebuilt platform packages and is copied into the
-    # daemon closure by scripts/trace-daemon.mjs.
-    npm rebuild node-pty
-
-    # Build all server packages in dependency order (defined in package.json)
-    npm run build:server
-    npm run build:daemon-web-ui
-
-    runHook postBuild
+  pluginWorker = callPackage ./plugin-worker.nix { inherit src version; };
+in
+rustPlatform.buildRustPackage {
+  pname = "paseo";
+  inherit version src;
+  cargoLock.lockFile = ../Cargo.lock;
+  cargoBuildFlags = [ "--package" "paseo-daemon" "--bin" "paseo" ];
+  # Integration tests need writable homes/provider fixtures and run separately.
+  doCheck = false;
+  nativeBuildInputs = [ nodejs_24 ]
+    ++ lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook patchelf ]
+    ++ lib.optionals stdenv.hostPlatform.isDarwin [ darwin.cctools ];
+  buildInputs = lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc.cc.lib ];
+  dontPatchShebangs = true;
+  env.PASEO_BUILD_SOURCE_SHA = sourceSha;
+  # Deliberately do not set PASEO_NATIVE_RELEASE or updater repository/channel:
+  # only Nix may replace this store-managed installation.
+  postInstall = ''
+    mkdir -p "$out/lib/paseo"
+    mv "$out/bin/paseo" "$out/lib/paseo/paseo"
+    ln -s ../lib/paseo/paseo "$out/bin/paseo"
+    cp -R skills "$out/lib/paseo/skills"
+    cp -R ${pluginWorker} "$out/lib/paseo/plugin-worker"
+    chmod -R u+w "$out/lib/paseo/plugin-worker"
+    export XDG_CACHE_HOME="$TMPDIR/cache"
+    mkdir -p "$XDG_CACHE_HOME/paseo-flutter-packaging/sherpa-onnx-1.12.28"
+    cp ${sherpaArchive} "$XDG_CACHE_HOME/paseo-flutter-packaging/sherpa-onnx-1.12.28/${builtins.elemAt sherpaAsset 0}"
+    node --input-type=module <<'JS'
+    import fs from 'node:fs';
+    import { copySherpaRuntime } from './packages/flutter_desktop_host/packaging/sherpa-runtime.mjs';
+    import { cargoMetadata, collectCargoNotices, writeNotices, nativeThirdPartyNotices } from './packages/flutter_desktop_host/packaging/third-party-notices.mjs';
+    const runtime = process.env.out + '/lib/paseo';
+    await copySherpaRuntime(runtime);
+    fs.copyFileSync('LICENSE', runtime + '/LICENSE');
+    writeNotices(runtime, collectCargoNotices(cargoMetadata()), 'RUST-THIRD-PARTY-NOTICES');
+    fs.writeFileSync(runtime + '/THIRD-PARTY-NOTICES.txt', nativeThirdPartyNotices(runtime));
+    fs.writeFileSync(runtime + '/paseo-runtime.json', JSON.stringify({
+      schemaVersion: 1, runtime: 'rust', appId: 'sh.paseo.daemon',
+      installationKind: 'nix', release: false, version: '${version}',
+      sourceSha: process.env.PASEO_BUILD_SOURCE_SHA,
+      platform: '${if stdenv.hostPlatform.isDarwin then "macos" else "linux"}', arch: '${nodeArch}'
+    }) + '\n');
+    JS
   '';
-
-  installPhase = ''
-    runHook preInstall
-
-    # Compute the daemon's runtime closure by static module-graph tracing
-    # (@vercel/nft from supervisor-entrypoint.js, cli/dist/index.js, and the
-    # forked terminal/speech worker processes) plus an explicit list of non-JS
-    # assets read at runtime. The trace script is the single source of
-    # truth for what the daemon needs at $out — auditable in plain JS, no
-    # npm hoisting / .bin / workspace-symlink footguns.
-    mkdir -p $out/lib/paseo
-    node scripts/trace-daemon.mjs > daemon-files.txt
-
-    while IFS= read -r path; do
-      [ -z "$path" ] && continue
-      mkdir -p "$out/lib/paseo/$(dirname "$path")"
-      cp -a "$path" "$out/lib/paseo/$path"
-    done < daemon-files.txt
-
-    # Shell hooks invoke the retained CLI bin directly, without a system Node.
-    patchShebangs --build "$out/lib/paseo"
-
-    # Root package.json lets node resolve the workspace layout when the
-    # CLI/server bin starts from $out.
-    cp package.json $out/lib/paseo/
-
-    # Web UI Assets
-    cp -r packages/server/dist/server/web-ui $out/lib/paseo/packages/server/dist/server/
-
-    # Create wrapper for the server entry point (for systemd / direct use)
-    mkdir -p $out/bin
-    # Keep Paseo's runtime mode separate from NODE_ENV, which belongs to spawned agents.
-    makeWrapper ${nodejs}/bin/node $out/bin/paseo-server \
-      --add-flags "$out/lib/paseo/packages/server/dist/scripts/supervisor-entrypoint.js" \
-      --set PASEO_NODE_ENV production
-
-    # Create wrapper for the CLI
-    makeWrapper ${nodejs}/bin/node $out/bin/paseo \
-      --add-flags "$out/lib/paseo/packages/cli/dist/index.js" \
-      --set NODE_PATH "$out/lib/paseo/node_modules"
-
-    runHook postInstall
-  '';
-
+  # The worker compiler is bundled, but an optional extension must explicitly
+  # find externally installed Node via PATH or PASEO_PLUGIN_NODE.
+  disallowedRequisites = [ nodejs_24 ];
   meta = {
-    description = "Self-hosted daemon for Claude Code, Codex, and OpenCode";
+    description = "Native self-hosted daemon for Claude Code, Codex, and OpenCode";
     homepage = "https://github.com/getpaseo/paseo";
     license = lib.licenses.asl20;
     mainProgram = "paseo";
-    platforms = lib.platforms.linux ++ lib.platforms.darwin;
+    platforms = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
   };
 }

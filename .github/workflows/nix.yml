@@ -3,30 +3,46 @@ name: Nix
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+          - runner: macos-15-intel
+            system: x86_64-darwin
+          - runner: macos-14
+            system: aarch64-darwin
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
 
       - uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
-      - name: Update lockfile + Nix hash if stale
-        run: ./scripts/update-nix.sh
-
       - name: Build Nix package
-        run: nix build .#default -o result
+        run: nix build --no-update-lock-file .#packages.${{ matrix.system }}.paseo -o result
+
+      - name: Check native assets and service contract
+        run: nix flake check --no-update-lock-file
+
+      - name: Reject Node runtime closure
+        run: |
+          nix path-info --recursive ./result > closure.txt
+          if grep -E '/[^/]*-nodejs(-|$)' closure.txt; then
+            echo "The default native package must not retain Node."
+            exit 1
+          fi
 
       - name: Smoke Nix daemon
         run: |
@@ -35,6 +51,9 @@ jobs:
           export PASEO_HOME
           PASEO_HOME="$(mktemp -d)"
           export PASEO_LISTEN=127.0.0.1:6767
+          export PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD=0
+          export PASEO_DICTATION_ENABLED=0
+          export PASEO_VOICE_ENABLED=0
 
           WRAPPER_LOG="$PASEO_HOME/paseo-cli.log"
 
@@ -47,7 +66,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          PASEO_WEB_UI_ENABLED=true PASEO_RELAY_ENABLED=false ./result/bin/paseo daemon run >"$WRAPPER_LOG" 2>&1 &
+          PASEO_RELAY_ENABLED=false ./result/bin/paseo daemon run >"$WRAPPER_LOG" 2>&1 &
           DAEMON_PID=$!
 
           deadline=$((SECONDS + 30))
@@ -55,8 +74,6 @@ jobs:
             if STATUS_JSON="$(./result/bin/paseo daemon status --json)" \
               && jq -e '.connectedDaemon == "reachable"' <<<"$STATUS_JSON" >/dev/null; then
               echo "$STATUS_JSON"
-              curl --fail --silent --show-error http://127.0.0.1:6767/ >"$PASEO_HOME/web-ui.html"
-              [[ -s "$PASEO_HOME/web-ui.html" ]]
               if ! TERMINAL_JSON="$(./result/bin/paseo terminal create --cwd "$PASEO_HOME" --name nix-smoke --json)"; then
                 break
               fi
@@ -96,28 +113,3 @@ jobs:
           echo "::endgroup::"
 
           exit 1
-
-      - name: Build Nix desktop package
-        run: nix build .#desktop -o result-desktop
-
-  build-desktop-darwin:
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-
-      - name: Build Nix desktop package
-        run: nix build .#desktop -o result-desktop
-
-      - name: Verify macOS application bundle
-        run: |
-          set -euo pipefail
-
-          app="result-desktop/Applications/Paseo.app"
-          test -x "$app/Contents/MacOS/Paseo"
-          test -L result-desktop/bin/paseo-desktop
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "sh.paseo.sessions.desktop"
-          find "$app" -name Info.plist -print0 | xargs -0 -n 1 plutil -lint

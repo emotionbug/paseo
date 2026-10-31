@@ -1,13 +1,12 @@
+> The native Paseo client does not run client UI plugins. This example only exercises the SDK's client types; it does not add anything to the native app.
+
 # PDF file panel example
 
-Requires Paseo 0.13.0 or later. Install this directory with
-`paseo plugin install /absolute/path/to/plugin-examples/pdf-panel`, then open a `.pdf` in Files.
+The server entry is empty, so installing this directory on a native daemon loads a plugin that does
+nothing. The native client does not run file panels.
 
-The panel resolves the file's local URL with `useFileUrl`, shows `Loading` until it does, and passes
-it to `DocumentFrame`. Where a platform cannot show a PDF inline (Android), `DocumentFrame` says so.
-The plugin does not construct daemon URLs.
+`index.client.tsx` registers a file panel for `.pdf` files. The panel resolves the file's URL with
+`useFileUrl`, shows `Loading` until it does, and passes it to `DocumentFrame`.
 
-See the [file panel reference](https://paseo.sh/docs/plugins/reference#file-panels).
-
-Inline PDF rendering needs a daemon from Paseo 0.13.0 or later; see the
-[DocumentFrame reference](https://paseo.sh/docs/plugins/reference#documentframe).
+From the repository root, `npm run typecheck --workspace=@getpaseo/plugin` checks this example
+against the SDK's client types.

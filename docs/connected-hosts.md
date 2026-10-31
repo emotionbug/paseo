@@ -37,6 +37,8 @@ accept `serverId`; omission selects the calling daemon. Remote creation requires
 destination workspace and explicit provider/model. Caller filesystem defaults apply only on the
 calling daemon. Prompting a remote child acknowledges acceptance and uses the existing idle wait for
 finish notifications. Remote agent lists have no caller-directory default; pass `cwd` to filter them.
+Every host-tool result includes the destination `serverId`, local calls included. A failed call
+returns a tool error result carrying `{serverId, error}` rather than a protocol error.
 
 The parent’s Subagents track shows qualified children across connected hosts. Opening a child uses
 the ordinary conversation on the destination's session. The runtime selects among that host's
@@ -66,8 +68,8 @@ and duplicate-delivery semantics. Concurrent prompts gain no turn attribution.
 
 ## Connections and recovery
 
-The shared Node connector owns the target grammar and each connection attempt, including a fresh
-SSH process. SSH reaches an already running daemon. The shared client connection lifecycle owns
+The Rust connector in `packages/daemon/src/hosts` owns daemon target parsing and each connection attempt, including a fresh
+SSH process. The retained TypeScript SDK has its own client connector. SSH reaches an already running daemon. The client connection lifecycle owns
 physical reconnect and keepalive; the registry retains configuration, identity acceptance, and recovery
 status. Unreachable registrations remain saved. Identity is pinned when discovered. Self and duplicate
 registrations remain inspectable; a changed destination requires explicit identity replacement.

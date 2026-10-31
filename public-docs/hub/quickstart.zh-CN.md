@@ -8,7 +8,7 @@ nav: 快速开始
 
 在你的机器上运行 Hub，无需公开服务器即可连接 Slack，并用仓库中的 Agent 回复一次提及。Hub 的浏览器设置流程会把你引导到终端，`paseo hub init` 会为你编写并部署一个起步触发器。
 
-你需要[已安装并正在运行的 Paseo](/docs)、Node.js，以及一个你可以在其中创建应用的 Slack 工作区。
+你需要[已构建/安装并运行的原生 Rust Paseo daemon](/docs)、用于下方单独安装的 **Hub 服务**的 Node.js，以及可创建应用的 Slack 工作区。Hub 的网页界面和 Node 运行时独立于 Flutter 客户端，不随 Paseo 默认安装运行时捆绑。
 
 ## 1. 启动 Hub {#1-start-hub}
 

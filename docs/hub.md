@@ -15,7 +15,7 @@ or reconnects.
 
 The daemon persists a relationship ID and private connection credential before enrollment. The
 relationship is independent of its current transport, so a future transport can replace the direct
-WebSocket without pairing again. The current foundation supports one Hub relationship per daemon.
+WebSocket without pairing again. The native implementation supports one Hub relationship per daemon.
 
 Normal authenticated daemon sessions may manage the daemon's Hub relationship and permissions.
 Hub connections have no daemon permissions by default. Connecting gives Hub machine identity and
@@ -30,9 +30,9 @@ manage their own relationship or permissions.
 Hub uses the same authenticated, resumable Session protocol as other clients. Its persisted
 `hub.execute` permission authorizes ordinary agent creation, workspace titling, messaging,
 cancellation, archival, agent/workspace observation, timeline subscriptions, and workspace recovery. This authority is
-daemon-wide; it is not limited to agents created by that Hub. Daemon configuration, terminals,
-browser control, and permission management still require their own permissions. See
-[permissions.md](permissions.md).
+daemon-wide; it is not limited to agents created by that Hub. Daemon configuration, script/setup PTYs
+and permission management still require their own permissions. Embedded browser control is excluded
+from the native product. See [permissions.md](permissions.md).
 
 Creating an agent may create a directory workspace. The same `hub.execute` session can title that
 workspace through `workspace.title.set.request` without `workspace.manage`.

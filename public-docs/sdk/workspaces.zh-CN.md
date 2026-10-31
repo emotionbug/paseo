@@ -6,7 +6,7 @@ nav: 工作区
 
 # 在 SDK 中使用工作区 {#workspaces-with-the-sdk}
 
-当集成需要在 Paseo 应用中为某个任务相关的 Agent、终端、浏览器和文件提供一个持久的位置时，请使用工作区。
+当集成需要为任务相关的 Agent、脚本/设置任务 PTY 和文件提供持久归属时，请使用工作区。Flutter 客户端没有内嵌浏览器或交互式终端 UI；任务日志为只读。
 
 ## 打开目录 {#open-a-directory}
 

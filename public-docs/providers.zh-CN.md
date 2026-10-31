@@ -6,7 +6,7 @@ nav: Provider
 
 # Provider {#providers}
 
-Paseo 在带有编辑器、终端、diff（桌面端还有浏览器）的工作区中运行**你已安装并完成认证的现有编程 Agent**。你可以并行运行多个 Agent，为每个任务选择 Provider，并在同一个应用中审查它们的工作。你的订阅、配置、技能和 MCP 服务器都保持不变。
+Paseo 运行**你已安装并认证的编程 Agent**，提供原生聊天、源码/Markdown 编辑、摘要优先的 diff 和只读脚本/设置日志。你可以并行运行多个 Agent，为每个任务选择 Provider，并在同一个客户端审查工作。订阅、配置、技能和 MCP 服务器保持不变。内置适配器使用 Rust；外部 Provider 程序保留其自身运行时要求。
 
 想体验这套工作流，可以[在不同的 worktree 中运行并行任务](/docs/parallel-development)。
 

@@ -1,9 +1,12 @@
-import { execCommand } from "../../packages/server/src/utils/spawn.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+const execFileAsync = promisify(execFile);
 
 interface FixturePackage {
   name: string;
@@ -65,7 +68,7 @@ export async function startNpmRegistry(packages: FixturePackage[]) {
         await mkdir(path.dirname(path.join(directory, file)), { recursive: true });
         await writeFile(path.join(directory, file), content);
       }
-      const { stdout } = await execCommand("npm", ["pack", "--ignore-scripts", "--json"], {
+      const { stdout } = await execFileAsync("npm", ["pack", "--ignore-scripts", "--json"], {
         cwd: directory,
       });
       const packed: Array<{ filename: string }> = JSON.parse(stdout);

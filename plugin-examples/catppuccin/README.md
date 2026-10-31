@@ -1,28 +1,14 @@
+> The native Paseo client does not run client UI plugins. This example only exercises the SDK's client types; it does not add anything to the native app.
+
 # Catppuccin plugin example
 
-This example adds **Catppuccin Mocha** to Settings → Appearance. Paseo ships Catppuccin as a
-syntax-highlight theme; this contributes it as an app theme.
+This example has no server entry, so a native Paseo daemon rejects it on install
+(`Native Paseo requires index.server.ts or index.server.tsx`). The native client does not load
+plugin themes.
 
-A theme is client data, so the whole plugin is one `addTheme` call in `index.client.ts` and has no
-server entry or subprocess.
+The whole plugin is one `addTheme` call in `index.client.ts`. It maps the
+[Catppuccin Mocha](https://catppuccin.com/palette/) palette (`base`, `text`, `surface0`,
+`surface1`, `mauve`, `subtext0`, and `overlay0`) onto the SDK's theme color fields.
 
-Register it in `$PASEO_HOME/config.json`:
-
-```json
-{
-  "pluginsEnabled": true,
-  "plugins": {
-    "catppuccin": {
-      "source": "directory",
-      "path": "/absolute/path/to/paseo/plugin-examples/catppuccin"
-    }
-  }
-}
-```
-
-Then run `paseo reload` and pick **Catppuccin Mocha** in Settings → Appearance.
-
-The colors come straight from the [Catppuccin Mocha](https://catppuccin.com/palette/) palette:
-`base`, `text`, `surface0`, `surface1`, `mauve`, `subtext0`, and `overlay0`. Paseo expands them
-into the full token set, so `accent` (`mauve`) drives buttons and selection while `border`
-(`surface1`, shared with `control`) stays the border and raised-surface tint.
+From the repository root, `npm run typecheck --workspace=@getpaseo/plugin` checks this example
+against the SDK's client types.

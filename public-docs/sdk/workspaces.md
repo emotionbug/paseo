@@ -8,7 +8,7 @@ category: TypeScript SDK
 
 # Workspaces with the SDK
 
-Use a workspace when an integration needs a durable place in the Paseo app for agents, terminals, browsers, and files related to one task.
+Use a workspace when an integration needs durable ownership for agents, script/setup PTYs, and files related to one task. The Flutter client has no embedded browser or interactive terminal UI; task logs are read-only.
 
 ## Open a directory
 

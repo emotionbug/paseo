@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+listen="${PASEO_LISTEN:-0.0.0.0:6767}"
+options=(--silent --show-error --noproxy '*' --connect-timeout 2 --max-time 4 --output /dev/null --write-out '%{http_code}')
+case "$listen" in
+  unix://*|/*|\~*)
+    socket="${listen#unix://}"
+    if [[ "$socket" == '~' ]]; then
+      socket="${PASEO_HOME:-${HOME:-/home/paseo}/.paseo}"
+    elif [[ "$socket" == '~/'* ]]; then
+      socket="${PASEO_HOME:-${HOME:-/home/paseo}/.paseo}/${socket:2}"
+    fi
+    options+=(--unix-socket "$socket")
+    url=http://localhost/api/health
+    ;;
+  *)
+    port="${listen##*:}"
+    host="${listen%:*}"
+    [[ "$listen" == *:* ]] || host=127.0.0.1
+    case "$host" in
+      ''|0.0.0.0) host=127.0.0.1 ;;
+      '::'|'[::]') host='[::1]' ;;
+      *:*) [[ "$host" == \[*\] ]] || host="[$host]" ;;
+    esac
+    [[ "$port" =~ ^[0-9]+$ ]] || exit 1
+    url="http://${host}:${port}/api/health"
+    ;;
+esac
+[[ "$(curl "${options[@]}" "$url")" == 200 ]]

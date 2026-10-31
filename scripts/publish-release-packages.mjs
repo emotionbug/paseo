@@ -9,8 +9,6 @@ export const RELEASE_WORKSPACES = [
   "packages/protocol",
   "packages/client",
   "packages/plugin",
-  "packages/server",
-  "packages/cli",
 ];
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));

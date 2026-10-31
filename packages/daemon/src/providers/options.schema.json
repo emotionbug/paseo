@@ -1,0 +1,827 @@
+{
+  "claude": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "allowedTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "disallowedTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "additionalDirectories": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "extraArgs": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {
+          "type": ["string", "null"]
+        }
+      },
+      "sandbox": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "failIfUnavailable": {
+            "type": "boolean"
+          },
+          "autoAllowBashIfSandboxed": {
+            "type": "boolean"
+          },
+          "excludedCommands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowUnsandboxedCommands": {
+            "type": "boolean"
+          },
+          "network": {
+            "type": "object",
+            "properties": {
+              "allowedDomains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deniedDomains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "strictAllowlist": {
+                "type": "boolean"
+              },
+              "allowManagedDomainsOnly": {
+                "type": "boolean"
+              },
+              "allowUnixSockets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allowAllUnixSockets": {
+                "type": "boolean"
+              },
+              "allowLocalBinding": {
+                "type": "boolean"
+              },
+              "allowMachLookup": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "httpProxyPort": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "socksProxyPort": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "tlsTerminate": {
+                "type": "object",
+                "properties": {
+                  "caCertPath": {
+                    "type": "string"
+                  },
+                  "caKeyPath": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "filesystem": {
+            "type": "object",
+            "properties": {
+              "allowWrite": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "denyWrite": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "denyRead": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allowRead": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allowManagedReadPathsOnly": {
+                "type": "boolean"
+              },
+              "disabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "ignoreViolations": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "enableWeakerNestedSandbox": {
+            "type": "boolean"
+          },
+          "ripgrep": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["command"],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "settings": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ask": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deny": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "sandbox": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "failIfUnavailable": {
+                "type": "boolean"
+              },
+              "autoAllowBashIfSandboxed": {
+                "type": "boolean"
+              },
+              "excludedCommands": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allowUnsandboxedCommands": {
+                "type": "boolean"
+              },
+              "network": {
+                "type": "object",
+                "properties": {
+                  "allowedDomains": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "deniedDomains": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "strictAllowlist": {
+                    "type": "boolean"
+                  },
+                  "allowManagedDomainsOnly": {
+                    "type": "boolean"
+                  },
+                  "allowUnixSockets": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowAllUnixSockets": {
+                    "type": "boolean"
+                  },
+                  "allowLocalBinding": {
+                    "type": "boolean"
+                  },
+                  "allowMachLookup": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "httpProxyPort": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "socksProxyPort": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "tlsTerminate": {
+                    "type": "object",
+                    "properties": {
+                      "caCertPath": {
+                        "type": "string"
+                      },
+                      "caKeyPath": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "filesystem": {
+                "type": "object",
+                "properties": {
+                  "allowWrite": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "denyWrite": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "denyRead": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowRead": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowManagedReadPathsOnly": {
+                    "type": "boolean"
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "codex": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "approval_policy": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": ["untrusted", "on-request", "never"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "granular": {
+                "type": "object",
+                "properties": {
+                  "sandbox_approval": {
+                    "type": "boolean"
+                  },
+                  "rules": {
+                    "type": "boolean"
+                  },
+                  "mcp_elicitations": {
+                    "type": "boolean"
+                  },
+                  "request_permissions": {
+                    "type": "boolean"
+                  },
+                  "skill_approval": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": ["granular"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "sandbox_mode": {
+        "type": "string",
+        "enum": ["read-only", "workspace-write", "danger-full-access"]
+      },
+      "sandbox_workspace_write": {
+        "type": "object",
+        "properties": {
+          "writable_roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "network_access": {
+            "type": "boolean"
+          },
+          "exclude_slash_tmp": {
+            "type": "boolean"
+          },
+          "exclude_tmpdir_env_var": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "web_search": {
+        "type": "string",
+        "enum": ["disabled", "cached", "indexed", "live"]
+      },
+      "features": {
+        "type": "object",
+        "properties": {
+          "network_proxy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "proxy_url": {
+                    "type": "string"
+                  },
+                  "socks_url": {
+                    "type": "string"
+                  },
+                  "enable_socks5": {
+                    "type": "boolean"
+                  },
+                  "enable_socks5_udp": {
+                    "type": "boolean"
+                  },
+                  "allow_local_binding": {
+                    "type": "boolean"
+                  },
+                  "allow_upstream_proxy": {
+                    "type": "boolean"
+                  },
+                  "dangerously_allow_all_unix_sockets": {
+                    "type": "boolean"
+                  },
+                  "dangerously_allow_non_loopback_proxy": {
+                    "type": "boolean"
+                  },
+                  "domains": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["allow", "deny"]
+                    }
+                  },
+                  "unix_sockets": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["allow", "deny"]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "multi_agent_v2": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "opencode": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "permission": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": ["ask", "allow", "deny"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "read": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "edit": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "glob": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "grep": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "list": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "bash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "task": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "external_directory": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "todowrite": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "question": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "webfetch": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "websearch": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "codesearch": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "repo_clone": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "repo_overview": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "lsp": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              },
+              "doom_loop": {
+                "type": "string",
+                "enum": ["ask", "allow", "deny"]
+              },
+              "skill": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"]
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": ["ask", "allow", "deny"]
+                    }
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "acp": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "supportsMcpServers": {
+        "type": "boolean"
+      },
+      "clientCapabilities": {
+        "type": "object",
+        "properties": {
+          "fs": {
+            "type": "object",
+            "properties": {
+              "readTextFile": {
+                "type": "boolean"
+              },
+              "writeTextFile": {
+                "type": "boolean"
+              }
+            }
+          },
+          "terminal": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "additionalProperties": {}
+  },
+  "omp": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "sessionDir": {
+        "type": "string",
+        "minLength": 1
+      },
+      "rpcTimeoutMs": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "smolModel": {
+        "type": "string",
+        "minLength": 1
+      },
+      "slowModel": {
+        "type": "string",
+        "minLength": 1
+      },
+      "planModel": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  },
+  "pi": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "sessionDir": {
+        "type": "string",
+        "minLength": 1
+      },
+      "rpcTimeoutMs": {
+        "default": 60000,
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "extensionTimeoutMs": {
+        "default": 30000,
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "additionalProperties": false
+  }
+}

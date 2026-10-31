@@ -6,7 +6,6 @@ IMAGE_HOME="/home/paseo"
 : "${HOME:=$IMAGE_HOME}"
 : "${PASEO_HOME:=${HOME}/.paseo}"
 : "${PASEO_LISTEN:=0.0.0.0:6767}"
-: "${PASEO_WEB_UI_ENABLED:=true}"
 : "${PASEO_LOG_LEVEL:=info}"
 : "${PASEO_LOG_FORMAT:=json}"
 : "${CLAUDE_CONFIG_DIR:=${HOME}/.claude}"
@@ -19,7 +18,6 @@ IMAGE_HOME="/home/paseo"
 export HOME
 export PASEO_HOME
 export PASEO_LISTEN
-export PASEO_WEB_UI_ENABLED
 export PASEO_LOG_LEVEL
 export PASEO_LOG_FORMAT
 export CLAUDE_CONFIG_DIR
@@ -65,14 +63,8 @@ if [[ -z "${PASEO_PASSWORD:-}" ]]; then
   } >&2
 fi
 
-if [[ ! -f /etc/paseo-server-entry ]]; then
-  echo "[paseo] FATAL: /etc/paseo-server-entry is missing." >&2
-  exit 1
-fi
-
-entry="$(cat /etc/paseo-server-entry)"
-echo "[paseo] starting daemon on ${PASEO_LISTEN} with web UI ${PASEO_WEB_UI_ENABLED}"
+echo "[paseo] starting native daemon on ${PASEO_LISTEN}"
 if [[ "$(id -u)" == "0" ]]; then
-  exec gosu paseo node "$entry"
+  exec gosu paseo paseo daemon run
 fi
-exec node "$entry"
+exec paseo daemon run

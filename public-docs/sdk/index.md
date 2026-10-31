@@ -21,11 +21,16 @@ Use it to:
 
 ## Start a daemon
 
+The SDK remains a JavaScript/TypeScript client of the **Rust** daemon. Install/build the native runtime as described in [Getting started](/docs), then use its executable:
+
 ```bash
-npx @getpaseo/cli
+paseo onboard
+paseo daemon start
 ```
 
-It listens on `ws://127.0.0.1:6767/ws`.
+The default endpoint is `ws://127.0.0.1:6767/ws`. Bare `paseo` opens CLI chat; it does not install or start a daemon. This native cutover has not been published, so an old npm CLI package is not its installer. Source builds are available from the migration checkout. Keep all runtime assets with the executable.
+
+The external SDK still uses `@getpaseo/client` (`packages/client` in the repository); using Node for your integration does not make Node part of the default installed Paseo runtime.
 
 ## Run an agent
 

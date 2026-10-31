@@ -1,14 +1,14 @@
 # Protocol Validation
 
-The client validates inbound WebSocket messages with a zod-aot generated validator instead of runtime Zod on the hot path. Zod remains the authoring source of truth for schemas and TypeScript types.
+The retained **TypeScript SDK** validates inbound WebSocket messages with a zod-aot generated validator instead of runtime Zod on its hot path. Zod remains the authoring source for TypeScript schemas and types. The Rust daemon and Dart client implement the same wire contract natively; they do not execute this JavaScript validator.
 
-The reason is mobile performance. A captured 353 KB provider snapshot cost about 10.9 ms and 5.9 MB allocated per message for `JSON.parse` plus Zod on Hermes. After moving provider-model normalization out of the schema so zod-aot could compile the hot subtree, the generated validator path measured about 2.5 ms and 1.2 MB allocated.
+The earlier Hermes measurement motivated the SDK optimization but is not a Flutter benchmark. Native validation performance and correctness require Rust/Dart checks and actual native transport evidence.
 
 ## Runtime Path
 
 `packages/protocol/src/validation/ws-outbound.ts` is the shipped boundary. It validates the envelope with a generated validator that checks only each session message's `type` tag, then runs the generated validator for that one message type and returns the validated data. Issue paths from the message validator, including nested union branches, are prefixed with `message`, so callers see the same issues as when one validator covered the whole envelope. It does not normalize, repair, or re-validate the generated result.
 
-Keep one generated function per message type. zod-aot inlines every nested schema into the function it compiles, so compiling `WSOutboundMessageSchema` as a whole produced one 11 MB function. On V8 (daemon clients, plugin hosts, the CLI, and Electron), the Maglev tier compiled that function once it was hot, allocating about 800 MB and stalling for seconds, and compiled it again after each deoptimization. Hermes has no JIT, so mobile never showed it. `packages/protocol/tests/validation/ws-outbound.test.ts` fails if a generated function grows past 1 MB.
+Keep one generated function per message type. zod-aot inlines nested schemas; a single enormous validator can cause expensive V8 compilation in external SDK consumers and optional Node workers. `packages/protocol/tests/validation/ws-outbound.test.ts` bounds generated function size. This is an SDK/tooling concern, not an Electron or mobile JavaScript runtime.
 
 Generated validators preserve unknown keys where Zod object parsing strips them. The client dispatch path uses known `type` and payload fields, so this passthrough behavior is accepted for inbound messages. The wire format is unchanged.
 

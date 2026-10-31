@@ -214,17 +214,14 @@ PASEO_SERVICE_WEB_URL=http://web--my-app.localhost:6767
 
 脚本名会转为大写，非字母数字字符变为 `_`。让你的前端指向 `$PASEO_SERVICE_API_URL`，而不是写死端口。
 
-## 终端 {#terminals}
+## 设置 PTY 输出 {#terminals}
 
-在 worktree 创建时自动打开终端。适合查看日志，或预先准备好一个 REPL。
+现有 `worktree.terminals` 配置在创建 worktree 时启动 daemon 管理的 PTY 命令。原生客户端只显示只读输出，不提供交互式 shell 或 REPL。例如持续查看日志：
 
 ```json
 {
   "worktree": {
-    "terminals": [
-      { "name": "logs", "command": "tail -f dev.log" },
-      { "name": "shell", "command": "bash" }
-    ]
+    "terminals": [{ "name": "logs", "command": "tail -f dev.log" }]
   }
 }
 ```

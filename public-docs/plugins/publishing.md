@@ -12,8 +12,15 @@ Start with a working [plugin project](/docs/plugins). Prepare its listing, publi
 or push it to GitHub, then submit it to the registry. After approval, users install the reviewed
 version with `paseo plugin add owner/slug`.
 
-1. Prepare your [listing page](#your-listing-page) and, for a visual plugin, an
-   [interface image](#icons-and-screenshots).
+For the unpublished native cutover in the 0.13.0 checkout, publish **backend-only** extensions:
+RPC handlers, lifecycle hooks, settings persistence, providers, and usage sources. Built-ins are
+Rust. Optional JavaScript runs in the private backend worker with externally installed Node.js 20+
+on the daemon host (`PASEO_PLUGIN_NODE` selects it); the Flutter app does not execute React plugins.
+Explain the external runtime and optional worker-asset prerequisite in your README and listing.
+Do not describe the checkout as an already published native release.
+
+1. Prepare your [listing page](#your-listing-page) and any useful
+   [supporting images](#icons-and-screenshots).
 2. [Publish on npm](#publish-on-npm) or [share through Git](#share-through-github-or-git).
 3. [Submit to the plugin registry](#plugin-registry).
 
@@ -82,9 +89,10 @@ in the registry.
 
 ## Icons and screenshots
 
-Themes, panels and other visual plugin interfaces need at least one image showing the current
-interface. Use sample data and hide private details. An icon alone does not meet this requirement;
-plugins without their own visual interface do not need screenshots.
+Backend extensions do not need screenshots of a custom interface. Optional images can show their
+actual results in native Paseo, using sample data and hiding private details. Do not advertise
+former React panels, themes, or custom renderers as supported native features. Historical images
+must be clearly identified as historical, not evidence of current behavior.
 
 Declare local images in `paseo-plugin.json` before publishing:
 
@@ -95,13 +103,13 @@ Declare local images in `paseo-plugin.json` before publishing:
   "description": "Reviews changes before merge",
   "icon": "assets/icon.png",
   "media": ["assets/screenshot.png"],
-  "requirements": { "paseo": ">=0.11.0" }
+  "requirements": { "paseo": ">=0.13.0" }
 }
 ```
 
 Create the referenced files and include `assets/` in `package.json`'s `files` list for npm.
 Paths are relative to the manifest, use forward slashes and stay inside the plugin directory.
-These metadata fields require Paseo 0.11.0 or later.
+These listing fields predate the native migration; a semver requirement alone does not establish native compatibility.
 
 | Field   | Listing behavior                                                                                                                                                    |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -166,10 +174,11 @@ npm run typecheck
 npm pack --dry-run --ignore-scripts
 ```
 
-Check the file list contains `paseo-plugin.json`, at least one runtime entry, every imported local
-module, any overview and assets you declared, and the shrinkwrap when required. Repository-only import aliases
-and files outside the package do not reach users. The scaffold includes the entries and `client/`,
-`server/` and `shared/`; add other asset directories to `files`.
+Check the file list contains `paseo-plugin.json`, `index.server.ts` (or `.tsx`), every imported local
+backend/shared module, declared overview/assets, and the shrinkwrap when required. Repository-only
+aliases and files outside the package do not reach users. The native scaffold includes the server
+entry, `server/`, and `shared/`; add asset directories to `files`. Remove obsolete client entries,
+client modules, and UI-only dependencies from native-targeted packages.
 
 Confirm any declared preparation command succeeds with the Node/npm versions you support;
 an out-of-sync or incompatible lockfile still blocks installation.
@@ -187,12 +196,13 @@ paseo plugin install npm:@acme/paseo-review@1.0.0
 paseo plugin ls
 ```
 
-Require `running` with no error, then [submit the package](#plugin-registry).
+Require `running` with no error and exercise the actual backend behavior before
+[submitting the package](#plugin-registry). Activation alone does not prove native UI support.
 
 ## Share through GitHub or Git
 
 For the public registry, push your plugin to a public GitHub repository. Include its manifest,
-runtime entries, imported files and listing assets. Git tags and commits are optional at submission;
+server entry, imported backend/shared files and listing assets. Git tags and commits are optional at submission;
 provide one to select a revision, or the reviewer resolves `main`.
 
 If preparation installs runtime npm dependencies, commit a synchronized `package-lock.json` and
@@ -253,8 +263,11 @@ rules in the [source reference](/docs/plugins/reference#plugin-sources).
 
 ## Plugins with a build step
 
-Paseo compiles TypeScript, so an ordinary plugin needs no separate publication build.
-Keep generated modules in their runtime directory and host-provided modules external.
+The optional backend worker compiles TypeScript, so an ordinary plugin needs no separate publication
+build. Keep generated modules under `server/` or `shared/` and host-provided modules external.
+The SDK is `packages/plugin`; the extracted private worker is `packages/daemon/plugin-worker/src`.
+Repository build tooling uses Node.js 24, distinct from the external Node.js 20+ extension runtime.
+Do not import a legacy server tree or package a React client bundle.
 
 Paseo suppresses npm lifecycle scripts during package acquisition. Commands explicitly declared in
 manifest `build` still run, including scripts they invoke. Explain the purpose of those commands

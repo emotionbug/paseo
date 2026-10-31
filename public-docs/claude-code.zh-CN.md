@@ -20,11 +20,9 @@ Paseo 通过官方的 `claude` CLI，借助 Claude Agent SDK 运行 Claude Code�
 
 如果 Claude 登录过期，请用 Claude Code CLI 重新认证，然后在 Paseo 中启动新的 Claude Code 会话。已有的 Paseo 会话保留启动时的认证，因此重新认证不会更新已经在运行的会话。
 
-## 在 Paseo 终端中使用 Claude Code {#use-claude-code-in-the-paseo-terminal}
+## 在外部终端中使用 Claude Code {#use-claude-code-in-an-external-terminal}
 
-Claude Code 在 Paseo 终端里也很好用。如果你更喜欢标准的 CLI 体验，在工作区中打开终端，像平常一样运行 `claude` 即可。
-
-你可以在 Paseo 的桌面端、网页端或移动端使用终端，同时保留对工作区、git 改动和其他 Paseo 工具的访问。
+如需标准 Claude CLI 体验，在 daemon 主机上打开自己的终端，进入检出目录并运行 `claude`。原生 Paseo 应用没有交互式终端 UI 或网页客户端；它保留 daemon 管理的脚本/设置 PTY（只读日志）和原生 Agent 对话。
 
 ## 另请参阅 {#see-also}
 

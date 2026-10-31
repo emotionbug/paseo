@@ -79,7 +79,7 @@ For generated URLs to be reachable, you need wildcard DNS pointing to the machin
 
 Public service URLs expose the workspace service itself. Daemon password authentication protects daemon APIs; it does not protect proxied dev services.
 
-If the same reverse proxy serves the daemon web UI over HTTPS, it must also set `X-Forwarded-Proto` so the web UI can auto-connect with `wss://`. The daemon trusts forwarded headers from loopback proxies by default. If your proxy reaches the daemon from another address, configure the proxy ranges explicitly:
+The Rust daemon does not serve a bundled product web UI. When proxying its API/WebSocket endpoint over TLS, forward WebSocket upgrades and the correct scheme. Trust forwarded headers only from configured proxy ranges; do not let arbitrary clients impersonate a trusted proxy:
 
 ```json
 {

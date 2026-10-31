@@ -22,11 +22,9 @@ Install and sign in to the Claude Code CLI on the machine running Paseo. Paseo u
 
 If your Claude login expires, re-authenticate with the Claude Code CLI, then start a new Claude Code session in Paseo. Existing Paseo sessions keep the authentication they started with, so re-authenticating does not update a session that is already running.
 
-## Use Claude Code in the Paseo terminal
+## Use Claude Code in an external terminal
 
-Claude Code also works great inside the Paseo terminal. If you prefer the standard CLI experience, open a terminal in your workspace and run `claude` as usual.
-
-You can use the terminal from Paseo's desktop, web, or mobile app while keeping access to your workspace, git changes, and other Paseo tools.
+For the standard Claude CLI experience, open your own terminal on the daemon host, change to the checkout and run `claude`. The native Paseo application has no interactive terminal UI or web client. It retains daemon-owned script/setup PTYs with read-only logs and native agent conversations.
 
 ## See also
 
