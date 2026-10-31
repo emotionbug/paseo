@@ -108,8 +108,13 @@ class _RevealedTextState extends State<RevealedText> {
   }
 
   void _sync() {
-    // Pacing is only seen on screen; a hidden tab (TickerMode off) shows it whole.
-    if (!widget.streaming || !TickerMode.valuesOf(context).enabled) {
+    // Pacing is only watched in a focused window's shown tab. A hidden tab
+    // (TickerMode off) or a window behind others shows the text whole, one
+    // frame per delta instead of 30.
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final paced = TickerMode.valuesOf(context).enabled &&
+        (lifecycle == null || lifecycle == AppLifecycleState.resumed);
+    if (!widget.streaming || !paced) {
       _stop();
       _revealed = _target.length;
       return;

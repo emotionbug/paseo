@@ -1430,33 +1430,36 @@ class _ShimmerState extends State<_Shimmer> with IndicatorClockState<_Shimmer> {
       return Stack(
         children: [
           widget.child,
+          // The sweep repaints only this overlay, not the tool row beneath it.
           Positioned.fill(
-            child: IgnorePointer(
-              child: ValueListenableBuilder<double>(
-                valueListenable: _phase,
-                builder: (context, phase, mask) {
-                  final x = -peak + (end + peak) * phase;
-                  return ShaderMask(
-                    blendMode: BlendMode.srcIn,
-                    shaderCallback: (bounds) => LinearGradient(
-                      colors: _isNative
-                          ? const [Color(0x00ffffff), Color(0xffffffff), Color(0x00ffffff)]
-                          : const [
-                              Color(0x00ffffff),
-                              Color(0x73ffffff),
-                              Color(0xffffffff),
-                              Color(0xffffffff),
-                              Color(0x73ffffff),
-                              Color(0x00ffffff),
-                            ],
-                      stops: _isNative
-                          ? const [0, .5, 1]
-                          : const [0, .24, .4, .6, .76, 1],
-                    ).createShader(Rect.fromLTWH(x, 0, peak, bounds.height)),
-                    child: mask,
-                  );
-                },
-                child: widget.mask,
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _phase,
+                  builder: (context, phase, mask) {
+                    final x = -peak + (end + peak) * phase;
+                    return ShaderMask(
+                      blendMode: BlendMode.srcIn,
+                      shaderCallback: (bounds) => LinearGradient(
+                        colors: _isNative
+                            ? const [Color(0x00ffffff), Color(0xffffffff), Color(0x00ffffff)]
+                            : const [
+                                Color(0x00ffffff),
+                                Color(0x73ffffff),
+                                Color(0xffffffff),
+                                Color(0xffffffff),
+                                Color(0x73ffffff),
+                                Color(0x00ffffff),
+                              ],
+                        stops: _isNative
+                            ? const [0, .5, 1]
+                            : const [0, .24, .4, .6, .76, 1],
+                      ).createShader(Rect.fromLTWH(x, 0, peak, bounds.height)),
+                      child: mask,
+                    );
+                  },
+                  child: widget.mask,
+                ),
               ),
             ),
           ),

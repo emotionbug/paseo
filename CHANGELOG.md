@@ -22,7 +22,7 @@
 - Preserved timeline pagination and reconnect/history behavior in the native runtime.
 - Preserved complete desktop release artifacts before publication for 30-day, publication-only and single-architecture recovery, and made partial npm publication resumable.
 - Restored the original app's look across the native client. This covers the sidebar tree and footer, the conversation header, tool and Thinking rows, the composer and model controls, permission cards, settings list/detail, file and diff panes, Git/PR panels and host dialogs. It also restores the original palettes, independent UI/content/code font sizes and Lucide icons.
-- Halved the frames drawn while agents run (21 to 10 per second in a real desktop profile, with matching GPU time). The status ring, tool shimmer, working dots and elapsed time now step together on one shared 10Hz clock that pauses in hidden tabs. Streamed text is revealed at 30Hz. Previously each indicator rendered a full-window frame on every display refresh.
+- Halved the frames drawn while agents run (21 to 10 per second in a real desktop profile, with matching GPU time). The status ring, tool shimmer, working dots and elapsed time now step together on one shared clock that pauses in hidden tabs, and each repaints only itself. The clock runs at 10Hz in a focused window, 4Hz behind other windows, and stops while the window is minimized or the app is in the background. Streamed text is revealed at 30Hz in a focused window and shown whole elsewhere. Previously each indicator rendered a full-window frame on every display refresh.
 
 ### Fixed
 

@@ -3448,7 +3448,10 @@ class _ElapsedLabelState extends State<_ElapsedLabel>
     final start = widget.start, end = widget.end;
     if (widget.running) {
       _shown = _runningText();
-      return start == null ? const SizedBox.shrink() : Text(_shown, style: style);
+      // The seconds repaint alone instead of the turn footer around them.
+      return start == null
+          ? const SizedBox.shrink()
+          : RepaintBoundary(child: Text(_shown, style: style));
     }
     final duration = start != null && end != null
         ? tr(context, 'message.turnFooter.workedFor', args: {
@@ -3554,30 +3557,33 @@ class _WorkingDotsState extends State<_WorkingDots>
     const size = 14.0;
     final gap = (size * .12).roundToDouble().clamp(1.0, size);
     final dot = ((size - gap * 2) / 3).clamp(2.0, size);
-    return SizedBox.square(
-      dimension: size,
-      child: Center(
-        child: SizedBox(
-          width: dot * 2 + gap,
-          height: dot * 3 + gap * 2,
-          child: Stack(
-            children: [
-              for (var index = 0; index < 6; index++)
-                Positioned(
-                  left: index % 2 * (dot + gap),
-                  top: index ~/ 2 * (dot + gap),
-                  child: Container(
-                    width: dot,
-                    height: dot,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: widget.color.withValues(
-                        alpha: _states[step][index].toDouble(),
+    // Ticks repaint only this 14px square, not the stream row around it.
+    return RepaintBoundary(
+      child: SizedBox.square(
+        dimension: size,
+        child: Center(
+          child: SizedBox(
+            width: dot * 2 + gap,
+            height: dot * 3 + gap * 2,
+            child: Stack(
+              children: [
+                for (var index = 0; index < 6; index++)
+                  Positioned(
+                    left: index % 2 * (dot + gap),
+                    top: index ~/ 2 * (dot + gap),
+                    child: Container(
+                      width: dot,
+                      height: dot,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.color.withValues(
+                          alpha: _states[step][index].toDouble(),
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
