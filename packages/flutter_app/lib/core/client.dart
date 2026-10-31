@@ -583,9 +583,11 @@ class PaseoClient extends ChangeNotifier {
       case 'fetch_agents_response':
       case 'fetch_workspaces_response':
       case 'fetch_agent_history_response':
-      case 'fetch_recent_provider_sessions_response':
         require('entries', body['entries'] is List);
         require('pageInfo', body['pageInfo'] is Map);
+      // Recent provider sessions are one bounded list, not a page.
+      case 'fetch_recent_provider_sessions_response':
+        require('entries', body['entries'] is List);
       case 'project.list.response':
         require('projects', body['projects'] is List);
       case 'fetch_agent_response':

@@ -694,7 +694,6 @@ class UsageCard extends StatelessWidget {
     final colors = PaseoColors.of(context);
     final compactLayout = isCompactLayout(context);
     final frame = compactLayout ? 32.0 : 20.0, glyph = compactLayout ? 18.0 : 14.0;
-    final overhang = (frame - glyph) / 2;
     final button = Semantics(
       button: true,
       enabled: !refreshing,
@@ -722,17 +721,14 @@ class UsageCard extends StatelessWidget {
       child: OverflowBox(
         maxWidth: frame,
         maxHeight: frame,
-        child: Transform.translate(
-          offset: Offset(overhang, 0),
-          child: inlineFreshness
-              ? button
-              : Tooltip(
-                  message: freshness,
-                  waitDuration: Duration.zero,
-                  preferBelow: false,
-                  child: button,
-                ),
-        ),
+        child: inlineFreshness
+            ? button
+            : Tooltip(
+                message: freshness,
+                waitDuration: Duration.zero,
+                preferBelow: false,
+                child: button,
+              ),
       ),
     );
   }
@@ -782,42 +778,57 @@ class UsageCard extends StatelessWidget {
           spacing: 12,
           children: [
             inset(Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               spacing: 8,
               children: [
-                if (svg != null)
-                  SvgPicture.string(
-                    svg,
-                    width: 14,
-                    height: 14,
-                    theme: SvgTheme(currentColor: theme.colorScheme.onSurface),
-                  ),
                 Flexible(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium!.copyWith(fontSize: type.uiSize(14)),
-                  ),
-                ),
-                if (planLabel.isNotEmpty) StatusBadge(label: planLabel, xs: true),
-                const Spacer(),
-                if (statusText != null)
-                  Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    spacing: 6,
+                    spacing: 8,
                     children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: status == 'error' ? colors.danger : colors.muted,
+                      if (svg != null)
+                        SvgPicture.string(
+                          svg,
+                          width: 14,
+                          height: 14,
+                          theme: SvgTheme(currentColor: theme.colorScheme.onSurface),
+                        ),
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium!.copyWith(fontSize: type.uiSize(14)),
                         ),
                       ),
-                      Text(statusText, style: mutedSmall),
+                      if (planLabel.isNotEmpty) StatusBadge(label: planLabel, xs: true),
                     ],
                   ),
-                if (onRefresh != null) _refreshButton(context, freshness, inlineFreshness),
+                ),
+                if (statusText != null || onRefresh != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 8,
+                    children: [
+                      if (statusText != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          spacing: 6,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: status == 'error' ? colors.danger : colors.muted,
+                              ),
+                            ),
+                            Text(statusText, style: mutedSmall),
+                          ],
+                        ),
+                      if (onRefresh != null) _refreshButton(context, freshness, inlineFreshness),
+                    ],
+                  ),
               ],
             )),
             if (messages.isNotEmpty)
@@ -983,42 +994,48 @@ class UsageCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: 3,
             children: [
-              Row(
-                spacing: 8,
-                children: [
-                  Expanded(
-                    child: Text(
-                      formatProviderUsageLabel(
-                        context,
-                        stringValue(window['id']),
-                        stringValue(window['label'], stringValue(window['id'])),
+              LayoutBuilder(
+                builder: (context, constraints) => Row(
+                  spacing: 8,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        formatProviderUsageLabel(
+                          context,
+                          stringValue(window['id']),
+                          stringValue(window['label'], stringValue(window['id'])),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: small.copyWith(color: colors.muted),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: small.copyWith(color: colors.muted),
                     ),
-                  ),
-                  Flexible(
-                    child: Text.rich(
-                      TextSpan(
-                        text: value,
-                        children: [
-                          if (trailing != null)
-                            TextSpan(
-                              text: ' · $trailing',
-                              style: TextStyle(
-                                color: atRisk ? colors.danger : colors.muted,
-                                fontWeight: FontWeight.normal,
+                    // A flex-shrink value keeps its natural width before the
+                    // label grows; two Flutter flex children split the width.
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: (constraints.maxWidth - 8).clamp(0.0, double.infinity)),
+                      child: Text.rich(
+                        TextSpan(
+                          text: value,
+                          children: [
+                            if (trailing != null)
+                              TextSpan(
+                                text: ' · $trailing',
+                                style: TextStyle(
+                                  color: atRisk ? colors.danger : colors.muted,
+                                  fontWeight: FontWeight.normal,
+                                ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: small.copyWith(fontWeight: FontWeight.w500),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: small.copyWith(fontWeight: FontWeight.w500),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               _meter(context, used ?? 0, _tone(colors, window['tone'], used)),
             ],
@@ -1091,36 +1108,45 @@ class UsageCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 3,
         children: [
-          Row(
-            spacing: 8,
-            children: [
-              Expanded(
-                child: Text(
-                  stringValue(balance['label']),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: small.copyWith(color: colors.muted),
+          LayoutBuilder(
+            builder: (context, constraints) => Row(
+              spacing: 8,
+              children: [
+                Expanded(
+                  child: Text(
+                    formatProviderUsageLabel(
+                      context,
+                      stringValue(balance['id']),
+                      stringValue(balance['label']),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: small.copyWith(color: colors.muted),
+                  ),
                 ),
-              ),
-              Flexible(
-                child: Text.rich(
-                  TextSpan(
-                    text: amount,
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: (constraints.maxWidth - 8).clamp(0.0, double.infinity)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      Text(
+                        amount,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: small.copyWith(fontWeight: FontWeight.w500),
+                      ),
                       if (reset != null && reset.isNotEmpty)
-                        TextSpan(
-                          text: ' · ${tr(context, 'providerUsage.timing.resetsIn', args: {'duration': reset})}',
-                          style: TextStyle(color: colors.muted, fontWeight: FontWeight.normal),
+                        Text(
+                          tr(context, 'providerUsage.timing.resetsIn', args: {'duration': reset}),
+                          style: small.copyWith(color: colors.muted),
+                          textAlign: TextAlign.end,
                         ),
                     ],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: small.copyWith(fontWeight: FontWeight.w500),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           if (usedPct != null) _meter(context, usedPct, _tone(colors, balance['tone'], usedPct)),
         ],

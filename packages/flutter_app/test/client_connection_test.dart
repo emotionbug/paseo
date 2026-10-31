@@ -42,6 +42,30 @@ void main() {
     await client.close();
   });
 
+  testWidgets('recent provider sessions are one list; paged directories still need pageInfo', (tester) async {
+    final wire = _Wire(reply: (request) => {'entries': <Object>[]});
+    final client = _client(() async => wire);
+    await client.connect();
+    // fetch_recent_provider_sessions_response has no pageInfo in the protocol.
+    expect(
+      await client.request(
+        'fetch_recent_provider_sessions_request',
+        {'limit': 20},
+        responseType: 'fetch_recent_provider_sessions_response',
+      ),
+      containsPair('entries', isEmpty),
+    );
+    await expectLater(
+      client.request(
+        'fetch_agent_history_request',
+        {},
+        responseType: 'fetch_agent_history_response',
+      ),
+      throwsA(isA<FormatException>()),
+    );
+    await client.close();
+  });
+
   testWidgets('incompatible protocol retries after 1.5s; a wrong password does not', (tester) async {
     for (final (reason, retries) in [('incompatible_protocol', true), ('incorrect_password', false)]) {
       var attempts = 0;
@@ -183,10 +207,13 @@ PaseoClient _client(
 /// The daemon endpoint replaced with controlled frames; production envelope
 /// handling, correlation and timers stay in place.
 class _Wire implements DaemonTransport {
-  _Wire({this.rejection, this.answerPings = true, this._admit});
+  _Wire({this.rejection, this.answerPings = true, this._admit, this.reply});
   final String? rejection;
   final bool answerPings;
   final Future<void>? _admit;
+
+  /// The response payload for a request; by default an empty project list.
+  final JsonMap Function(JsonMap request)? reply;
   final requests = <JsonMap>[];
   final _messages = StreamController<Object>();
   int pings = 0;
@@ -233,7 +260,7 @@ class _Wire implements DaemonTransport {
         final type = request['type'] as String;
         _emit('${type.substring(0, type.length - 'request'.length)}response', {
           'requestId': request['requestId'],
-          'projects': <Object>[],
+          ...reply?.call(request) ?? {'projects': <Object>[]},
         });
     }
   }

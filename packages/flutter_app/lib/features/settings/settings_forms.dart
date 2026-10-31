@@ -297,25 +297,33 @@ class SettingsSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 12),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               spacing: 8,
               children: [
                 Flexible(
-                  child: Text(
-                    settingsLabel(context, title),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: muted,
-                      fontSize: type.uiSize(12),
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 8,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          settingsLabel(context, title),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                            fontSize: type.uiSize(12),
+                          ),
+                        ),
+                      ),
+                      if (info != null)
+                        Tooltip(
+                          message: info!,
+                          triggerMode: TooltipTriggerMode.tap,
+                          waitDuration: Duration.zero,
+                          child: Icon(LucideIcons.info300, size: 14, color: muted),
+                        ),
+                    ],
                   ),
                 ),
-                if (info != null)
-                  Tooltip(
-                    message: info!,
-                    triggerMode: TooltipTriggerMode.tap,
-                    waitDuration: Duration.zero,
-                    child: Icon(LucideIcons.info300, size: 14, color: muted),
-                  ),
-                const Spacer(),
                 ?trailing,
               ],
             ),

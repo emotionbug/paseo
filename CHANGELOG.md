@@ -25,6 +25,8 @@
 
 ### Fixed
 
+- Fixed Import sessions failing with "Malformed fetch_recent_provider_sessions_response: pageInfo": the native client required page info that the protocol never sends for recent provider sessions.
+- Fixed usage/settings headers leaving actions short of the right edge and truncating provider names despite spare space. Usage percentages, reset times and balances now use their natural width and align with the meter edge; balance reset times appear below the amount like the original.
 - Restored the top-level `paseo reload` command from the original CLI; it reloads `config.json` like `paseo daemon reload`. `paseo plugin init` scaffolds again return the cleanup function the extension worker requires, so a new plugin loads instead of failing at startup.
 - Preserved project and workspace registry files when loading invalid data instead of replacing them on the next mutation.
 - Verified daemon process-start identity before sending local signals, and retained managed-helper recovery records after termination timeouts.
